@@ -321,7 +321,27 @@
         .btn-ex { background: #198754; }
         .btn-pd { background: #dc3545; }
 
-        /* إعدادات مخصصة لطباعة التقرير بالكامل وإخفاء ما دون ذلك */
+        /* الهيدر المخصص للطباعة فقط */
+        .print-only-header {
+            display: none;
+            text-align: center;
+            border-bottom: 2px solid #1a365d;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .print-only-header h2 {
+            color: #1a365d;
+            font-size: 20px;
+            font-weight: 900;
+            margin-bottom: 5px;
+        }
+        .print-only-header p {
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* إعدادات مخصصة لطباعة التقرير بالكامل */
         @media print {
             body * {
                 visibility: hidden;
@@ -344,11 +364,14 @@
                 background: #fff !important;
                 padding: 20px !important;
             }
-            /* إخفاء أزرار العودة والطباعة وتسجيل الخروج ونموذج الدخول وكلمة المرور من الطباعة */
+            /* إظهار هيدر الطباعة الرسمي وإخفاء الأزرار ونموذج الدخول */
+            .print-only-header {
+                display: block !important;
+            }
             .back-home-btn, #serviceLoginForm, .act-btn, #activeUserInfo {
                 display: none !important;
             }
-            /* السماح للجدول بالطباعة الكاملة على أكثر من صفحة وعدم اقتطاعه */
+            /* السماح للجدول بالطباعة على أكثر من صفحة وعدم اقتطاعه */
             #apiResultData {
                 max-height: none !important;
                 overflow: visible !important;
@@ -356,6 +379,7 @@
             }
             table {
                 page-break-inside: auto !important;
+                width: 100% !important;
             }
             tr {
                 page-break-inside: avoid !important;
@@ -489,6 +513,14 @@
     <section id="fullServiceSection" class="service-full-page hidden" style="background-image: url('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?q=80&w=1600&auto=format&fit=crop');">
         <div class="watermark-bg" id="serviceWatermark">Service Portal</div>
         <div class="service-card-wrapper">
+            
+            <!-- الهيدر الرسمي المخصص للطباعة فقط -->
+            <div class="print-only-header">
+                <h2>بوابة الخدمات الرقمية</h2>
+                <p>الهيئة العامة للسد العالي وخزان أسوان</p>
+                <h3 id="printServiceTitle" style="color: #c59b27; font-size: 16px; margin-top: 5px;"></h3>
+            </div>
+
             <button class="back-home-btn" style="background: #1e293b; margin-bottom: 20px;" onclick="goHome()"><i class="fas fa-home"></i> العودة للرئيسية</button>
             
             <h2 id="fullServiceTitle">عنوان الخدمة</h2>
@@ -578,6 +610,7 @@
 
         document.getElementById("fullServiceSection").classList.remove("hidden");
         document.getElementById("fullServiceTitle").innerText = serviceName;
+        document.getElementById("printServiceTitle").innerText = serviceName;
         document.getElementById("serviceWatermark").innerText = serviceName;
         
         document.getElementById("serviceLoginForm").classList.remove("hidden");
@@ -618,12 +651,21 @@
             .then(res => {
                 if(res.status === "success") {
                     let htmlTable = "<table style='width:100%; border-collapse: collapse;'>";
+                    // أسماء الأعمدة المراد استبعادها تماماً بغض النظر عن حالة الأحرف
+                    const excludedKeys = ["user", "username", "pass", "password", "باسورد", "كلمة المرور", "اسم المستخدم"];
+
                     for (let key in res.data) {
-                        htmlTable += `
-                            <tr style='border-bottom: 1px solid #f1f5f9;'>
-                                <td style='padding: 12px; font-weight: bold; color: #1a365d; width: 40%;'>${key}</td>
-                                <td style='padding: 12px; color: #334155; width: 60%;'>${res.data[key]}</td>
-                            </tr>`;
+                        // التحقق مما إذا كان الحقل الحالي من ضمن الحقول المستبعدة
+                        let lowerKey = key.toLowerCase().trim();
+                        let isExcluded = excludedKeys.some(ex => lowerKey.includes(ex));
+
+                        if (!isExcluded) {
+                            htmlTable += `
+                                <tr style='border-bottom: 1px solid #f1f5f9;'>
+                                    <td style='padding: 12px; font-weight: bold; color: #1a365d; width: 40%;'>${key}</td>
+                                    <td style='padding: 12px; color: #334155; width: 60%;'>${res.data[key]}</td>
+                                </tr>`;
+                        }
                     }
                     htmlTable += "</table>";
                     dataBox.innerHTML = htmlTable;
@@ -631,7 +673,7 @@
                 } else {
                     dataBox.innerHTML = `
                         <div style="text-align: center; padding: 20px; color: #dc3545;">
-                            <i class="fas fa-exclamation-circle" style="font-size: 28px; margin-bottom: 10px;">*</i>
+                            <i class="fas fa-exclamation-circle" style="font-size: 28px; margin-bottom: 10px;"></i>
                             <p style="font-weight: bold;">${res.message}</p>
                             <button class="act-btn" style="background: #0056b3; margin-top: 15px;" onclick="resetServiceLogin()">إعادة المحاولة</button>
                         </div>`;
@@ -645,7 +687,7 @@
     function resetServiceLogin() {
         document.getElementById("serviceResultContainer").classList.add("hidden");
         document.getElementById("serviceLoginForm").classList.remove("hidden");
-        document.getElementById("servicePass").value.trim() = "";
+        document.getElementById("servicePass").value = "";
     }
 </script>
 
