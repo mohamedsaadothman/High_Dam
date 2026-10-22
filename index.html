@@ -297,16 +297,7 @@
             border-radius: 16px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.5);
             text-align: right;
-            transition: all 0.3s ease;
         }
-        
-        /* توسيع عرض كارت تقرير الراتب الشهري ليملاء الشاشة وتجاوبه */
-        .service-card-wrapper.expanded-salary-card {
-            max-width: 98% !important;
-            width: 98% !important;
-            padding: 20px 15px !important;
-        }
-
         .service-card-wrapper h2 { color: #1a365d; font-size: 24px; margin-bottom: 8px; font-weight: 900; }
         .service-card-wrapper p { color: #666; font-size: 13px; margin-bottom: 25px; }
 
@@ -335,13 +326,6 @@
             .hero-title { font-size: 24px; }
             .hero-subtitle { font-size: 14px; }
             .service-card-wrapper { padding: 25px 20px; }
-            .service-card-wrapper.expanded-salary-card {
-                max-width: 100% !important;
-                width: 100% !important;
-                border-radius: 0 !important;
-                min-height: 100vh;
-                padding: 15px 10px !important;
-            }
         }
     </style>
 </head>
@@ -462,7 +446,7 @@
     <!-- صفحة الخدمة الشاملة (بطاقة تسجيل الدخول التي تختفي وتظهر مكانها البيانات داخل جسم الموقع) -->
     <section id="fullServiceSection" class="service-full-page hidden" style="background-image: url('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?q=80&w=1600&auto=format&fit=crop');">
         <div class="watermark-bg" id="serviceWatermark">Service Portal</div>
-        <div class="service-card-wrapper" id="serviceCardWrapper">
+        <div class="service-card-wrapper">
             <button class="back-home-btn" style="background: #1e293b; margin-bottom: 20px;" onclick="goHome()"><i class="fas fa-home"></i> العودة للرئيسية</button>
             
             <h2 id="fullServiceTitle">عنوان الخدمة</h2>
@@ -470,126 +454,158 @@
 
             <!-- نموذج تسجيل الدخول (يختفي بعد الضغط وتظهر البيانات مكانه) -->
             <form id="serviceLoginForm" onsubmit="submitServiceLogin(event)">
-                <div class="input-group" id="userGroup">
+                <div class="input-group">
                     <label>اسم المستخدم</label>
-                    <input type="text" id="serviceUser" placeholder="أدخل اسم المستخدم أو الكود">
+                    <input type="text" id="serviceUser" required placeholder="أدخل اسم المستخدم أو الكود">
                 </div>
-                <div class="input-group" id="passGroup">
+                <div class="input-group">
                     <label>كلمة المرور (الباسورد)</label>
-                    <input type="password" id="servicePass" placeholder="أدخل كلمة المرور">
+                    <input type="password" id="servicePass" required placeholder="أدخل كلمة المرور">
                 </div>
-                <button type="submit" class="btn-submit-main" id="submitBtnText">استعلام وعرض البيانات</button>
+                <button type="submit" class="btn-submit-main">استعلام وعرض البيانات</button>
             </form>
 
             <!-- حاوية عرض النتائج (مخفية في البداية وتظهر مكان النموذج بعد الدخول) -->
             <div id="serviceResultContainer" class="hidden" style="text-align: right;">
                 <div id="activeUserInfo" style="font-size: 13px; color: #64748b; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;"></div>
-                <div id="apiResultData" style="width: 100%;"></div>
+                <div id="apiResultData" style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;"></div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="act-btn btn-ex" onclick="window.print()"><i class="fas fa-print"></i> طباعة التقرير</button>
+                    <button class="act-btn btn-pd" onclick="resetServiceLogin()"><i class="fas fa-sign-out-alt"></i> تسجيل خروج / بحث جديد</button>
+                </div>
             </div>
         </div>
     </section>
 
-    <script>
-        function toggleSidebar() {
-            const menu = document.getElementById('sidebarMenu');
-            const overlay = document.getElementById('sidebarOverlay');
-            menu.classList.toggle('active');
-            overlay.classList.toggle('active');
+<script>
+    let activeServiceName = "";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbziUb4BPm59t_uaTi5ejHYJEuxG34yywGYKIG8oWj4QNC5s78z-CdDxV5as837yJ7um/exec";
+
+    function toggleSidebar() {
+        document.getElementById("sidebarMenu").classList.toggle("active");
+        document.getElementById("sidebarOverlay").classList.toggle("active");
+    }
+
+    function openSectionPage(sectionType) {
+        document.getElementById("homeHero").classList.add("hidden");
+        document.getElementById("pageEstihqaqat").classList.add("hidden");
+        document.getElementById("pageEgazat").classList.add("hidden");
+        document.getElementById("pageSubRequests").classList.add("hidden");
+        document.getElementById("fullServiceSection").classList.add("hidden");
+        
+        document.getElementById("sidebarMenu").classList.remove("active");
+        document.getElementById("sidebarOverlay").classList.remove("active");
+
+        if(sectionType === 'estihqaqat') {
+            document.getElementById("pageEstihqaqat").classList.remove("hidden");
+        } else if(sectionType === 'egazat') {
+            document.getElementById("pageEgazat").classList.remove("hidden");
         }
+    }
 
-        function hideAllSections() {
-            document.getElementById('homeHero').classList.add('hidden');
-            document.getElementById('pageEstihqaqat').classList.add('hidden');
-            document.getElementById('pageEgazat').classList.add('hidden');
-            document.getElementById('pageSubRequests').classList.add('hidden');
-            document.getElementById('fullServiceSection').classList.add('hidden');
-            document.getElementById('sidebarMenu').classList.remove('active');
-            document.getElementById('sidebarOverlay').classList.remove('active');
+    function openSubRequestsPage() {
+        document.getElementById("pageEgazat").classList.add("hidden");
+        document.getElementById("pageSubRequests").classList.remove("hidden");
+    }
+
+    function goHome() {
+        document.getElementById("homeHero").classList.remove("hidden");
+        document.getElementById("pageEstihqaqat").classList.add("hidden");
+        document.getElementById("pageEgazat").classList.add("hidden");
+        document.getElementById("pageSubRequests").classList.add("hidden");
+        document.getElementById("fullServiceSection").classList.add("hidden");
+        document.getElementById("sidebarMenu").classList.remove("active");
+        document.getElementById("sidebarOverlay").classList.remove("active");
+    }
+
+    // فتح صفحة الخدمة الشاملة داخل جسم الموقع
+    function openFullServicePage(serviceName) {
+        activeServiceName = serviceName;
+        document.getElementById("homeHero").classList.add("hidden");
+        document.getElementById("pageEstihqaqat").classList.add("hidden");
+        document.getElementById("pageEgazat").classList.add("hidden");
+        document.getElementById("pageSubRequests").classList.add("hidden");
+        document.getElementById("sidebarMenu").classList.remove("active");
+        document.getElementById("sidebarOverlay").classList.remove("active");
+
+        // إظهار صفحة الخدمة الشاملة وإعداد العناوين
+        document.getElementById("fullServiceSection").classList.remove("hidden");
+        document.getElementById("fullServiceTitle").innerText = serviceName;
+        document.getElementById("serviceWatermark").innerText = serviceName;
+        
+        // إعادة تعيين النموذج وإخفاء النتائج القديمة
+        document.getElementById("serviceLoginForm").classList.remove("hidden");
+        document.getElementById("serviceResultContainer").classList.add("hidden");
+        document.getElementById("serviceUser").value = "";
+        document.getElementById("servicePass").value = "";
+
+        // فحص الجلسة المحفوظة مسبقاً
+        let savedUser = localStorage.getItem("auth_user");
+        if(savedUser) {
+            document.getElementById("serviceUser").value = savedUser;
         }
+    }
 
-        function goHome() {
-            hideAllSections();
-            document.getElementById('homeHero').classList.remove('hidden');
-        }
+    // إرسال بيانات تسجيل الدخول وإخفاء النموذج وإظهار البيانات مكانه في نفس البطاقة
+    function submitServiceLogin(e) {
+        e.preventDefault();
+        let u = document.getElementById("serviceUser").value.trim();
+        let p = document.getElementById("servicePass").value.trim();
 
-        function openSectionPage(pageId) {
-            hideAllSections();
-            if(pageId === 'estihqaqat') {
-                document.getElementById('pageEstihqaqat').classList.remove('hidden');
-            } else if(pageId === 'egazat') {
-                document.getElementById('pageEgazat').classList.remove('hidden');
-            }
-        }
+        // إخفاء نموذج تسجيل الدخول وإظهار صندوق النتائج مع مؤشر التحميل
+        document.getElementById("serviceLoginForm").classList.add("hidden");
+        let resContainer = document.getElementById("serviceResultContainer");
+        resContainer.classList.remove("hidden");
+        
+        document.getElementById("activeUserInfo").innerText = "الموظف النشط: " + u;
+        let dataBox = document.getElementById("apiResultData");
+        
+        dataBox.innerHTML = `
+            <div style="text-align: center; color: #64748b; padding: 30px;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 28px; color: #0056b3; margin-bottom: 12px;"></i>
+                <p>جاري التحقق من قاعدة البيانات وجلب تفاصيل (${activeServiceName}) بكل أمان...</p>
+            </div>
+        `;
 
-        function openSubRequestsPage() {
-            hideAllSections();
-            document.getElementById('pageSubRequests').classList.remove('hidden');
-        }
+        // جلب البيانات من سكريبت جوجل مع تمرير اسم المستخدم وكلمة المرور
+        let fetchUrl = `${SCRIPT_URL}?action=login&user=${encodeURIComponent(u)}&pass=${encodeURIComponent(p)}`;
 
-        function openFullServicePage(serviceName) {
-            hideAllSections();
-            document.getElementById('fullServiceSection').classList.remove('hidden');
-            document.getElementById('fullServiceTitle').innerText = serviceName;
-            document.getElementById('serviceWatermark').innerText = serviceName;
-            
-            // إعادة ضبط النموذج في كل مرة يتم فتح الخدمة فيها
-            document.getElementById('serviceLoginForm').classList.remove('hidden');
-            document.getElementById('serviceResultContainer').classList.add('hidden');
-            document.getElementById('serviceUser').value = '';
-            document.getElementById('servicePass').value = '';
+        fetch(fetchUrl)
+            .then(response => response.json())
+            .then(res => {
+                if(res.status === "success") {
+                    let htmlTable = "<table style='width:100%; border-collapse: collapse;'>";
+                    for (let key in res.data) {
+                        htmlTable += `
+                            <tr style='border-bottom: 1px solid #f1f5f9;'>
+                                <td style='padding: 12px; font-weight: bold; color: #1a365d; width: 40%;'>${key}</td>
+                                <td style='padding: 12px; color: #334155; width: 60%;'>${res.data[key]}</td>
+                            </tr>`;
+                    }
+                    htmlTable += "</table>";
+                    dataBox.innerHTML = htmlTable;
+                    localStorage.setItem("auth_user", u);
+                } else {
+                    dataBox.innerHTML = `
+                        <div style="text-align: center; padding: 20px; color: #dc3545;">
+                            <i class="fas fa-exclamation-circle" style="font-size: 28px; margin-bottom: 10px;"></i>
+                            <p style="font-weight: bold;">${res.message}</p>
+                            <button class="act-btn" style="background: #0056b3; margin-top: 15px;" onclick="resetServiceLogin()">إعادة المحاولة</button>
+                        </div>`;
+                }
+            })
+            .catch(err => {
+                dataBox.innerHTML = `<p style="color: #dc3545; text-align: center; padding: 20px;">حدث خطأ أثناء الاتصال بالخادم الداخلي.</p>`;
+            });
+    }
 
-            const wrapper = document.getElementById('serviceCardWrapper');
-            const userGroup = document.getElementById('userGroup');
-            const passGroup = document.getElementById('passGroup');
-            const submitBtnText = document.getElementById('submitBtnText');
+    // العودة لنموذج تسجيل الدخول داخل نفس الصفحة
+    function resetServiceLogin() {
+        document.getElementById("serviceResultContainer").classList.add("hidden");
+        document.getElementById("serviceLoginForm").classList.remove("hidden");
+        document.getElementById("servicePass").value = "";
+    }
+</script>
 
-            // التحقق إذا كانت الخدمة هي "الاستعلام عن الراتب الشهري"
-            if (serviceName === 'الاستعلام عن الراتب الشهري') {
-                userGroup.classList.add('hidden');
-                passGroup.classList.add('hidden');
-                document.getElementById('fullServiceDesc').innerText = 'استعراض تقرير الاستعلام عن الراتب الشهري بملاءة الشاشة الكاملة';
-                submitBtnText.innerText = 'عرض تقرير الراتب الشهري';
-                wrapper.classList.add('expanded-salary-card');
-            } else {
-                userGroup.classList.remove('hidden');
-                passGroup.classList.remove('hidden');
-                document.getElementById('fullServiceDesc').innerText = 'أدخل اسم المستخدم وكلمة المرور الخاصة بك لعرض البيانات المطلوبة';
-                submitBtnText.innerText = 'استعلام وعرض البيانات';
-                wrapper.classList.remove('expanded-salary-card');
-            }
-        }
-
-        function submitServiceLogin(event) {
-            event.preventDefault();
-            const serviceName = document.getElementById('fullServiceTitle').innerText;
-            
-            // إخفاء نموذج الدخول وإظهار حاوية النتائج
-            document.getElementById('serviceLoginForm').classList.add('hidden');
-            document.getElementById('serviceResultContainer').classList.remove('hidden');
-
-            if (serviceName === 'الاستعلام عن الراتب الشهري') {
-                // عدم إظهار اسم المستخدم أو كلمة المرور نهائياً في التقرير
-                document.getElementById('activeUserInfo').innerText = 'تقرير الاستعلام عن الراتب الشهري - عرض تفصيلي شامل';
-                document.getElementById('apiResultData').innerHTML = `
-                    <div style="padding: 20px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; color: #1e293b; width: 100%;">
-                        <h3 style="color: #0056b3; margin-bottom: 15px; border-bottom: 2px solid #0056b3; padding-bottom: 5px;">بيانات تقرير الراتب الشهري</h3>
-                        <p style="margin-bottom: 10px;"><b>الحالة:</b> تم جلب بيانات التقرير بنجاح وبملاءة الشاشة الكاملة.</p>
-                        <div style="background: #fff; padding: 15px; border-radius: 6px; border: 1px solid #cbd5e1; margin-top: 15px;">
-                            <p style="color: #475569; margin-bottom: 5px;">هنا يتم عرض تفاصيل وجداول الاستعلام عن الراتب الشهري بشكل متجاوب وكامل الشاشة.</p>
-                        </div>
-                    </div>
-                `;
-            } else {
-                // للخدمات الأخرى: يتم إظهار اسم الخدمة فقط وعدم عرض اسم المستخدم أو كلمة المرور في النتيجة
-                document.getElementById('activeUserInfo').innerText = 'الخدمة النشطة: ' + serviceName;
-                document.getElementById('apiResultData').innerHTML = `
-                    <div style="padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; color: #1e293b;">
-                        <p><b>تم تسجيل الدخول بنجاح للخدمة:</b> ${serviceName}</p>
-                        <p style="margin-top: 10px; color: #64748b;">جارٍ عرض البيانات المرتبطة بالخدمة...</p>
-                    </div>
-                `;
-            }
-        }
-    </script>
 </body>
 </html>
