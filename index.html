@@ -380,11 +380,10 @@
             <button onclick="openSectionPage('egazat')"><i class="fas fa-calendar-alt" style="color: #c59b27;"></i> إدارة الإجازات وشؤون العاملين</button>
             <button onclick="requestServiceAuth('الخدمات الطبية')"><i class="fas fa-heartbeat" style="color: #c59b27;"></i> الخدمات الطبية</button>
             <button onclick="requestServiceAuth('المخازن والعهد')"><i class="fas fa-warehouse" style="color: #c59b27;"></i> المخازن والعهد</button>
-            <!-- مساحة مجهزة لإضافة باقي الـ 25 إدارة هنا مستقبلاً بكل سهولة -->
         </div>
     </div>
 
-    <!-- الواجهة الرئيسية للموقع (هيدر وواجهة نظيفة تماماً) -->
+    <!-- الواجهة الرئيسية للموقع -->
     <main id="homeHero" class="main-hero">
         <h2 class="hero-title">مرحباً بكم في البوابة الرقمية الرسمية</h2>
         <p class="hero-subtitle">منظومة إلكترونية متكاملة لخدمة العاملين بالهيئة العامة للسد العالي وخزان أسوان. انقر على زر القائمة (الإدارات) بالأعلى لاستعراض الأقسام والخدمات.</p>
@@ -487,7 +486,7 @@
         </div>
     </div>
 
-    <!-- لوحة تحكم الخدمة المختارة بعد تسجيل الدخول -->
+    <!-- لوحة تحكم الخدمة المختارة لعرض البيانات والنتائج المسترجعة -->
     <div id="deptDashboard" class="department-dashboard hidden">
         <div class="dash-top">
             <div>
@@ -501,6 +500,9 @@
 
 <script>
     let selectedTargetService = "";
+
+    // رابط سكريبت جوجل الجديد المرتبط بالبوابة
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzkiAzWjVoZSuEDPw6DJjnnq3Fv5jQyuhgj0t9HzHAXZB1-IZ4l-htzgpswcdDYfP3z/exec";
 
     function toggleSidebar() {
         document.getElementById("sidebarMenu").classList.toggle("active");
@@ -539,10 +541,16 @@
 
     function requestServiceAuth(serviceName) {
         selectedTargetService = serviceName;
-        document.getElementById("modalTitle").innerText = "صلاحيات الوصول: " + serviceName;
-        document.getElementById("loginModal").classList.remove("hidden");
-        document.getElementById("sidebarMenu").classList.remove("active");
-        document.getElementById("sidebarOverlay").classList.remove("active");
+        
+        let savedUser = localStorage.getItem("auth_user");
+        if(savedUser) {
+            executeDataFetch(savedUser, "", serviceName);
+        } else {
+            document.getElementById("modalTitle").innerText = "صلاحيات الوصول: " + serviceName;
+            document.getElementById("loginModal").classList.remove("hidden");
+            document.getElementById("sidebarMenu").classList.remove("active");
+            document.getElementById("sidebarOverlay").classList.remove("active");
+        }
     }
 
     function closeLogin() {
@@ -551,26 +559,63 @@
 
     function submitLogin(e) {
         e.preventDefault();
-        let u = document.getElementById("modalUser").value;
+        let u = document.getElementById("modalUser").value.trim();
+        let p = document.getElementById("modalPass").value.trim();
+        
         closeLogin();
+        executeDataFetch(u, p, selectedTargetService);
+    }
 
+    function executeDataFetch(username, password, serviceName) {
         document.getElementById("homeHero").classList.add("hidden");
         document.getElementById("pageEstihqaqat").classList.add("hidden");
         document.getElementById("pageEgazat").classList.add("hidden");
         document.getElementById("pageSubRequests").classList.add("hidden");
         document.getElementById("deptDashboard").classList.remove("hidden");
         
-        document.getElementById("dashTitle").innerText = selectedTargetService;
-        document.getElementById("dashUserWelcome").innerText = "الموظف النشط: " + u + " (صلاحية معتمدة)";
+        document.getElementById("dashTitle").innerText = serviceName;
+        document.getElementById("dashUserWelcome").innerText = "الموظف النشط: " + username;
         
-        document.getElementById("dashContent").innerHTML = `
-            <h3>${selectedTargetService}</h3>
-            <p>هنا سيتم جلب وعرض البيانات الخاصة بـ (${selectedTargetService}) مباشرة من جداول سكريبت جوجل الخاص بك بكل أمان.</p>
+        let contentBox = document.getElementById("dashContent");
+        contentBox.innerHTML = `
+            <h3>${serviceName}</h3>
+            <p>جارٍ التحقق من قاعدة البيانات وجلب تفاصيل الخدمة بكل أمان...</p>
+            <div id="apiResultData" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; text-align: right;">
+                <div style="text-align: center; color: #64748b; padding: 20px;">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: #0056b3; margin-bottom: 10px;"></i>
+                    <p>جاري تحميل البيانات من الخادم الداخلي...</p>
+                </div>
+            </div>
             <div style="margin-top: 20px; display: flex; gap: 10px;">
-                <button class="act-btn btn-ex" onclick="alert('تصدير تقرير ${selectedTargetService} إلى Excel')"><i class="fas fa-file-excel"></i> تصدير Excel</button>
-                <button class="act-btn btn-pd" onclick="alert('تصدير تقرير ${selectedTargetService} إلى PDF')"><i class="fas fa-file-pdf"></i> تصدير PDF</button>
+                <button class="act-btn btn-ex" onclick="window.print()"><i class="fas fa-print"></i> طباعة التقرير</button>
+                <button class="act-btn" style="background: #64748b;" onclick="localStorage.clear(); goHome();"><i class="fas fa-sign-out-alt"></i> تسجيل خروج</button>
             </div>
         `;
+
+        // جلب البيانات من سكريبت جوجل مع تمرير اسم المستخدم وكلمة المرور سرا
+        let fetchUrl = password ? 
+            `${SCRIPT_URL}?action=login&user=${encodeURIComponent(username)}&pass=${encodeURIComponent(password)}` :
+            `${SCRIPT_URL}?action=login&user=${encodeURIComponent(username)}&pass=saved`; // في حالة الجلسة المحفوظة
+
+        fetch(fetchUrl)
+            .then(response => response.json())
+            .then(res => {
+                let resContainer = document.getElementById("apiResultData");
+                if(res.status === "success") {
+                    let htmlTable = "<table style='width:100%; border-collapse: collapse;'>";
+                    for (let key in res.data) {
+                        htmlTable += `<tr style='border-bottom: 1px solid #eee;'><td style='padding: 10px; font-weight: bold; color: #1a365d;'>${key}</td><td style='padding: 10px; color: #333;'>${res.data[key]}</td></tr>`;
+                    }
+                    htmlTable += "</table>";
+                    resContainer.innerHTML = htmlTable;
+                    localStorage.setItem("auth_user", username);
+                } else {
+                    resContainer.innerHTML = `<p style="color: #dc3545; text-align: center; font-weight: bold;"><i class="fas fa-exclamation-circle"></i> ${res.message}</p>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById("apiResultData").innerHTML = `<p style="color: #dc3545; text-align: center;">حدث خطأ أثناء الاتصال بالخادم الداخلي.</p>`;
+            });
     }
 </script>
 
