@@ -376,8 +376,8 @@
     </div>
 
 <script>
-    // ✅ تم تحديث الرابط الجديد هنا
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbycbtAOSplop_eTIwVqULM0csZOrkSBTmYlPZN6teVcXSHMeJ-tTvuYBD4hPUq3lung/exec";
+    // ✅ تم تحديث الرابط البرمجي الجديد هنا بدقة وحذف القديم
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuqaePkLXDITYURN9TZvBU7trtYseV9-VpgBh65ivdLRNExL6GtMsJ46Di8A507DqV/exec";
     var loggedInRole = "";
     var currentDeptOrCat = "";
     var currentManagerName = "";
@@ -568,12 +568,12 @@
                         <p><strong>السبب:</strong> ${item.reason}</p>
                         <p><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
                         <p><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
-                        ${item.rejectionReason ? `<p style="color:#dc3545;"><strong>سبب الرفض / ملاحظات:</strong> ${item.rejectionReason}</p>` : ''}
+                        <p style="font-size: 10px; color: #555; background: #eee; padding: 4px; border-radius: 4px;"><strong>سجل التتبع والتواريخ:</strong> ${item.trackingLog}</p>
                         
                         <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
                             ${role === 'hr_specialist' ? `
-                                <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'رصيد متاح', 'رصيد الموظف متاح', 'hr_specialist')">رصيد متاح</button>
-                                <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'ليس لديه رصيد (رفض)', 'hr_specialist')">ليس لديه رصيد (رفض)</button>
+                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح ولديه رصيد كافٍ')">رصيد متاح</button>
+                                <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'ليس لديه رصيد (رفض)', 'ليس لديه رصيد كافٍ')">ليس لديه رصيد (رفض)</button>
                             ` : `
                                 <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي والأرشفة', 'manager')">مقبول ومؤرشف</button>
                                 <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض', 'manager')">رفض الطلب</button>
@@ -584,7 +584,25 @@
                 });
                 container.innerHTML = html;
             } else {
-                container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 20px;">لا توجد طلبات إجازات بانتظار الاعتماد حالياً.</p>`;
+                container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 20px;">لا توجد طلبات بانتظار الاعتماد حالياً.</p>`;
+            }
+        });
+    }
+
+    function promptSpecialistAction(rowIndex, statusType, defaultText) {
+        let inputVal = prompt("يرجى تحديد التفاصيل (مثال: رصيد متاح ولديه 5 أيام):", defaultText);
+        if (!inputVal) return;
+
+        let formData = new URLSearchParams({
+            action: "update_leave_action", rowIndex: rowIndex, status: statusType, reason: inputVal, role: "hr_specialist"
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", "تم تسجيل الرأي والتاريخ وتحديث الطلب واختفاؤه من أمامك.");
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
     }
@@ -599,7 +617,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تحديث الحالة وحفظ السبب في الشيت بنجاح.");
+                showCustomAlert("تم بنجاح", "تم الاعتماد وتاريخ الوقت وأرشفة الطلب واختفاؤه.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
@@ -617,7 +635,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تحديث حالة الرفض وحفظ السبب في الشيت.");
+                showCustomAlert("تم بنجاح", "تم تسجيل الرفض بالوقت وتاريخ الاعتماد وتحديث الشيت.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
