@@ -176,11 +176,11 @@
 
             <form id="leaveForm" onsubmit="submitLeaveForm(event)">
                 <div class="input-group">
-                    <label>اسم الموظف (رباعي):</label>
+                    <label>اسم الموظف (رباعي بالعربية):</label>
                     <input type="text" id="empName" required placeholder="مثال: محمد أحمد علي حسن">
                 </div>
                 <div class="input-group">
-                    <label>الرقم القومي (14 رقماً بالإنجليزية):</label>
+                    <label>الرقم القومي (14 رقماً بالإنجليزية فقط):</label>
                     <input type="text" id="empNationalId" maxlength="14" required placeholder="أدخل الرقم القومي">
                 </div>
                 <div class="input-group">
@@ -209,11 +209,11 @@
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>اسم المدير المسؤول (رباعي):</label>
+                    <label>اسم المدير المسؤول (رباعي بالعربية):</label>
                     <input type="text" id="managerName" required placeholder="اكتب اسم المدير رباعياً...">
                 </div>
                 <div class="input-group">
-                    <label>رقم التليفون (11 رقم):</label>
+                    <label>رقم التليفون (11 رقم بالإنجليزية):</label>
                     <input type="tel" id="empPhone" maxlength="11" required placeholder="01xxxxxxxx0">
                 </div>
                 <div class="input-group">
@@ -240,8 +240,8 @@
                     <input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;">
                 </div>
                 <div class="input-group">
-                    <label>السبب: (لا يقل عن 15 حرفاً)</label>
-                    <textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة بالتفصيل (لا يقل عن 15 حرفاً)..."></textarea>
+                    <label>السبب: (لا يقل عن 10 حروف)</label>
+                    <textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة بالتفصيل (لا يقل عن 10 حروف)..."></textarea>
                 </div>
 
                 <button type="submit" class="btn-submit-main"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
@@ -336,6 +336,15 @@
 
 <script>
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwubbA9McDsP_6wP9CMLr1LXPZ4lUuhqqRjZUQbZ7b-hdPA9DVVkKlCMhygJuKqopgi/exec";
+
+    // تعيين الحد الأدنى للتواريخ لتبدأ من اليوم الفعلي
+    window.addEventListener('DOMContentLoaded', () => {
+        let today = new Date().toISOString().split('T')[0];
+        let startInput = document.getElementById("startDate");
+        let endInput = document.getElementById("endDate");
+        if(startInput) startInput.setAttribute("min", today);
+        if(endInput) endInput.setAttribute("min", today);
+    });
 
     function openLeaveForm() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
@@ -520,6 +529,7 @@
     }
 
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
+    function isArabicText(str) { return /^[\u0600-\u06FF\s]+$/.test(str); }
     function isQuadrupleName(name) { return name.trim().split(/\s+/).length >= 4; }
 
     function submitLeaveForm(e) {
@@ -536,27 +546,52 @@
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
 
-        if (!isQuadrupleName(name) || !isQuadrupleName(mName)) {
-            alert("خطأ: يجب إدخال اسم الموظف والمدير رباعياً على الأقل.");
+        // 1. التحقق من أن تاريخ الإجازة يبدأ من اليوم أو بعده
+        let todayStr = new Date().toISOString().split('T')[0];
+        if (start < todayStr) {
+            alert("خطأ: لا يمكن اختيار تاريخ إجازة سابق لتاريخ اليوم الفعلي.");
             return;
         }
+
+        // 2. التحقق من أن الاسم باللغة العربية بالكامل
+        if (!isArabicText(name)) {
+            alert("خطأ: يجب أن يكون اسم الموظف مكتوباً باللغة العربية فقط وبدون أحرف لاتينية أو أرقام.");
+            return;
+        }
+
+        // 3. التحقق من أن الاسم رباعي أو أكثر
+        if (!isQuadrupleName(name)) {
+            alert("خطأ: يجب إدخال اسم الموظف رباعياً على الأقل.");
+            return;
+        }
+
+        // 4. التحقق من أن الرقم القومي 14 رقم بالإنجليزية فقط
         if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) {
-            alert("خطأ: الرقم القومي يجب أن يكون 14 رقماً بالإنجليزية.");
+            alert("خطأ: الرقم القومي يجب أن يتكون من 14 رقماً ومكتوباً بالأرقام الإنجليزية فقط.");
             return;
         }
+
+        // 5. التحقق من رقم الهاتف 11 رقم بالإنجليزية
         if (phone.length !== 11 || !isEnglishNumbers(phone)) {
-            alert("خطأ: رقم الهاتف يجب أن يكون 11 رقماً بالإنجليزية.");
+            alert("خطأ: رقم الهاتف يجب أن يتكون من 11 رقماً ومكتوباً بالأرقام الإنجليزية فقط.");
             return;
         }
-        if (reason.length < 15) {
-            alert("خطأ: سبب الإجازة يجب ألا يقل عن 15 حرفاً.");
+
+        // 6. التحقق من أن سبب الإجازة لا يقل عن 10 حروف
+        if (reason.length < 10) {
+            alert("خطأ: سبب الإجازة يجب ألا يقل عن 10 حروف.");
             return;
         }
 
         let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
+        if (totalDays <= 0) {
+            alert("خطأ: تاريخ النهاية يجب أن يكون بعد تاريخ البداية أو مساوياً له.");
+            return;
+        }
+
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
 
-        // تجهيز بيانات الطباعة الفورية عند الضغط على الزر
+        // تجهيز بيانات الطباعة الفورية
         document.getElementById("pRequestId").innerText = "مسلسل الطلب (ID): " + randomId;
         document.getElementById("pDept").innerText = dept;
         document.getElementById("pManagerName").innerText = titlePrefix + " " + mName;
@@ -588,9 +623,10 @@
         };
 
         let submitBtn = document.querySelector(".btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب للشيت...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تكرار الاسم والرقم والتاريخ وإرسال الطلب...';
         submitBtn.disabled = true;
 
+        // إرسال الطلب إلى جوجل سكريبت، والذي بدوره سيتحقق من عدم تكرار الاسم، الرقم القومي، وتداخل التواريخ في الشيت
         fetch(LEAVE_SCRIPT_URL, {
             method: "POST",
             mode: "no-cors",
@@ -613,6 +649,9 @@
     function resetLeaveForm() {
         document.getElementById("leaveForm").reset();
         document.getElementById("calcDays").value = "";
+        let today = new Date().toISOString().split('T')[0];
+        document.getElementById("startDate").setAttribute("min", today);
+        document.getElementById("endDate").setAttribute("min", today);
         document.getElementById("leaveForm").classList.remove("hidden");
         document.getElementById("leaveResultContainer").classList.add("hidden");
     }
