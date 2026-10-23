@@ -52,16 +52,19 @@
         .btn-submit-main { width: 100%; background: #198754; color: white; border: none; padding: 9px; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; transition: 0.3s; margin-top: 5px; }
         .btn-submit-main:hover { background: #146c43; }
 
-        .act-btn { padding: 6px 10px; border: none; border-radius: 6px; font-size: 10px; font-weight: 600; cursor: pointer; color: white; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+        .act-btn { padding: 6px 10px; border: none; border-radius: 6px; font-size: 10px; font-weight: 600; cursor: pointer; color: white; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; transition: 0.2s; }
+        .act-btn:hover:not(:disabled) { opacity: 0.8; transform: translateY(-1px); }
         .btn-ex { background: #198754; }
         .btn-pd { background: #0d6efd; }
         .btn-danger { background: #dc3545; }
         .btn-warning { background: #f59e0b; }
         .btn-secondary { background: #64748b; }
+        .btn-disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; border: 1px solid #cbd5e1; }
 
         .emp-card-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; text-align: right; position: relative; overflow: hidden; }
         .emp-card-box.rejected-spec { background: #fffbeb; border-color: #fcd34d; }
         .emp-card-box.rejected-mgr { background: #fef2f2; border-color: #f87171; }
+        .emp-card-box.approved-mgr { background: #f0fdf4; border-color: #86efac; }
         
         .watermark-rejected { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 35px; font-weight: 900; white-space: nowrap; pointer-events: none; z-index: 0; opacity: 0.15; }
         .watermark-rejected.spec { color: #d97706; }
@@ -75,9 +78,10 @@
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .custom-modal-box { background: #ffffff; width: 100%; max-width: 350px; border-radius: 16px; padding: 25px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); transform: scale(0.9); animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
         @keyframes popIn { to { transform: scale(1); } }
-        .custom-modal-icon { font-size: 45px; margin-bottom: 15px; }
-        .custom-modal-title { color: #1a365d; font-size: 16px; font-weight: 900; margin-bottom: 10px; }
-        .custom-modal-body { color: #475569; font-size: 12px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 8px; text-align: right; }
+        .custom-modal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; justify-content: center; }
+        .custom-modal-header i { font-size: 40px; }
+        .custom-modal-header h3 { color: #1a365d; font-size: 18px; font-weight: 900; margin: 0; }
+        .custom-modal-body { color: #475569; font-size: 13px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 8px; text-align: right; }
         .custom-modal-actions { display: flex; gap: 10px; justify-content: center; }
         .custom-modal-btn { flex: 1; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: 0.2s; }
         .custom-modal-btn:hover { opacity: 0.9; transform: translateY(-1px); }
@@ -248,7 +252,7 @@
     // ==========================================
     // تم تحديث رابط السكريبت الجديد هنا
     // ==========================================
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxrk1KA6ql2FysmvYbeenJBFwPS0-bbJNW6UywuYpUJUrMTN4Ljdgu0k_RscHQUhTU/exec";
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbycGwbd_Y9wWPdBUAmMrp7__aruqsrIa9MVMh_RHuY3I2tAr_Hu-wpu8j1jKCBADtg8/exec";
     
     var loggedInRole = "";
     var currentDeptOrCat = "";
@@ -294,7 +298,6 @@
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
         
-        // تنظيف القائمة قبل التحميل
         let select = document.getElementById("loginDept");
         select.innerHTML = '<option value="">جاري تحميل الإدارات...</option>';
 
@@ -321,7 +324,6 @@
         document.getElementById("managerDashboardSection").classList.add("hidden");
         document.getElementById("mainEgazatMenu").classList.remove("hidden");
         
-        // تنظيف حقل كلمة المرور عند الخروج
         document.getElementById("loginPassword").value = "";
     }
 
@@ -438,7 +440,6 @@
                 currentDeptOrCat = dept;
                 currentManagerName = res.managerName || res.name;
                 
-                // تنظيف الواجهة وتجهيزها
                 document.getElementById("leavesCardsContainer").innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">جاري تحميل الطلبات...</p>';
                 document.getElementById("managerLoginSection").classList.add("hidden");
                 document.getElementById("managerDashboardSection").classList.remove("hidden");
@@ -474,6 +475,7 @@
                 data.data.forEach((item, index) => {
                     let isSpecRejected = item.specialistStatus === "مرفوض من المختص";
                     let isMgrRejected = item.managerStatus === "مرفوض من المدير";
+                    let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف";
                     
                     let cardClass = "";
                     let watermarkHtml = "";
@@ -484,6 +486,8 @@
                     } else if (isMgrRejected) {
                         cardClass = "rejected-mgr";
                         watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
+                    } else if (isApprovedByMgr) {
+                        cardClass = "approved-mgr";
                     }
 
                     html += `
@@ -502,18 +506,26 @@
                             ${role === 'hr_specialist' ? `
                                 ${item.specialistStatus === "قيد الانتظار" ? `
                                     <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
-                                    <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض (لا يوجد رصيد)</button>
+                                    <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
+                                    <button class="act-btn btn-disabled" disabled>مقبول ومؤرشف</button>
+                                ` : ''}
+                                ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
+                                    <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">مقبول ومؤرشف</button>
+                                ` : ''}
+                                ${item.specialistStatus === "مرفوض من المختص" ? `
+                                    <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'مرفوض نهائي', 'تأكيد الرفض النهائي')">تأكيد الرفض النهائي</button>
                                 ` : ''}
                             ` : `
                                 ${item.managerStatus === "قيد الانتظار" ? `
-                                    <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي والأرشفة', 'manager')">مقبول ومؤرشف</button>
-                                    <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">رفض الطلب</button>
+                                    <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق</button>
+                                    <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض بسبب</button>
                                 ` : ''}
                                 ${item.managerStatus === "مرفوض من المدير" ? `
-                                    <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">إلغاء الرفض وإعادة للمختص</button>
+                                    <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
+                                    <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
                                 ` : ''}
                             `}
-                            <button class="act-btn btn-pd" onclick="printSingleEmp(${index})"><i class="fas fa-print"></i> طباعة / حفظ PDF</button>
+                            <button class="act-btn btn-pd" onclick="printSingleEmp(${index})"><i class="fas fa-print"></i> طباعة / PDF</button>
                         </div>
                     </div>`;
                 });
@@ -570,7 +582,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرفض وإرسال إشعار بريدي للمختص.");
+                showCustomAlert("تم بنجاح", "تم تسجيل الرفض وإرسال إشعار بريدي.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
@@ -595,7 +607,6 @@
     function openPrintWindow(item) {
         let printWindow = window.open('', '_blank');
         
-        // تحديد النصوص بناءً على الحالة
         let specStatusText = item.specialistStatus || "قيد الانتظار";
         let specColor = specStatusText.includes("مرفوض") ? "red" : (specStatusText.includes("رصيد متاح") ? "green" : "#333");
         
@@ -662,7 +673,6 @@
                     </div>
                 </div>
 
-                <!-- مربع الحالة والاعتماد -->
                 <div class="status-box">
                     <h3>حالة الطلب والاعتمادات</h3>
                     <p>رأي الموظف المختص: <span style="color: ${specColor};">${specStatusText}</span> 
