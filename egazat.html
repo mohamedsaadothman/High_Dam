@@ -300,7 +300,7 @@
         </div>
     </section>
 
-    <!-- 2. صفحة تلقى طلبات الإجازات (تسجيل دخول المديرين) -->
+    <!-- 2. صفحة تلقى طلبات الإجازات (تسجيل دخول المديرين - يتم جلب الإدارات من شيت Managers تلقائياً) -->
     <section id="managerLoginSection" class="service-full-page hidden">
         <div class="watermark-bg">Manager Login</div>
         
@@ -317,10 +317,7 @@
                 <div class="input-group">
                     <label>اختر الجهة / الإدارة أو الموظف المختص:</label>
                     <select id="loginDept" required>
-                        <option value="إدارة الموارد البشرية">إدارة الموارد البشرية</option>
-                        <option value="إدارة الشئون المالية">إدارة الشئون المالية</option>
-                        <option value="إدارة الشئون الإدارية">إدارة الشئون الإدارية</option>
-                        <option value="إدارة الشئون القانونية">إدارة الشئون القانونية</option>
+                        <option value="">جاري تحميل الإدارات من الشيت...</option>
                     </select>
                 </div>
                 <div class="input-group">
@@ -387,7 +384,6 @@
     </div>
 
 <script>
-    // ✅ تم تحديث الرابط الجديد هنا
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCJ7H7_QvyxG3E7mehZGED-nNmgkdQ3b216WBxvyeViOkzW7B1OTVQMeJmV9FBGY_Q/exec";
 
     function showCustomAlert(title, message) {
@@ -416,6 +412,7 @@
         document.getElementById("leaveFormSection").classList.remove("hidden");
     }
 
+    // فتح صفحة دخول المديرين وجلب الإدارات مباشرة من شيت Managers
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -425,6 +422,31 @@
         let mm = String(today.getMonth() + 1).padStart(2, '0');
         let dd = String(today.getDate()).padStart(2, '0');
         document.getElementById("todayDateDisplay").value = `${yyyy}/${mm}/${dd}`;
+
+        // جلب الإدارات من جوجل شيت (Managers)
+        fetch(LEAVE_SCRIPT_URL + "?action=get_managers_list")
+        .then(response => response.json())
+        .then(res => {
+            let select = document.getElementById("loginDept");
+            select.innerHTML = "";
+            if (res.status === "success" && res.data && res.data.length > 0) {
+                res.data.forEach(dept => {
+                    let opt = document.createElement("option");
+                    opt.value = dept;
+                    opt.textContent = dept;
+                    select.appendChild(opt);
+                });
+            } else {
+                let opt = document.createElement("option");
+                opt.value = "";
+                opt.textContent = "لا توجد إدارات مسجلة في الشيت";
+                select.appendChild(opt);
+            }
+        })
+        .catch(err => {
+            let select = document.getElementById("loginDept");
+            select.innerHTML = '<option value="">خطأ في تحميل الإدارات</option>';
+        });
     }
 
     function backToEgazatMenu() {
@@ -625,7 +647,7 @@
                 submitBtn.innerHTML = 'الدخول للاعتماد';
                 submitBtn.disabled = false;
             }
-            showCustomAlert("خطأ في الاتصال", "تعذر التحقق من البيانات. يرجى المحاولة لاحقاً.\nالتفاصيل: " + err);
+            showCustomAlert("خطأ في الاتصال", "تعذر التحقق من البيانات. يرجى المحاولة لاحقاً.");
         });
     }
 
