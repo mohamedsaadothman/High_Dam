@@ -296,10 +296,12 @@
 
         .input-group { margin-bottom: 20px; }
         .input-group label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 14px; color: #333; }
-        .input-group input {
+        .input-group input, .input-group select {
             width: 100%; padding: 12px 15px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; outline: none; background: #f8fafc;
+            font-family: 'Cairo', sans-serif;
         }
-        .input-group input:focus { border-color: #0056b3; background: #fff; }
+        .input-group input:focus, .input-group select:focus { border-color: #0056b3; background: #fff; }
+        .input-group select:disabled { background: #eee; cursor: not-allowed; color: #999; }
         
         .btn-submit-main {
             width: 100%; background: #0056b3; color: white; border: none; padding: 14px;
@@ -331,6 +333,12 @@
             font-size: 12px;
             color: #555;
             font-weight: 600;
+        }
+
+        /* تحسين شكل الجدول لعرض الأعمدة الكثيرة */
+        .data-table-wrapper {
+            overflow-x: auto;
+            width: 100%;
         }
 
         @media print {
@@ -499,6 +507,24 @@
             <p id="fullServiceDesc">أدخل اسم المستخدم وكلمة المرور الخاصة بك لعرض البيانات المطلوبة</p>
 
             <form id="serviceLoginForm" onsubmit="submitServiceLogin(event)">
+                
+                <!-- قوائم الأرشفة (تظهر فقط عند اختيار خدمة أرشفة) -->
+                <div id="archiveSelectors" class="hidden">
+                    <div class="input-group">
+                        <label><i class="fas fa-table" style="color:#0056b3;"></i> اختر الشيت</label>
+                        <select id="archiveSheetSelect" required>
+                            <option value="">-- جاري تحميل الشيتات... --</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label><i class="fas fa-calendar-alt" style="color:#0056b3;"></i> اختر الشهر</label>
+                        <select id="archiveMonthSelect" required disabled>
+                            <option value="">-- اختر الشيت أولاً --</option>
+                        </select>
+                    </div>
+                    <hr style="margin: 15px 0; border: none; border-top: 1px dashed #cbd5e1;">
+                </div>
+
                 <div class="input-group">
                     <label>اسم المستخدم</label>
                     <input type="text" id="serviceUser" required placeholder="أدخل اسم المستخدم أو الكود">
@@ -512,7 +538,7 @@
 
             <div id="serviceResultContainer" class="hidden" style="text-align: right;">
                 <div id="activeUserInfo" style="font-size: 13px; color: #64748b; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;"></div>
-                <div id="apiResultData" style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;"></div>
+                <div id="apiResultData" class="data-table-wrapper" style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;"></div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button class="act-btn btn-ex" onclick="window.print()"><i class="fas fa-print"></i> طباعة التقرير</button>
                     <button class="act-btn btn-pd" onclick="resetServiceLogin()"><i class="fas fa-sign-out-alt"></i> تسجيل خروج / بحث جديد</button>
@@ -524,20 +550,25 @@
 <script>
     let activeServiceName = "";
     
-    // ✅ روابط Apps Script لكل خدمة (تم تحديثها بالروابط الجديدة)
+    // ✅ الروابط المحدثة لكل خدمة
     const serviceUrls = {
-        // 1- الراتب الشهري
         "الاستعلام عن الراتب الشهري": "https://script.google.com/macros/s/AKfycbyJ7FPEkh7J3tiWhV3jJYvslA6DlSsa_BV_0XFRUhwpVkyD9kWLtU5i8LZhg3MXZ1g/exec",
-        // 2- الاستحقاقات الأخرى
         "الاستحقاقات الأخرى": "https://script.google.com/macros/s/AKfycbwSW0GuH2lAh5Q9zms5_PEOEK2z-wNjM1agEzhgqTc4Vl2JAkAtZuKuNCQm6N1iF6zIWg/exec",
-        // 3- ارشيف الراتب الشهري (اسم الشيت: أرشيف الراتب الشهري)
-        "الأرشفة الإلكترونية للراتب": "https://script.google.com/macros/s/AKfycbyJx77v6XHWj1AW98r14tKM3SQeEsOn0ANVN3D5q9jW9RC484VximyYIxUHf9tqHiXP/exec",
-        // 4- ارشيف الاستحقاقات الأخرى (اسم الشيت: أرشيف الاستحقاقات الأخرى)
-        "الأرشفة الإلكترونية للاستحقاقات الأخرى": "https://script.google.com/macros/s/AKfycbwsjedBEAij_djpdmwrFxsnAPcRzPpGrGvNWabd3oVS11ZQU9qwWA_lerx48onWscpu/exec"
+        // تم تحديث روابط الأرشفة هنا
+        "الأرشفة الإلكترونية للراتب": "https://script.google.com/macros/s/AKfycbzoZZ1B_pWziUxR99TGuM5uxKplQMZ6-e4MLWkxiSqa_i_KdmVjeT5JEGy-NhNAaV5t/exec",
+        "الأرشفة الإلكترونية للاستحقاقات الأخرى": "https://script.google.com/macros/s/AKfycbyCUUAfv6VEMyGSxSmQhGFpB23tksieZcEJQoi0Ty_hTIR0m7xHf-aVGEOR3JUW_mC7/exec"
     };
     
-    // الرابط الافتراضي (الراتب الشهري)
     const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJ7FPEkh7J3tiWhV3jJYvslA6DlSsa_BV_0XFRUhwpVkyD9kWLtU5i8LZhg3MXZ1g/exec";
+
+    const archiveServices = [
+        "الأرشفة الإلكترونية للراتب",
+        "الأرشفة الإلكترونية للاستحقاقات الأخرى"
+    ];
+
+    function isArchiveService(name) {
+        return archiveServices.includes(name);
+    }
 
     function toggleSidebar() {
         document.getElementById("sidebarMenu").classList.toggle("active");
@@ -599,9 +630,77 @@
         if(savedUser) {
             document.getElementById("serviceUser").value = savedUser;
         }
+
+        const archiveBox = document.getElementById("archiveSelectors");
+        if (isArchiveService(serviceName)) {
+            archiveBox.classList.remove("hidden");
+            loadArchiveSheets(serviceName);
+        } else {
+            archiveBox.classList.add("hidden");
+        }
     }
 
-    // ✅ دالة عرض النتائج (تدعم كائن واحد أو مصفوفة صفوف متعددة)
+    function loadArchiveSheets(serviceName) {
+        const sheetSelect = document.getElementById("archiveSheetSelect");
+        const monthSelect = document.getElementById("archiveMonthSelect");
+        sheetSelect.innerHTML = '<option value="">-- جاري تحميل الشيتات... --</option>';
+        sheetSelect.disabled = true;
+        monthSelect.innerHTML = '<option value="">-- اختر الشيت أولاً --</option>';
+        monthSelect.disabled = true;
+
+        const url = serviceUrls[serviceName] + "?action=listSheets";
+        fetch(url)
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === "success" && Array.isArray(res.sheets)) {
+                    let html = '<option value="">-- اختر الشيت --</option>';
+                    res.sheets.forEach(s => {
+                        html += `<option value="${s}">${s}</option>`;
+                    });
+                    sheetSelect.innerHTML = html;
+                    sheetSelect.disabled = false;
+                } else {
+                    sheetSelect.innerHTML = '<option value="">لا توجد شيتات متاحة</option>';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                sheetSelect.innerHTML = '<option value="">خطأ في تحميل الشيتات</option>';
+            });
+
+        sheetSelect.onchange = function() {
+            const selectedSheet = this.value;
+            if (!selectedSheet) {
+                monthSelect.innerHTML = '<option value="">-- اختر الشيت أولاً --</option>';
+                monthSelect.disabled = true;
+                return;
+            }
+            monthSelect.innerHTML = '<option value="">-- جاري تحميل الأشهر... --</option>';
+            monthSelect.disabled = true;
+
+            const url2 = serviceUrls[serviceName] + "?action=listMonths&sheet=" + encodeURIComponent(selectedSheet);
+            fetch(url2)
+                .then(r => r.json())
+                .then(res => {
+                    if (res.status === "success" && Array.isArray(res.months)) {
+                        let html = '<option value="">-- اختر الشهر --</option>';
+                        res.months.forEach(m => {
+                            html += `<option value="${m}">${m}</option>`;
+                        });
+                        monthSelect.innerHTML = html;
+                        monthSelect.disabled = false;
+                    } else {
+                        monthSelect.innerHTML = '<option value="">لا توجد أشهر متاحة</option>';
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    monthSelect.innerHTML = '<option value="">خطأ في تحميل الأشهر</option>';
+                });
+        };
+    }
+
+    // ✅ دالة عرض النتائج (تم تحسينها لعرض كل الأعمدة بدون قطع)
     function renderResult(res) {
         const excludedKeys = ["user", "username", "pass", "password", "باسورد", "كلمة المرور", "اسم المستخدم"];
         
@@ -616,7 +715,7 @@
             return filtered;
         };
 
-        // الحالة 1: صف واحد (كائن)
+        // في حالة وجود صف واحد فقط
         if (res.data && !Array.isArray(res.data) && typeof res.data === 'object') {
             let clean = filterObj(res.data);
             let html = "<table style='width:100%; border-collapse: collapse;'>";
@@ -631,10 +730,11 @@
             return html;
         }
 
-        // الحالة 2: عدة صفوف (مصفوفة) - مثل الاستحقاقات الأخرى
+        // في حالة وجود عدة صفوف (مثل الاستحقاقات أو الرواتب)
         if (Array.isArray(res.data) && res.data.length > 0) {
             let rows = res.data.map(filterObj);
             let allKeys = new Set();
+            // جمع كل المفاتيح من كل الصفوف لضمان عدم ضياع أي عمود
             rows.forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
             let keysArr = [...allKeys];
 
@@ -643,18 +743,22 @@
                         </div>`;
             html += "<table style='width:100%; border-collapse: collapse; font-size: 13px;'>";
             html += "<thead><tr style='background:#1e293b;color:#fff;'>";
-            keysArr.forEach(k => html += `<th style='padding:10px;border:1px solid #ddd;'>${k}</th>`);
+            keysArr.forEach(k => html += `<th style='padding:10px;border:1px solid #ddd; white-space:nowrap;'>${k}</th>`);
             html += "</tr></thead><tbody>";
+            
             rows.forEach((r, i) => {
                 html += `<tr style='background:${i%2?'#f8fafc':'#fff'};'>`;
-                keysArr.forEach(k => html += `<td style='padding:8px;border:1px solid #eee;color:#334155;'>${r[k] ?? ''}</td>`);
+                // استخدام keysArr لضمان عرض كل الأعمدة، وإذا كان العمود غير موجود في الصف يظهر فارغاً
+                keysArr.forEach(k => {
+                    let cellVal = (r[k] !== undefined && r[k] !== null) ? r[k] : '';
+                    html += `<td style='padding:8px;border:1px solid #eee;color:#334155; white-space:nowrap;'>${cellVal}</td>`;
+                });
                 html += "</tr>";
             });
             html += "</tbody></table>";
             return html;
         }
 
-        // الحالة 3: بيانات في مفتاح rows
         if (res.rows && Array.isArray(res.rows)) {
             return renderResult({ data: res.rows });
         }
@@ -667,11 +771,24 @@
         let u = document.getElementById("serviceUser").value.trim();
         let p = document.getElementById("servicePass").value.trim();
 
+        let sheetName = "";
+        let monthName = "";
+        if (isArchiveService(activeServiceName)) {
+            sheetName = document.getElementById("archiveSheetSelect").value;
+            monthName = document.getElementById("archiveMonthSelect").value;
+            if (!sheetName || !monthName) {
+                alert("الرجاء اختيار الشيت والشهر أولاً");
+                return;
+            }
+        }
+
         document.getElementById("serviceLoginForm").classList.add("hidden");
         let resContainer = document.getElementById("serviceResultContainer");
         resContainer.classList.remove("hidden");
         
-        document.getElementById("activeUserInfo").innerText = "الموظف النشط: " + u;
+        document.getElementById("activeUserInfo").innerText = "الموظف النشط: " + u 
+            + (sheetName ? " | الشيت: " + sheetName : "")
+            + (monthName ? " | الشهر: " + monthName : "");
         let dataBox = document.getElementById("apiResultData");
         
         dataBox.innerHTML = `
@@ -683,11 +800,12 @@
 
         let currentScriptUrl = serviceUrls[activeServiceName] || DEFAULT_SCRIPT_URL;
         
-        // ✅ إرسال اسم الخدمة للـ Apps Script
         let fetchUrl = `${currentScriptUrl}?action=login`
                      + `&user=${encodeURIComponent(u)}`
                      + `&pass=${encodeURIComponent(p)}`
                      + `&service=${encodeURIComponent(activeServiceName)}`;
+        if (sheetName) fetchUrl += `&sheet=${encodeURIComponent(sheetName)}`;
+        if (monthName) fetchUrl += `&month=${encodeURIComponent(monthName)}`;
 
         fetch(fetchUrl)
             .then(response => response.json())
