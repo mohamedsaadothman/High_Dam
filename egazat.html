@@ -61,12 +61,23 @@
         .btn-secondary { background: #64748b; }
         .btn-disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; border: 1px solid #cbd5e1; }
 
-        .emp-card-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; text-align: right; position: relative; overflow: hidden; }
+        /* تصميم الكارت والحالة الباهتة */
+        .emp-card-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; text-align: right; position: relative; overflow: hidden; transition: all 0.3s ease; }
+        
+        /* حالة الرفض أو القبول (باهتة ومقفلة) */
+        .emp-card-box.locked { 
+            opacity: 0.6; 
+            background: #f1f5f9; 
+            border-color: #94a3b8; 
+            pointer-events: none; /* تعطيل التفاعل مع الكارت */
+        }
+        .emp-card-box.locked .act-btn { pointer-events: auto; } /* السماح بالضغط على زر الطباعة فقط */
+        
         .emp-card-box.rejected-spec { background: #fffbeb; border-color: #fcd34d; }
         .emp-card-box.rejected-mgr { background: #fef2f2; border-color: #f87171; }
         .emp-card-box.approved-mgr { background: #f0fdf4; border-color: #86efac; }
         
-        .watermark-rejected { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 35px; font-weight: 900; white-space: nowrap; pointer-events: none; z-index: 0; opacity: 0.15; }
+        .watermark-rejected { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 35px; font-weight: 900; white-space: nowrap; pointer-events: none; z-index: 0; opacity: 0.2; }
         .watermark-rejected.spec { color: #d97706; }
         .watermark-rejected.mgr { color: #dc2626; }
 
@@ -250,9 +261,9 @@
 
 <script>
     // ==========================================
-    // تم تحديث رابط السكريبت الجديد هنا
+    // الرابط الجديد المعتمد
     // ==========================================
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5Nzi90La0tOXrTapTU7GbTNsjlpqP0JMFEANBPGQkqi_wQTM5JbmaDxZfVd9I_B_l/exec";
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzFRiVbc9a2RfSh2qYVOCsSI1_uvMA8ccOH0EbYpOq0I8Hbeao1gYJqLV9gZRtxIVkC/exec";
     
     var loggedInRole = "";
     var currentDeptOrCat = "";
@@ -351,7 +362,10 @@
     }
 
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
-    function isQuadrupleName(name) { return name.trim().split(/\s+/).length >= 4; }
+    function isQuadrupleName(name) { 
+        let cleanName = name.trim().replace(/\s+/g, '');
+        return cleanName.length >= 12; 
+    }
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
 
     function submitLeaveForm(e) {
@@ -370,8 +384,8 @@
 
         let todayStr = new Date().toISOString().split('T')[0];
         if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي."); return; }
-        if (!isArabicOnly(name) || !isQuadrupleName(name)) { showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء (رباعي) على الأقل."); return; }
-        if (!isArabicOnly(mName) || !isQuadrupleName(mName)) { showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء (رباعي) على الأقل."); return; }
+        if (!isArabicOnly(name) || !isQuadrupleName(name)) { showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء على الأقل (حتى لو كان بدون مسافات)."); return; }
+        if (!isArabicOnly(mName) || !isQuadrupleName(mName)) { showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء على الأقل."); return; }
         if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) { showCustomAlert("خطأ في الرقم القومي", "يجب أن يكون الرقم القومي مكوناً من 14 رقماً بالأرقام الإنجليزية الصحيحة."); return; }
         if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً على الأقل بالأرقام الإنجليزية."); return; }
         if (reason.length < 10) { showCustomAlert("خطأ في السبب", "سبب الإجازة قصير جداً، يجب ألا يقل عن 10 أحرف مفهومة."); return; }
@@ -481,10 +495,10 @@
                     let watermarkHtml = "";
                     
                     if (isSpecRejected) {
-                        cardClass = "rejected-spec";
+                        cardClass = "rejected-spec locked";
                         watermarkHtml = `<div class="watermark-rejected spec">مرفوض من المختص<br><span style="font-size: 14px;">${item.specRejectTime ? item.specRejectTime.split(' ')[0] : ''}</span></div>`;
                     } else if (isMgrRejected) {
-                        cardClass = "rejected-mgr";
+                        cardClass = "rejected-mgr locked";
                         watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
                     } else if (isApprovedByMgr) {
                         cardClass = "approved-mgr";
