@@ -187,13 +187,13 @@
                 <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
                 <div class="service-title-area">
                     <h2>تقديم طلب إجازة رسمي</h2>
-                    <p>يرجى استيفاء كافة البيانات بدقة حسب الشروط الصارمة</p>
+                    <p>يرجى استيفاء كافة البيانات بدقة حسب الشروط المعتمدة</p>
                 </div>
             </div>
 
             <form id="leaveForm" onsubmit="submitLeaveForm(event)">
                 <div class="input-group">
-                    <label>اسم الموظف (رباعي بالعربية):</label>
+                    <label>اسم الموظف (رباعي):</label>
                     <input type="text" id="empName" required placeholder="مثال: محمد أحمد علي حسن">
                 </div>
                 <div class="input-group">
@@ -207,7 +207,6 @@
                         <option value="إدارة الشئون المالية">إدارة الشئون المالية</option>
                         <option value="إدارة الشئون الإدارية">إدارة الشئون الإدارية</option>
                         <option value="إدارة الشئون القانونية">إدارة الشئون القانونية</option>
-                        <option value="إدارة الشئون الميكانيكية">إدارة الشئون الميكانيكية</option>
                     </select>
                 </div>
                 <div class="input-group">
@@ -222,21 +221,21 @@
                 <div class="input-group">
                     <label>المسمى الوظيفي للمدير:</label>
                     <select id="managerTitle" required>
-                        <option value="السيد المحامي /">السيد المحامي /</option>
                         <option value="السيد المهندس /">السيد المهندس /</option>
                         <option value="السيد المحاسب /">السيد المحاسب /</option>
                         <option value="السيد الدكتور /">السيد الدكتور /</option>
                         <option value="السيد الاستاذ /">السيد الاستاذ /</option>
+                        <option value="السيد المحامي /">السيد المحامي /</option>
                         <option value="السيد الجيولوجي /">السيد الجيولوجي /</option>
                         <option value="السيد الكيميائي /">السيد الكيميائي /</option>
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>اسم المدير المسؤول (رباعي بالعربية):</label>
+                    <label>اسم المدير المسؤول (رباعي):</label>
                     <input type="text" id="managerName" required placeholder="اكتب اسم المدير رباعياً...">
                 </div>
                 <div class="input-group">
-                    <label>رقم التليفون (11 رقم بالإنجليزية):</label>
+                    <label>رقم التليفون (11 رقم):</label>
                     <input type="tel" id="empPhone" maxlength="11" required placeholder="01xxxxxxxx0">
                 </div>
                 <div class="input-group">
@@ -246,7 +245,6 @@
                         <option value="رصيد سنوات سابقة">رصيد سنوات سابقة</option>
                         <option value="عارضة">عارضة</option>
                         <option value="مرضية">مرضية</option>
-                        <option value="مرضى بقرار 259">مرضى بقرار 259</option>
                     </select>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
@@ -378,20 +376,11 @@
     </div>
 
 <script>
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuqaePkLXDITYURN9TZvBU7trtYseV9-VpgBh65ivdLRNExL6GtMsJ46Di8A507DqV/exec";
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbycbtAOSplop_eTIwVqULM0csZOrkSBTmYlPZN6teVcXSHMeJ-tTvuYBD4hPUq3lung/exec";
     var loggedInRole = "";
     var currentDeptOrCat = "";
     var currentManagerName = "";
     var currentLeavesData = [];
-
-    // تقييد التقويم ليبدأ من اليوم الفعلي تلقائياً
-    window.addEventListener('DOMContentLoaded', () => {
-        let today = new Date().toISOString().split('T')[0];
-        let startInput = document.getElementById("startDate");
-        let endInput = document.getElementById("endDate");
-        if(startInput) startInput.setAttribute("min", today);
-        if(endInput) endInput.setAttribute("min", today);
-    });
 
     function showCustomAlert(title, message) {
         let existingOverlay = document.getElementById("customAlertModal");
@@ -459,7 +448,6 @@
     }
 
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
-    function isArabicText(str) { return /^[\u0600-\u06FF\s]+$/.test(str); }
     function isQuadrupleName(name) { return name.trim().split(/\s+/).length >= 4; }
 
     function submitLeaveForm(e) {
@@ -476,51 +464,20 @@
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
 
-        // فحص تاريخ البداية لا يكون قديماً
-        let todayStr = new Date().toISOString().split('T')[0];
-        if (start < todayStr) {
-            showCustomAlert("خطأ في التاريخ", "لا يمكن اختيار تاريخ إجازة سابق لتاريخ اليوم الفعلي.");
-            return;
-        }
-
-        // فحص الاسم باللغة العربية حصراً
-        if (!isArabicText(name) || !isArabicText(mName)) {
-            showCustomAlert("خطأ في اللغة", "يجب أن تكون أسماء الموظفين والمديرين مكتوبة باللغة العربية فقط.");
-            return;
-        }
-
-        // فحص الاسم رباعي على الأقل
         if (!isQuadrupleName(name) || !isQuadrupleName(mName)) {
-            showCustomAlert("خطأ في الأسماء", "يجب إدخال اسم الموظف واسم المدير رباعياً على الأقل.");
+            showCustomAlert("خطأ في الأسماء", "يجب إدخال اسم الموظف والمدير رباعياً على الأقل.");
             return;
         }
-
-        // فحص الرقم القومي والهاتف
-        if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) {
-            showCustomAlert("خطأ في الرقم القومي", "الرقم القومي يجب أن يتكون من 14 رقماً بالأرقام الإنجليزية فقط.");
-            return;
-        }
-        if (phone.length !== 11 || !isEnglishNumbers(phone)) {
-            showCustomAlert("خطأ في رقم الهاتف", "رقم الهاتف يجب أن يتكون من 11 رقماً بالأرقام الإنجليزية فقط.");
-            return;
-        }
-
-        // فحص سبب الإجازة لا يقل عن 10 أحرف
-        if (reason.length < 10) {
-            showCustomAlert("خطأ في السبب", "سبب الإجازة يجب ألا يقل عن 10 أحرف.");
+        if (nationalId.length !== 14 || !isEnglishNumbers(nationalId) || phone.length !== 11 || !isEnglishNumbers(phone) || reason.length < 10) {
+            showCustomAlert("خطأ في البيانات", "تأكد أن الرقم القومي 14 رقم، الهاتف 11 رقم، والسبب 10 أحرف على الأقل.");
             return;
         }
 
         let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
-        if (totalDays <= 0) {
-            showCustomAlert("خطأ في التواريخ", "تاريخ النهاية يجب أن يكون بعد تاريخ البداية أو مساوياً له.");
-            return;
-        }
-
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
 
         let submitBtn = document.querySelector(".btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص الشروط وإرسال الطلب...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
         submitBtn.disabled = true;
 
         let payload = {
@@ -541,13 +498,8 @@
                 document.getElementById("leaveForm").classList.add("hidden");
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
             } else {
-                showCustomAlert("خطأ في الشروط", res.message || "حدث خطأ أو تم رصد تكرار في الطلب أو تواريخ متداخلة لنفس الموظف.");
+                showCustomAlert("خطأ", res.message);
             }
-        })
-        .catch(err => {
-            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            submitBtn.disabled = false;
-            showCustomAlert("خطأ في الاتصال", "تعذر الاتصال بالخادم.");
         });
     }
 
@@ -615,12 +567,12 @@
                         <p><strong>السبب:</strong> ${item.reason}</p>
                         <p><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
                         <p><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
-                        <p style="font-size: 10px; color: #555; background: #eee; padding: 4px; border-radius: 4px;"><strong>سجل التتبع والتواريخ:</strong> ${item.trackingLog}</p>
+                        ${item.rejectionReason ? `<p style="color:#dc3545;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
                         
                         <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
                             ${role === 'hr_specialist' ? `
-                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح ولديه رصيد كافٍ')">رصيد متاح</button>
-                                <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'ليس لديه رصيد (رفض)', 'ليس لديه رصيد كافٍ')">ليس لديه رصيد (رفض)</button>
+                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
+                                <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'ليس لديه رصيد (رفض)', 'ليس لديه رصيد')">ليس لديه رصيد (رفض)</button>
                             ` : `
                                 <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي والأرشفة', 'manager')">مقبول ومؤرشف</button>
                                 <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض', 'manager')">رفض الطلب</button>
@@ -636,8 +588,9 @@
         });
     }
 
+    // دالة خاصة للموظف المختص لإدخال عدد الأيام المتاحة أو سبب الرفض وتختفي فوراً
     function promptSpecialistAction(rowIndex, statusType, defaultText) {
-        let inputVal = prompt("يرجى تحديد التفاصيل (مثال: رصيد متاح ولديه 5 أيام):", defaultText);
+        let inputVal = prompt("يرجى تحديد التفاصيل (مثال: رصيد متاح ولديه 5 أيام، أو سبب عدم وجود رصيد):", defaultText);
         if (!inputVal) return;
 
         let formData = new URLSearchParams({
@@ -648,7 +601,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرأي والتاريخ وتحديث الطلب واختفاؤه من أمامك.");
+                showCustomAlert("تم بنجاح", "تم تسجيل الرأي وتحديث الطلب واختفاؤه من أمامك.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
@@ -664,7 +617,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم الاعتماد وتاريخ الوقت وأرشفة الطلب واختفاؤه.");
+                showCustomAlert("تم بنجاح", "تم الاعتماد النهائي وأرشفة الطلب واختفاؤه.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
@@ -682,7 +635,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرفض بالوقت وتاريخ الاعتماد وتحديث الشيت.");
+                showCustomAlert("تم بنجاح", "تم تسجيل الرفض وحفظ السبب وتحديث الشيت.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
             }
         });
@@ -709,9 +662,6 @@
     function resetLeaveForm() {
         document.getElementById("leaveForm").reset();
         document.getElementById("calcDays").value = "";
-        let today = new Date().toISOString().split('T')[0];
-        document.getElementById("startDate").setAttribute("min", today);
-        document.getElementById("endDate").setAttribute("min", today);
         document.getElementById("leaveForm").classList.remove("hidden");
         document.getElementById("leaveResultContainer").classList.add("hidden");
     }
