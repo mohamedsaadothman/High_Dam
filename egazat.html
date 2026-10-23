@@ -589,4 +589,178 @@
                         
                         <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
                             ${role === 'hr_specialist' ? `
-                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رص
+                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
+                                <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'ليس لديه رصيد (رفض)', 'ليس لديه رصيد')">ليس لديه رصيد (رفض)</button>
+                            ` : `
+                                <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي والأرشفة', 'manager')">مقبول ومؤرشف</button>
+                                <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض', 'manager')">رفض الطلب</button>
+                            `}
+                            <button class="act-btn btn-pd" onclick="printSingleEmp(${index})"><i class="fas fa-print"></i> طباعة / حفظ PDF</button>
+                        </div>
+                    </div>`;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 20px;">لا توجد طلبات بانتظار الاعتماد حالياً.</p>`;
+            }
+        });
+    }
+
+    function promptSpecialistAction(rowIndex, statusType, defaultText) {
+        let inputVal = prompt("يرجى تحديد التفاصيل (مثال: رصيد متاح ولديه 5 أيام، أو سبب عدم وجود رصيد):", defaultText);
+        if (!inputVal) return;
+
+        let formData = new URLSearchParams({
+            action: "update_leave_action", rowIndex: rowIndex, status: statusType, reason: inputVal, role: "hr_specialist"
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", "تم تسجيل الرأي وتحديث الطلب واختفاؤه من أمامك.");
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
+            }
+        });
+    }
+
+    function processAction(rowIndex, status, defaultReason, role) {
+        let reason = defaultReason;
+        let formData = new URLSearchParams({
+            action: "update_leave_action", rowIndex: rowIndex, status: status, reason: reason, role: role
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", "تم الاعتماد النهائي وأرشفة الطلب واختفاؤه.");
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
+            }
+        });
+    }
+
+    function promptAction(rowIndex, status, role) {
+        let reason = prompt("يرجى كتابة سبب الرفض أو الملاحظات:", "عذراً لعدم توافر الشروط");
+        if (!reason) return;
+        
+        let formData = new URLSearchParams({
+            action: "update_leave_action", rowIndex: rowIndex, status: status, reason: reason, role: role
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", "تم تسجيل الرفض وحفظ السبب وتحديث الشيت.");
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
+            }
+        });
+    }
+
+    // --- دالة إنشاء نافذة الطباعة (تضمن ظهور كل البيانات) ---
+    function openPrintWindow(item) {
+        let printWindow = window.open('', '_blank');
+        let htmlContent = `
+            <!DOCTYPE html>
+            <html lang="ar" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <title>طباعة طلب إجازة</title>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+                <style>
+                    body { font-family: 'Cairo', sans-serif; padding: 20px; color: #000; direction: rtl; }
+                    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+                    .header-right { text-align: right; }
+                    .header-left { text-align: left; }
+                    .title { text-align: center; margin: 30px 0; font-size: 20px; font-weight: bold; text-decoration: underline; }
+                    .content { font-size: 16px; line-height: 2.2; text-align: justify; margin-bottom: 40px; }
+                    .footer { display: flex; justify-content: space-between; margin-top: 60px; font-size: 14px; }
+                    .footer-left { text-align: left; }
+                    .footer-right { text-align: right; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="header-right">
+                        <strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br>
+                        <span>${item.dept}</span>
+                    </div>
+                    <div class="header-left">
+                        <span>مسلسل الطلب (ID): <strong>${item.requestId}</strong></span>
+                    </div>
+                </div>
+
+                <div class="title">طلب إجازة رسمي</div>
+
+                <div class="content">
+                    <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
+                    <p>تحية طيبة وبعد،،،</p>
+                    <p>
+                        أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، 
+                        وذلك اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong> 
+                        (بإجمالي عدد أيام: <strong>${item.daysCount} أيام</strong>)، نظراً لـ: <strong>${item.reason}</strong>.
+                    </p>
+                    <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
+                </div>
+
+                <div class="footer">
+                    <div class="footer-right">
+                        <p><strong>مقدمه لسيادتكم:</strong></p>
+                        <p><strong>${item.empName}</strong></p>
+                        <p><strong>الرقم القومي:</strong> ${item.nationalId}</p>
+                        <p><strong>رقم الهاتف:</strong> ${item.phone}</p>
+                    </div>
+                    <div class="footer-left">
+                        <p><strong>يعتمد المدير المسؤول،،</strong></p>
+                        <p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+        printWindow.document.open();
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        
+        // الانتظار قليلاً حتى يتم تحميل الخطوط ثم الطباعة
+        printWindow.onload = function() {
+            printWindow.focus();
+            printWindow.print();
+            // printWindow.close(); // يمكن تفعيلها لإغلاق النافذة بعد الطباعة
+        };
+    }
+
+    // دالة الطباعة الخاصة بالمدير (من لوحة التحكم)
+    function printSingleEmp(index) {
+        let item = currentLeavesData[index];
+        if (item) {
+            openPrintWindow(item);
+        } else {
+            showCustomAlert("خطأ", "لا توجد بيانات لهذا الطلب.");
+        }
+    }
+
+    // دالة الطباعة الخاصة بالموظف (بعد تقديم الطلب مباشرة)
+    function printLatestRequest() {
+        if (latestSubmittedData) {
+            openPrintWindow(latestSubmittedData);
+        } else {
+            showCustomAlert("خطأ", "لا توجد بيانات للطباعة.");
+        }
+    }
+
+    function resetLeaveForm() {
+        document.getElementById("leaveForm").reset();
+        document.getElementById("calcDays").value = "";
+        document.getElementById("leaveForm").classList.remove("hidden");
+        document.getElementById("leaveResultContainer").classList.add("hidden");
+        latestSubmittedData = null; // تصفير البيانات المؤقتة
+        
+        let todayStr = new Date().toISOString().split('T')[0];
+        document.getElementById("startDate").min = todayStr;
+        document.getElementById("endDate").min = todayStr;
+    }
+</script>
+</body>
+</html>
