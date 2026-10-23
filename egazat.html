@@ -262,7 +262,7 @@
                     <input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;">
                 </div>
                 <div class="input-group">
-                    <label>السبب: (لا يقل عن 10 أحرف)</label>
+                    <label>السبب: (لا يقل عن 10 أحرف مفهومة)</label>
                     <textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة (10 أحرف على الأقل)..."></textarea>
                 </div>
 
@@ -382,7 +382,7 @@
     var currentManagerName = "";
     var currentLeavesData = [];
 
-    // تعيين أقل تاريخ مسموح به (اليوم) عند تحميل الصفحة لمنع اختيار الأيام السابقة
+    // قفل الأيام السابقة في التقويم عند التحميل
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
         let startDateInput = document.getElementById("startDate");
@@ -446,7 +446,6 @@
         document.getElementById("mainEgazatMenu").classList.remove("hidden");
     }
 
-    // عند تغير تاريخ البدء، يتم تحديث الحد الأدنى لتاريخ النهاية ليكون نفس تاريخ البدء أو بعده
     function onStartDateChange() {
         let start = document.getElementById("startDate").value;
         let endDateInput = document.getElementById("endDate");
@@ -470,8 +469,10 @@
         }
     }
 
+    // دوال التحقق من الشروط الصارمة
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
     function isQuadrupleName(name) { return name.trim().split(/\s+/).length >= 4; }
+    function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
 
     function submitLeaveForm(e) {
         e.preventDefault();
@@ -487,18 +488,40 @@
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
 
+        // 1. التحقق من عدم اختيار تاريخ في الماضي
         let todayStr = new Date().toISOString().split('T')[0];
         if (start < todayStr) {
-            showCustomAlert("خطأ في التواريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي.");
+            showCustomAlert("خطأ في التاريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي.");
             return;
         }
 
-        if (!isQuadrupleName(name) || !isQuadrupleName(mName)) {
-            showCustomAlert("خطأ في الأسماء", "يجب إدخال اسم الموظف والمدير رباعياً على الأقل.");
+        // 3. التأكد أن اسم الموظف رباعي وباللغة العربية
+        if (!isArabicOnly(name) || !isQuadrupleName(name)) {
+            showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء (رباعي) على الأقل.");
             return;
         }
-        if (nationalId.length !== 14 || !isEnglishNumbers(nationalId) || phone.length !== 11 || !isEnglishNumbers(phone) || reason.length < 10) {
-            showCustomAlert("خطأ في البيانات", "تأكد أن الرقم القومي 14 رقم، الهاتف 11 رقم، والسبب 10 أحرف على الأقل.");
+
+        // 4. التأكد أن اسم المدير رباعي وباللغة العربية
+        if (!isArabicOnly(mName) || !isQuadrupleName(mName)) {
+            showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء (رباعي) على الأقل.");
+            return;
+        }
+
+        // 6. الرقم القومي 14 رقم باللغة الإنجليزية حصراً
+        if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) {
+            showCustomAlert("خطأ في الرقم القومي", "يجب أن يكون الرقم القومي مكوناً من 14 رقماً بالأرقام الإنجليزية الصحيحة.");
+            return;
+        }
+
+        // 7. رقم الهاتف لا يقل عن 11 رقم بالأرقام الإنجليزية
+        if (phone.length < 11 || !isEnglishNumbers(phone)) {
+            showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً على الأقل بالأرقام الإنجليزية.");
+            return;
+        }
+
+        // 5. سبب الإجازة لا يقل عن 10 أحرف مفهومة
+        if (reason.length < 10) {
+            showCustomAlert("خطأ في السبب", "سبب الإجازة قصير جداً، يجب ألا يقل عن 10 أحرف مفهومة.");
             return;
         }
 
@@ -506,7 +529,7 @@
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
 
         let submitBtn = document.querySelector(".btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ والبيانات...';
         submitBtn.disabled = true;
 
         let payload = {
@@ -518,6 +541,7 @@
         const formData = new URLSearchParams();
         for (const key in payload) { formData.append(key, payload[key]); }
 
+        // إرسال الطلب للسيرفر للتحقق من الشروط (1 و 2: تداخل التواريخ وتطابق الرقم القومي والاسم)
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
         .then(res => res.json())
         .then(res => {
@@ -527,8 +551,14 @@
                 document.getElementById("leaveForm").classList.add("hidden");
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
             } else {
-                showCustomAlert("خطأ", res.message);
+                // يعرض رسالة الرفض الواردة من السيرفر (مثل وجود تداخل في التواريخ أو تطابق الرقم القومي)
+                showCustomAlert("عذراً، تعذر قبول الطلب", res.message);
             }
+        })
+        .catch(err => {
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            submitBtn.disabled = false;
+            showCustomAlert("خطأ في الاتصال", "تعذر الاتصال بالخادم، يرجى المحاولة مرة أخرى.");
         });
     }
 
@@ -678,7 +708,7 @@
         document.getElementById("pTotalDays").innerText = item.daysCount + " أيام";
         document.getElementById("pTotalDaysBadge").innerText = item.daysCount + " أيام";
         document.getElementById("pStartDate").innerText = item.startDate;
-        document.getElementById("pEndDate").innerText, document.getElementById("pEndDate").innerText = item.endDate;
+        document.getElementById("pEndDate").innerText = item.endDate;
         document.getElementById("pReason").innerText = item.reason;
         document.getElementById("pEmpName").innerText = item.empName;
         document.getElementById("pNationalId").innerText = item.nationalId;
@@ -694,7 +724,6 @@
         document.getElementById("leaveForm").classList.remove("hidden");
         document.getElementById("leaveResultContainer").classList.add("hidden");
         
-        // إعادة تعيين الحد الأدنى للتاريخ الحالي بعد إعادة التعيين
         let todayStr = new Date().toISOString().split('T')[0];
         document.getElementById("startDate").min = todayStr;
         document.getElementById("endDate").min = todayStr;
