@@ -250,7 +250,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                     <div class="input-group">
                         <label>من تاريخ:</label>
-                        <input type="date" id="startDate" required onchange="calculateDays()">
+                        <input type="date" id="startDate" required onchange="onStartDateChange()">
                     </div>
                     <div class="input-group">
                         <label>إلى تاريخ:</label>
@@ -356,7 +356,7 @@
             <p><strong id="pManagerGreeting">السيد المدير المسؤول /</strong> <span id="pManagerNameText" style="font-weight:bold;"></span></p>
             <p>تحية طيبة وبعد،،،</p>
             <p style="margin-top: 10px; text-align: justify;">
-                أرجو التكرم بالموافقة على منحي إجازة (<strong id="pLeaveType"></strong>) لمدة (<strong id="pTotalDays"></strong>)، وذلك اعتباراً من تاريخ <strong id="pStartDate"></strong> وحتى تاريخ <strong id="pEndDate"></strong> نظراً لـ: <strong id="pReason"></strong>.
+                أرجو التكرم بالموافقة على منحي إجازة (<strong id="pLeaveType"></strong>) لمدة (<strong id="pTotalDays"></strong>)، وذلك اعتباراً من تاريخ <strong id="pStartDate"></strong> وحتى تاريخ <strong id="pEndDate"></strong> (بإجمالي عدد أيام: <strong id="pTotalDaysBadge" style="text-decoration: underline;"></strong>)، نظراً لـ: <strong id="pReason"></strong>.
             </p>
             <p style="margin-top: 15px;">وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
         </div>
@@ -381,6 +381,16 @@
     var currentDeptOrCat = "";
     var currentManagerName = "";
     var currentLeavesData = [];
+
+    // تعيين أقل تاريخ مسموح به (اليوم) عند تحميل الصفحة لمنع اختيار الأيام السابقة
+    window.addEventListener('DOMContentLoaded', () => {
+        let todayStr = new Date().toISOString().split('T')[0];
+        let startDateInput = document.getElementById("startDate");
+        let endDateInput = document.getElementById("endDate");
+        
+        if (startDateInput) startDateInput.min = todayStr;
+        if (endDateInput) endDateInput.min = todayStr;
+    });
 
     function showCustomAlert(title, message) {
         let existingOverlay = document.getElementById("customAlertModal");
@@ -436,6 +446,19 @@
         document.getElementById("mainEgazatMenu").classList.remove("hidden");
     }
 
+    // عند تغير تاريخ البدء، يتم تحديث الحد الأدنى لتاريخ النهاية ليكون نفس تاريخ البدء أو بعده
+    function onStartDateChange() {
+        let start = document.getElementById("startDate").value;
+        let endDateInput = document.getElementById("endDate");
+        if (start) {
+            endDateInput.min = start;
+            if (endDateInput.value && endDateInput.value < start) {
+                endDateInput.value = start;
+            }
+        }
+        calculateDays();
+    }
+
     function calculateDays() {
         let start = document.getElementById("startDate").value;
         let end = document.getElementById("endDate").value;
@@ -463,6 +486,12 @@
         let start = document.getElementById("startDate").value;
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
+
+        let todayStr = new Date().toISOString().split('T')[0];
+        if (start < todayStr) {
+            showCustomAlert("خطأ في التواريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي.");
+            return;
+        }
 
         if (!isQuadrupleName(name) || !isQuadrupleName(mName)) {
             showCustomAlert("خطأ في الأسماء", "يجب إدخال اسم الموظف والمدير رباعياً على الأقل.");
@@ -588,7 +617,6 @@
         });
     }
 
-    // دالة خاصة للموظف المختص لإدخال عدد الأيام المتاحة أو سبب الرفض وتختفي فوراً
     function promptSpecialistAction(rowIndex, statusType, defaultText) {
         let inputVal = prompt("يرجى تحديد التفاصيل (مثال: رصيد متاح ولديه 5 أيام، أو سبب عدم وجود رصيد):", defaultText);
         if (!inputVal) return;
@@ -648,8 +676,9 @@
         document.getElementById("pManagerNameText").innerText = currentManagerName || item.mgrName;
         document.getElementById("pLeaveType").innerText = item.leaveType;
         document.getElementById("pTotalDays").innerText = item.daysCount + " أيام";
+        document.getElementById("pTotalDaysBadge").innerText = item.daysCount + " أيام";
         document.getElementById("pStartDate").innerText = item.startDate;
-        document.getElementById("pEndDate").innerText = item.endDate;
+        document.getElementById("pEndDate").innerText, document.getElementById("pEndDate").innerText = item.endDate;
         document.getElementById("pReason").innerText = item.reason;
         document.getElementById("pEmpName").innerText = item.empName;
         document.getElementById("pNationalId").innerText = item.nationalId;
@@ -664,6 +693,11 @@
         document.getElementById("calcDays").value = "";
         document.getElementById("leaveForm").classList.remove("hidden");
         document.getElementById("leaveResultContainer").classList.add("hidden");
+        
+        // إعادة تعيين الحد الأدنى للتاريخ الحالي بعد إعادة التعيين
+        let todayStr = new Date().toISOString().split('T')[0];
+        document.getElementById("startDate").min = todayStr;
+        document.getElementById("endDate").min = todayStr;
     }
 </script>
 </body>
