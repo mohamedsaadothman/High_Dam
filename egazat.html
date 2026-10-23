@@ -132,20 +132,6 @@
         .custom-modal-header h3 { color: #1a365d; font-size: 15px; font-weight: 900; margin: 0; }
         .custom-modal-body { color: #475569; font-size: 12px; line-height: 1.8; margin-bottom: 18px; white-space: pre-line; background: #f8fafc; padding: 10px; border-radius: 8px; }
         .custom-modal-btn { width: 100%; background: #1e293b; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
-
-        /* إعدادات الطباعة لضمان ظهور الطلب كاملاً */
-        .print-only-container { display: none; }
-
-        @media print {
-            @page { size: A4; margin: 15mm; }
-            body * { visibility: hidden !important; }
-            #printArea, #printArea * { visibility: visible !important; }
-            #printArea {
-                position: absolute !important; top: 0 !important; right: 0 !important; width: 100% !important; 
-                background: #fff !important; padding: 25px !important; color: #000 !important; font-family: 'Cairo', sans-serif !important; direction: rtl; display: block !important;
-                page-break-after: always;
-            }
-        }
     </style>
 </head>
 <body>
@@ -276,7 +262,8 @@
                 <h3 id="resTitle" style="color: #1a365d; font-size: 15px; margin-bottom: 4px;">تم تقديم الطلب بنجاح</h3>
                 <p id="resDesc" style="color: #64748b; font-size: 11px; margin-bottom: 12px;">تم إرسال الطلب ومعالجته في الشيت بنجاح.</p>
                 <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-                    <button class="act-btn btn-ex" onclick="window.print()"><i class="fas fa-print"></i> طباعة الطلب / حفظ PDF</button>
+                    <!-- تم تعديل زر الطباعة ليعمل بالنافذة الجديدة -->
+                    <button class="act-btn btn-ex" onclick="printLatestRequest()"><i class="fas fa-print"></i> طباعة الطلب / حفظ PDF</button>
                     <button class="act-btn btn-pd" onclick="resetLeaveForm()">تقديم طلب جديد</button>
                 </div>
             </div>
@@ -338,45 +325,6 @@
         </div>
     </section>
 
-    <!-- هيكل الطباعة الفردية الرسمي -->
-    <div id="printArea" class="print-only-container">
-        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
-            <div>
-                <strong style="font-size: 14px; display: block;">الهيئة العامة للسد العالي وخزان أسوان</strong>
-                <span id="pDept" style="font-size: 11px; color: #333;">إدارة الموارد البشرية</span>
-            </div>
-            <div style="text-align: left;">
-                <span id="pRequestId" style="font-size: 11px; font-weight: bold;">مسلسل الطلب (ID):</span>
-            </div>
-        </div>
-
-        <div style="text-align: center; margin: 20px 0;">
-            <h2 style="font-size: 18px; text-decoration: underline; font-weight: 900; margin-bottom: 12px;">طلب إجازة رسمي</h2>
-        </div>
-
-        <div style="font-size: 13px; line-height: 2.2; text-align: right; margin-bottom: 30px;">
-            <p><strong id="pManagerGreeting">السيد المدير المسؤول /</strong> <span id="pManagerNameText" style="font-weight:bold;"></span></p>
-            <p>تحية طيبة وبعد،،،</p>
-            <p style="margin-top: 10px; text-align: justify;">
-                أرجو التكرم بالموافقة على منحي إجازة (<strong id="pLeaveType"></strong>) لمدة (<strong id="pTotalDays"></strong>)، وذلك اعتباراً من تاريخ <strong id="pStartDate"></strong> وحتى تاريخ <strong id="pEndDate"></strong> (بإجمالي عدد أيام: <strong id="pTotalDaysBadge" style="text-decoration: underline;"></strong>)، نظراً لـ: <strong id="pReason"></strong>.
-            </p>
-            <p style="margin-top: 15px;">وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; margin-top: 50px; font-size: 12px;">
-            <div style="text-align: right;">
-                <p><strong>مقدمه لسيادتكم:</strong></p>
-                <p id="pEmpName" style="margin-top: 4px; font-weight: bold;"></p>
-                <p><strong>الرقم القومي:</strong> <span id="pNationalId"></span></p>
-                <p><strong>رقم الهاتف:</strong> <span id="pPhone"></span></p>
-            </div>
-            <div style="text-align: left;">
-                <p><strong>يعتمد المدير المسؤول،،</strong></p>
-                <p id="pSignManager" style="margin-top: 35px; font-weight: bold;"></p>
-            </div>
-        </div>
-    </div>
-
 <script>
     // تم تحديث رابط السكريبت الجديد
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4_Xz91-e8RTkhiCT3d_caCOW036iJ7qDluU1fbqCxAteRIQ1np5qWq_Dq_-jYv9k0/exec";
@@ -384,8 +332,8 @@
     var currentDeptOrCat = "";
     var currentManagerName = "";
     var currentLeavesData = [];
+    var latestSubmittedData = null; // لتخزين بيانات الطلب الأخير للطباعة
 
-    // قفل الأيام السابقة في التقويم عند التحميل
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
         let startDateInput = document.getElementById("startDate");
@@ -543,6 +491,23 @@
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
             if (res.status === "success") {
+                // حفظ البيانات للطباعة
+                latestSubmittedData = {
+                    requestId: randomId,
+                    empName: name,
+                    nationalId: nationalId,
+                    dept: dept,
+                    jobCategory: category,
+                    mgrName: mName,
+                    titlePrefix: titlePrefix,
+                    leaveType: type,
+                    startDate: start,
+                    endDate: end,
+                    daysCount: totalDays,
+                    reason: reason,
+                    phone: phone
+                };
+
                 document.getElementById("leaveForm").classList.add("hidden");
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
             } else {
@@ -624,116 +589,4 @@
                         
                         <div style="margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap;">
                             ${role === 'hr_specialist' ? `
-                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
-                                <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'ليس لديه رصيد (رفض)', 'ليس لديه رصيد')">ليس لديه رصيد (رفض)</button>
-                            ` : `
-                                <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي والأرشفة', 'manager')">مقبول ومؤرشف</button>
-                                <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض', 'manager')">رفض الطلب</button>
-                            `}
-                            <button class="act-btn btn-pd" onclick="printSingleEmp(${index})"><i class="fas fa-print"></i> طباعة / حفظ PDF</button>
-                        </div>
-                    </div>`;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 20px;">لا توجد طلبات بانتظار الاعتماد حالياً.</p>`;
-            }
-        });
-    }
-
-    function promptSpecialistAction(rowIndex, statusType, defaultText) {
-        let inputVal = prompt("يرجى تحديد التفاصيل (مثال: رصيد متاح ولديه 5 أيام، أو سبب عدم وجود رصيد):", defaultText);
-        if (!inputVal) return;
-
-        let formData = new URLSearchParams({
-            action: "update_leave_action", rowIndex: rowIndex, status: statusType, reason: inputVal, role: "hr_specialist"
-        });
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرأي وتحديث الطلب واختفاؤه من أمامك.");
-                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
-            }
-        });
-    }
-
-    function processAction(rowIndex, status, defaultReason, role) {
-        let reason = defaultReason;
-        let formData = new URLSearchParams({
-            action: "update_leave_action", rowIndex: rowIndex, status: status, reason: reason, role: role
-        });
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم الاعتماد النهائي وأرشفة الطلب واختفاؤه.");
-                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
-            }
-        });
-    }
-
-    function promptAction(rowIndex, status, role) {
-        let reason = prompt("يرجى كتابة سبب الرفض أو الملاحظات:", "عذراً لعدم توافر الشروط");
-        if (!reason) return;
-        
-        let formData = new URLSearchParams({
-            action: "update_leave_action", rowIndex: rowIndex, status: status, reason: reason, role: role
-        });
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرفض وحفظ السبب وتحديث الشيت.");
-                loadDepartmentLeaves(currentDeptOrCat, loggedInRole);
-            }
-        });
-    }
-
-    function printSingleEmp(index) {
-        let item = currentLeavesData[index];
-        
-        // تعبئة البيانات في منطقة الطباعة
-        if (!item) return;
-
-        document.getElementById("pRequestId").innerText = "مسلسل الطلب (ID): " + (item.requestId || "غير متوفر");
-        document.getElementById("pDept").innerText = item.dept || "غير محدد";
-        document.getElementById("pManagerNameText").innerText = currentManagerName || item.mgrName || "غير محدد";
-        document.getElementById("pLeaveType").innerText = item.leaveType || "غير محدد";
-        document.getElementById("pTotalDays").innerText = (item.daysCount || "0") + " أيام";
-        document.getElementById("pTotalDaysBadge").innerText = (item.daysCount || "0") + " أيام";
-        document.getElementById("pStartDate").innerText = item.startDate || "غير محدد";
-        document.getElementById("pEndDate").innerText = item.endDate || "غير محدد";
-        document.getElementById("pReason").innerText = item.reason || "غير محدد";
-        document.getElementById("pEmpName").innerText = item.empName || "غير محدد";
-        document.getElementById("pNationalId").innerText = item.nationalId || "غير محدد";
-        document.getElementById("pPhone").innerText = item.phone || "غير محدد";
-        document.getElementById("pSignManager").innerText = currentManagerName || item.mgrName || "غير محدد";
-
-        // إظهار منطقة الطباعة مؤقتاً
-        let printArea = document.getElementById("printArea");
-        printArea.style.display = "block";
-
-        // استدعاء الطباعة
-        setTimeout(() => {
-            window.print();
-            printArea.style.display = "none";
-        }, 100);
-    }
-
-    function resetLeaveForm() {
-        document.getElementById("leaveForm").reset();
-        document.getElementById("calcDays").value = "";
-        document.getElementById("leaveForm").classList.remove("hidden");
-        document.getElementById("leaveResultContainer").classList.add("hidden");
-        
-        let todayStr = new Date().toISOString().split('T')[0];
-        document.getElementById("startDate").min = todayStr;
-        document.getElementById("endDate").min = todayStr;
-    }
-</script>
-</body>
-</html>
+                                <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رص
