@@ -294,7 +294,6 @@
     </div>
 
 <script>
-    // ✅ تم تحديث الرابط الجديد هنا
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyWQVJzwxrFxk4wjXjsu6NdaN1xiWcVcqlUd_Gqg_1_ZIqGGAhAImubZ5IhTfx52-Tn/exec";
 
     function openLeaveForm() {
@@ -388,19 +387,6 @@
 
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
 
-        document.getElementById("pRequestId").innerText = "مسلسل الطلب (ID): " + randomId;
-        document.getElementById("pDept").innerText = dept;
-        document.getElementById("pManagerName").innerText = titlePrefix + " " + mName;
-        document.getElementById("pLeaveType").innerText = type;
-        document.getElementById("pTotalDays").innerText = totalDays + (totalDays === 1 ? " يوم" : " أيام");
-        document.getElementById("pStartDate").innerText = start;
-        document.getElementById("pEndDate").innerText = end;
-        document.getElementById("pReason").innerText = reason;
-        document.getElementById("pSignManager").innerText = mName;
-        document.getElementById("pEmpName").innerText = name;
-        document.getElementById("pNationalId").innerText = nationalId;
-        document.getElementById("pPhone").innerText = phone;
-
         let payload = {
             action: "submit_leave",
             requestId: randomId,
@@ -419,7 +405,7 @@
         };
 
         let submitBtn = document.querySelector(".btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب للشيت والفحص...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص الطلب وإرساله للشيت...';
         submitBtn.disabled = true;
 
         const formData = new URLSearchParams();
@@ -427,22 +413,42 @@
             formData.append(key, payload[key]);
         }
 
+        // تم إزالة no-cors لضمان قراءة الرد (سواء كان نجاحاً أو رسالة خطأ وتداخل تواريخ)
         fetch(LEAVE_SCRIPT_URL, {
             method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: formData
         })
-        .then(() => {
+        .then(response => response.json())
+        .then(res => {
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
-            document.getElementById("leaveForm").classList.add("hidden");
-            document.getElementById("leaveResultContainer").classList.remove("hidden");
+
+            if (res.status === "success") {
+                // إذا تمت الموافقة والتسجيل في الشيت بنجاح تام
+                document.getElementById("pRequestId").innerText = "مسلسل الطلب (ID): " + randomId;
+                document.getElementById("pDept").innerText = dept;
+                document.getElementById("pManagerName").innerText = titlePrefix + " " + mName;
+                document.getElementById("pLeaveType").innerText = type;
+                document.getElementById("pTotalDays").innerText = totalDays + (totalDays === 1 ? " يوم" : " أيام");
+                document.getElementById("pStartDate").innerText = start;
+                document.getElementById("pEndDate").innerText = end;
+                document.getElementById("pReason").innerText = reason;
+                document.getElementById("pSignManager").innerText = mName;
+                document.getElementById("pEmpName").innerText = name;
+                document.getElementById("pNationalId").innerText = nationalId;
+                document.getElementById("pPhone").innerText = phone;
+
+                document.getElementById("leaveForm").classList.add("hidden");
+                document.getElementById("leaveResultContainer").classList.remove("hidden");
+            } else {
+                // إذا رفض السكربت الطلب (بسبب تداخل تواريخ، أو خطأ بالرقم القومي، إلخ...)
+                alert("⚠️ عذراً، لم يتم قبول الطلب للأسباب التالية:\n\n" + res.message);
+            }
         })
         .catch(err => {
-            alert("حدث خطأ في الاتصال بالخادم: " + err);
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
+            alert("حدث خطأ في الاتصال بالخادم أو الشبكة. يرجى المحاولة لاحقاً.\nالتفاصيل: " + err);
         });
     }
 
