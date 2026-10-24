@@ -63,16 +63,17 @@
         .btn-secondary { background: #64748b; }
 
         .emp-card-box { background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 16px; margin-bottom: 15px; text-align: right; position: relative; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .emp-card-box.locked { opacity: 0.75; background: #f1f5f9; border-color: #94a3b8; }
+        .emp-card-box.locked { opacity: 0.9; }
         .emp-card-box.locked .act-btn { pointer-events: auto; }
         
         .emp-card-box.rejected-spec { background: #fffbeb; border-color: #fcd34d; }
         .emp-card-box.rejected-mgr { background: #fef2f2; border-color: #f87171; }
         .emp-card-box.approved-mgr { background: #f0fdf4; border-color: #86efac; }
         
-        .watermark-rejected { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 38px; font-weight: 900; white-space: nowrap; pointer-events: none; z-index: 0; opacity: 0.2; }
+        .watermark-rejected { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 38px; font-weight: 900; white-space: nowrap; pointer-events: none; z-index: 0; opacity: 0.25; }
         .watermark-rejected.spec { color: #d97706; }
         .watermark-rejected.mgr { color: #dc2626; }
+        .watermark-rejected.approved { color: #198754; }
 
         .emp-card-box h4 { color: #0f172a; font-size: 15px; font-weight: 900; margin-bottom: 8px; position: relative; z-index: 1; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px; }
         .emp-card-box p { font-size: 13px; color: #334155; margin-bottom: 6px; line-height: 1.7; position: relative; z-index: 1; font-weight: 600; }
@@ -374,7 +375,6 @@
     
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
 
-    // إصلاح مشكلة 3: دالة التحقق من أن سبب الإجازة مكتوب بلغة عربية صحيحة ومفهومة
     function isValidArabicReason(reason) {
         let clean = reason.trim();
         if (clean.length < 10) return false;
@@ -503,7 +503,7 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === "success" && data.data) {
-                // إصلاح مشكلة 1: حفظ الطلبات بالكامل (بما فيها المقبولة والمرفوضة) وعدم إخفائها لتظهر دائمًا عبر فلترة التاريخ
+                // الاحتفاظ بكافة الطلبات في الذاكرة لتسهيل العودة إليها والفلترة
                 currentLeavesData = data.data;
                 renderLeavesCards(currentLeavesData);
             } else {
@@ -549,7 +549,7 @@
         dataList.forEach((item, index) => {
             let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
             let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-            let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف";
+            let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || item.managerStatus.includes("مقبول");
             
             let cardClass = "";
             let watermarkHtml = "";
@@ -561,7 +561,8 @@
                 cardClass = "rejected-mgr locked";
                 watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
             } else if (isApprovedByMgr) {
-                cardClass = "approved-mgr";
+                cardClass = "approved-mgr locked";
+                watermarkHtml = `<div class="watermark-rejected approved">معتمد ومؤرشف<br><span style="font-size: 14px;">${item.startDate || ''}</span></div>`;
             }
 
             html += `
@@ -606,7 +607,6 @@
         let inputVal = prompt("يرجى تحديد التفاصيل:", defaultText);
         if (inputVal === null) return;
 
-        // إصلاح مشكلة 2: تمرير بيانات الرفض لتفعيل إرسال الإشعار البريدي بدقة
         let formData = new URLSearchParams({
             action: "update_leave_action", rowIndex: rowIndex, status: statusType, reason: inputVal, role: "hr_specialist"
         });
@@ -640,7 +640,6 @@
         let reason = prompt("يرجى كتابة سبب الرفض أو الملاحظات:", "عذراً لعدم توافر الشروط");
         if (!reason) return;
         
-        // إصلاح مشكلة 2: التأكد من إرسال طلب الرفض مع السبب لكي يتمكن الـ Apps Script من إرسال الإيميل للموظف
         let formData = new URLSearchParams({
             action: "update_leave_action", rowIndex: rowIndex, status: status, reason: reason, role: role
         });
