@@ -46,11 +46,16 @@
         .service-card-wrapper h2 { color: #1a365d; font-size: 17px; margin-bottom: 3px; font-weight: 900; }
         .service-card-wrapper p { color: #64748b; font-size: 11px; margin-bottom: 0; }
 
-        .input-group { margin-bottom: 12px; }
+        .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
         .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; }
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: #198754; background: #fff; }
         
+        /* Custom Suggestions Dropdown */
+        .suggestions-box { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; max-height: 150px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; }
+        .suggestion-item { padding: 8px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f1f5f9; transition: 0.2s; }
+        .suggestion-item:hover { background: #e2e8f0; color: #1a365d; }
+
         .btn-submit-main { width: 100%; background: #198754; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; transition: 0.3s; margin-top: 8px; box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3); }
         .btn-submit-main:hover { background: #146c43; }
 
@@ -86,6 +91,9 @@
         .custom-modal-header h3 { color: #1a365d; font-size: 18px; font-weight: 900; margin: 0; }
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
+
+        /* Checkbox Style for Print Selection */
+        .print-chk { width: 18px; height: 18px; cursor: pointer; accent-color: #198754; margin-left: 8px; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -241,7 +249,16 @@
                 </div>
             </div>
             
-            <!-- زر تفعيل الفلترة الميدانية للطلبات المعروضة -->
+            <!-- شريط البحث الذكي الجديد -->
+            <div style="margin: 10px 0; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                <label style="font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 5px; display: block;">البحث بالاسم أو الرقم القومي (اتركه فارغاً لعرض الكل):</label>
+                <div class="input-group" style="margin-bottom: 0;">
+                    <input type="text" id="dashSearchInput" placeholder="ابحث هنا..." onkeyup="handleSmartSearch(this.value)" autocomplete="off">
+                    <div id="searchSuggestions" class="suggestions-box"></div>
+                </div>
+            </div>
+
+            <!-- شريط الفلترة الزمنية واختيار الطباعة -->
             <div style="margin: 10px 0; background: #f1f5f9; padding: 10px; border-radius: 8px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
                 <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
                     <span style="font-size: 11px; font-weight: bold; color: #334155;">من:</span> <input type="date" id="dashFilterStart" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
@@ -249,6 +266,11 @@
                 </div>
                 <button class="act-btn btn-ex" onclick="applyDashboardDateFilter()" style="padding: 5px 12px; font-size: 11px;"><i class="fas fa-filter"></i> تطبيق الفلترة</button>
                 <button class="act-btn btn-secondary" onclick="resetDashboardDateFilter()" style="padding: 5px 10px; font-size: 11px;">إلغاء</button>
+            </div>
+            
+            <!-- زر طباعة المحدد (يظهر عند تحديد طلبات) -->
+            <div id="bulkPrintArea" class="hidden" style="margin-bottom: 10px; text-align: left;">
+                <button class="act-btn btn-pd" onclick="printSelectedLeaves()" style="padding: 8px 15px; font-size: 12px; width: 100%;"><i class="fas fa-print"></i> طباعة الطلبات المحددة (<span id="selectedCount">0</span>)</button>
             </div>
 
             <div id="leavesCardsContainer" style="margin-top: 10px;">
@@ -266,6 +288,8 @@
     var currentCategoryName = "";
     var currentLeavesData = [];
     var latestSubmittedData = null;
+    var filteredLeavesData = []; // لتخزين البيانات بعد الفلترة لعملية الطباعة
+    var selectedLeaveIds = new Set(); // لتخزين معرفات الطلبات المحددة للطباعة
 
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
@@ -331,6 +355,10 @@
         document.getElementById("managerDashboardSection").classList.add("hidden");
         document.getElementById("mainEgazatMenu").classList.remove("hidden");
         document.getElementById("loginPassword").value = "";
+        document.getElementById("dashSearchInput").value = "";
+        document.getElementById("searchSuggestions").style.display = "none";
+        selectedLeaveIds.clear();
+        document.getElementById("bulkPrintArea").classList.add("hidden");
     }
 
     function onStartDateChange() {
@@ -503,9 +531,10 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === "success" && data.data) {
-                // الاحتفاظ بكافة الطلبات في الذاكرة لتسهيل العودة إليها والفلترة
                 currentLeavesData = data.data;
-                renderLeavesCards(currentLeavesData);
+                filteredLeavesData = [...currentLeavesData]; // نسخة للفلترة
+                renderLeavesCards(filteredLeavesData);
+                applyDashboardDateFilter(); // لتطبيق فلتر التاريخ القادم من صفحة الدخول إن وجد
             } else {
                 document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات مسجلة حالياً.</p>`;
             }
@@ -515,33 +544,111 @@
     function applyDashboardDateFilter() {
         let fStart = document.getElementById("dashFilterStart").value;
         let fEnd = document.getElementById("dashFilterEnd").value;
+        let searchTxt = document.getElementById("dashSearchInput").value.toLowerCase().trim();
 
-        if (!fStart && !fEnd) {
-            renderLeavesCards(currentLeavesData);
-            return;
-        }
-
-        let filtered = currentLeavesData.filter(item => {
+        filteredLeavesData = currentLeavesData.filter(item => {
             let itemDate = item.startDate;
-            if (!itemDate) return true;
-            if (fStart && itemDate < fStart) return false;
-            if (fEnd && itemDate > fEnd) return false;
-            return true;
+            let matchesDate = true;
+            if (fStart && itemDate < fStart) matchesDate = false;
+            if (fEnd && itemDate > fEnd) matchesDate = false;
+
+            let matchesSearch = true;
+            if (searchTxt) {
+                let nameMatch = item.empName && item.empName.toLowerCase().includes(searchTxt);
+                let nidMatch = item.nationalId && item.nationalId.includes(searchTxt);
+                matchesSearch = nameMatch || nidMatch;
+            }
+
+            return matchesDate && matchesSearch;
         });
 
-        renderLeavesCards(filtered);
+        renderLeavesCards(filteredLeavesData);
     }
 
     function resetDashboardDateFilter() {
         document.getElementById("dashFilterStart").value = "";
         document.getElementById("dashFilterEnd").value = "";
-        renderLeavesCards(currentLeavesData);
+        document.getElementById("dashSearchInput").value = "";
+        document.getElementById("searchSuggestions").style.display = "none";
+        filteredLeavesData = [...currentLeavesData];
+        renderLeavesCards(filteredLeavesData);
+    }
+
+    // دالة البحث الذكي وعرض الاقتراحات
+    function handleSmartSearch(val) {
+        let query = val.toLowerCase().trim();
+        let suggestBox = document.getElementById("searchSuggestions");
+        
+        if (!query) {
+            suggestBox.style.display = "none";
+            applyDashboardDateFilter(); // إعادة تعيين البحث
+            return;
+        }
+
+        // تصفية الاقتراحات من البيانات المتاحة
+        let matches = currentLeavesData.filter(item => 
+            (item.empName && item.empName.toLowerCase().includes(query)) || 
+            (item.nationalId && item.nationalId.includes(query))
+        );
+
+        if (matches.length > 0) {
+            suggestBox.innerHTML = "";
+            // إزالة التكرار بناءً على الرقم القومي
+            let uniqueMatches = [];
+            let seen = new Set();
+            matches.forEach(m => {
+                if(!seen.has(m.nationalId)) {
+                    seen.add(m.nationalId);
+                    uniqueMatches.push(m);
+                }
+            });
+
+            uniqueMatches.slice(0, 5).forEach(m => {
+                let div = document.createElement("div");
+                div.className = "suggestion-item";
+                div.innerHTML = `<strong>${m.empName}</strong> - ${m.nationalId}`;
+                div.onclick = function() {
+                    document.getElementById("dashSearchInput").value = m.empName; // أو الرقم القومي
+                    suggestBox.style.display = "none";
+                    applyDashboardDateFilter(); // تنفيذ البحث فوراً
+                };
+                suggestBox.appendChild(div);
+            });
+            suggestBox.style.display = "block";
+        } else {
+            suggestBox.style.display = "none";
+        }
+    }
+
+    // إخفاء قائمة الاقتراحات عند النقر خارجها
+    document.addEventListener('click', function(e) {
+        let suggestBox = document.getElementById("searchSuggestions");
+        let searchInput = document.getElementById("dashSearchInput");
+        if (suggestBox && e.target !== searchInput && e.target !== suggestBox && !suggestBox.contains(e.target)) {
+            suggestBox.style.display = "none";
+        }
+    });
+
+    function toggleLeaveSelection(requestId) {
+        if (selectedLeaveIds.has(requestId)) {
+            selectedLeaveIds.delete(requestId);
+        } else {
+            selectedLeaveIds.add(requestId);
+        }
+        
+        let count = selectedLeaveIds.size;
+        document.getElementById("selectedCount").innerText = count;
+        if (count > 0) {
+            document.getElementById("bulkPrintArea").classList.remove("hidden");
+        } else {
+            document.getElementById("bulkPrintArea").classList.add("hidden");
+        }
     }
 
     function renderLeavesCards(dataList) {
         let container = document.getElementById("leavesCardsContainer");
         if (!dataList || dataList.length === 0) {
-            container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات تطابق فترة الفلترة المحددة.</p>`;
+            container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات تطابق معايير البحث.</p>`;
             return;
         }
 
@@ -565,10 +672,15 @@
                 watermarkHtml = `<div class="watermark-rejected approved">معتمد ومؤرشف<br><span style="font-size: 14px;">${item.startDate || ''}</span></div>`;
             }
 
+            let isChecked = selectedLeaveIds.has(item.requestId) ? "checked" : "";
+
             html += `
             <div class="emp-card-box ${cardClass}">
                 ${watermarkHtml}
-                <h4>الموظف: ${item.empName} (${item.requestId})</h4>
+                <h4>
+                    <input type="checkbox" class="print-chk" onchange="toggleLeaveSelection('${item.requestId}')" ${isChecked}>
+                    الموظف: ${item.empName} (${item.requestId})
+                </h4>
                 <p><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
                 <p><strong>نوع الإجازة:</strong> ${item.leaveType} (${item.daysCount} أيام)</p>
                 <p><strong>الفترة:</strong> من ${item.startDate} إلى ${item.endDate}</p>
@@ -670,6 +782,23 @@
         });
     }
 
+    // دالة مساعدة لتوليد العلامة المائية في الطباعة
+    function getPrintWatermarkHtml(item) {
+        let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
+        let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
+        let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || item.managerStatus.includes("مقبول");
+        
+        let wmText = "";
+        let wmColor = "";
+        
+        if (isSpecRejected) { wmText = "مرفوض من المختص"; wmColor = "#d97706"; }
+        else if (isMgrRejected) { wmText = "مرفوض من المدير"; wmColor = "#dc2626"; }
+        else if (isApprovedByMgr) { wmText = "معتمد ومؤرشف"; wmColor = "#198754"; }
+        else { wmText = "قيد الانتظار"; wmColor = "#64748b"; }
+
+        return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
+    }
+
     function openPrintWindow(item) {
         let printWindow = window.open('', '_blank');
         
@@ -680,6 +809,7 @@
         let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
         
         let reqDate = item.requestDate || new Date().toISOString().split('T')[0];
+        let watermark = getPrintWatermarkHtml(item);
 
         let htmlContent = `
             <!DOCTYPE html>
@@ -689,7 +819,8 @@
                 <title>طباعة طلب إجازة</title>
                 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
                 <style>
-                    body { font-family: 'Cairo', sans-serif; padding: 25px; color: #000; direction: rtl; font-size: 16px; }
+                    body { font-family: 'Cairo', sans-serif; padding: 25px; color: #000; direction: rtl; font-size: 16px; position: relative; }
+                    .page-container { position: relative; z-index: 1; }
                     .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 25px; }
                     .title { text-align: center; margin: 35px 0; font-size: 22px; font-weight: bold; text-decoration: underline; }
                     .content { font-size: 17px; line-height: 2.3; text-align: justify; margin-bottom: 45px; }
@@ -698,33 +829,111 @@
                 </style>
             </head>
             <body>
-                <div class="header">
-                    <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
-                    <div style="text-align: left;">
-                        <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
-                        <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
+                ${watermark}
+                <div class="page-container">
+                    <div class="header">
+                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
+                        <div style="text-align: left;">
+                            <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
+                            <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
+                        </div>
                     </div>
-                </div>
-                <div class="title">طلب إجازة رسمي</div>
-                <div class="content">
-                    <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
-                    <p>تحية طيبة وبعد،،،</p>
-                    <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
-                    <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
-                </div>
-                <div class="footer">
-                    <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.nationalId}</p></div>
-                    <div style="text-align: left;"><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
-                </div>
-                <div class="status-box">
-                    <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
-                    <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
-                    <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
-                    ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
+                    <div class="title">طلب إجازة رسمي</div>
+                    <div class="content">
+                        <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
+                        <p>تحية طيبة وبعد،،،</p>
+                        <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                        <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
+                    </div>
+                    <div class="footer">
+                        <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.nationalId}</p></div>
+                        <div style="text-align: left;"><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
+                    </div>
+                    <div class="status-box">
+                        <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
+                        <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
+                        <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
+                        ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
+                    </div>
                 </div>
             </body>
             </html>
         `;
+        printWindow.document.open();
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
+    }
+
+    function printSelectedLeaves() {
+        let itemsToPrint = filteredLeavesData.filter(item => selectedLeaveIds.has(item.requestId));
+        if(itemsToPrint.length === 0) return;
+
+        let printWindow = window.open('', '_blank');
+        let htmlContent = `
+            <!DOCTYPE html>
+            <html lang="ar" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <title>طباعة طلبات متعددة</title>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+                <style>
+                    body { font-family: 'Cairo', sans-serif; padding: 20px; color: #000; direction: rtl; font-size: 16px; }
+                    .page-break { page-break-after: always; margin-bottom: 40px; border-bottom: 2px dashed #ccc; padding-bottom: 20px; }
+                    .page-container { position: relative; z-index: 1; padding: 20px; }
+                    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 25px; }
+                    .title { text-align: center; margin: 35px 0; font-size: 22px; font-weight: bold; text-decoration: underline; }
+                    .content { font-size: 17px; line-height: 2.3; text-align: justify; margin-bottom: 45px; }
+                    .footer { display: flex; justify-content: space-between; margin-top: 70px; font-size: 15px; }
+                    .status-box { margin-top: 45px; border: 2px solid #000; padding: 18px; text-align: center; background: #f9f9f9; font-size: 15px; }
+                </style>
+            </head>
+            <body>
+        `;
+
+        itemsToPrint.forEach(item => {
+            let specStatusText = item.specialistStatus || "قيد الانتظار";
+            let specColor = specStatusText.includes("مرفوض") ? "red" : (specStatusText.includes("رصيد متاح") ? "green" : "#333");
+            let mgrStatusText = item.managerStatus || "قيد الانتظار";
+            let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
+            let reqDate = item.requestDate || new Date().toISOString().split('T')[0];
+            let watermark = getPrintWatermarkHtml(item);
+
+            htmlContent += `
+                <div class="page-break">
+                    ${watermark}
+                    <div class="page-container">
+                        <div class="header">
+                            <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
+                            <div style="text-align: left;">
+                                <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
+                                <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
+                            </div>
+                        </div>
+                        <div class="title">طلب إجازة رسمي</div>
+                        <div class="content">
+                            <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
+                            <p>تحية طيبة وبعد،،،</p>
+                            <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                            <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
+                        </div>
+                        <div class="footer">
+                            <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.nationalId}</p></div>
+                            <div style="text-align: left;"><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
+                        </div>
+                        <div class="status-box">
+                            <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
+                            <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
+                            <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
+                            ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        htmlContent += `</body></html>`;
+        
         printWindow.document.open();
         printWindow.document.write(htmlContent);
         printWindow.document.close();
