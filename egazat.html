@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
@@ -94,6 +95,24 @@
 
         /* Checkbox Style for Print Selection */
         .print-chk { width: 18px; height: 18px; cursor: pointer; accent-color: #198754; margin-left: 8px; vertical-align: middle; }
+
+        /* 🟢 تنسيقات الجدول التجميعي والطباعة */
+        .summary-report-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; direction: rtl; }
+        .summary-report-table th, .summary-report-table td { border: 1px solid #94a3b8; padding: 8px; text-align: center; vertical-align: middle; }
+        .summary-report-table th { background-color: #1e293b; color: #fff; font-weight: 800; }
+        .summary-report-table tr:nth-child(even) { background-color: #f1f5f9; }
+        .summary-report-table tr:hover { background-color: #e2e8f0; }
+        .summary-report-table .total-row { background-color: #c59b27 !important; font-weight: 900; color: #fff; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printableSummaryArea, #printableSummaryArea * { visibility: visible; }
+            #printableSummaryArea { position: absolute; left: 0; top: 0; width: 100%; padding: 10px; }
+            .no-print { display: none !important; }
+            .summary-report-table th { background-color: #e2e8f0 !important; color: #000 !important; -webkit-print-color-adjust: exact; }
+            .summary-report-table .total-row { background-color: #fcd34d !important; color: #000 !important; -webkit-print-color-adjust: exact; }
+            @page { size: A4 portrait; margin: 10mm; }
+        }
     </style>
 </head>
 <body>
@@ -276,11 +295,50 @@
             <div id="leavesCardsContainer" style="margin-top: 10px;">
                 <p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">جاري تحميل الطلبات...</p>
             </div>
+
+            <!-- 🟢 قسم التقرير التجميعي الجديد -->
+            <div class="no-print" style="margin-top: 20px; background: #e0f2fe; padding: 15px; border-radius: 8px; border: 1px solid #7dd3fc;">
+                <h3 style="color: #0369a1; font-size: 15px; margin-bottom: 10px; font-weight: 900;"><i class="fas fa-file-excel"></i> استخراج تقرير تجميعي للإجازات</h3>
+                <p style="font-size: 11px; color: #475569; margin-bottom: 10px;">حدد الفترة الزمنية للحصول على إجمالي أيام الإجازات لكل موظف (مجمع)</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                    <div><label style="font-size: 11px; font-weight: bold; color: #334155;">من تاريخ:</label><input type="date" id="summaryStartDate" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;"></div>
+                    <div><label style="font-size: 11px; font-weight: bold; color: #334155;">إلى تاريخ:</label><input type="date" id="summaryEndDate" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;"></div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="act-btn btn-ex" onclick="generateSummaryReport()" style="flex: 1; padding: 8px; font-size: 12px;"><i class="fas fa-calculator"></i> عرض التقرير</button>
+                    <button class="act-btn btn-pd" onclick="downloadExcelSummary()" style="flex: 1; padding: 8px; font-size: 12px;"><i class="fas fa-download"></i> تحميل إكسل</button>
+                    <button class="act-btn btn-warning" onclick="printSummaryReport()" style="flex: 1; padding: 8px; font-size: 12px; color:#000;"><i class="fas fa-print"></i> طباعة</button>
+                </div>
+            </div>
+
+            <!-- 🟢 مساحة عرض التقرير المنسق (هذا ما سيتم طباعته) -->
+            <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px;">
+                <div style="text-align: center; margin-bottom: 10px;">
+                    <h2 style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
+                    <p id="reportPeriodText" style="font-size: 12px; color: #333; margin-bottom: 5px;"></p>
+                </div>
+                <table class="summary-report-table" id="summaryReportTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">م</th>
+                            <th style="width: 30%;">اسم الموظف</th>
+                            <th style="width: 15%;">الرقم القومي</th>
+                            <th style="width: 10%;">إجازة عارضة</th>
+                            <th style="width: 10%;">إجازة اعتيادية</th>
+                            <th style="width: 10%;">إجازة مرضية</th>
+                            <th style="width: 10%;">المجموع</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryReportBody">
+                        <!-- سيتم ملء البيانات هنا ديناميكياً -->
+                    </tbody>
+                </table>
+            </div>
+
         </div>
     </section>
 
 <script>
-    // ⚠️ تم تحديث الرابط هنا بناءً على طلبك
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzF5t64fmjfYoMbcKSjVvjJEibWcQRxdGc3zT_PeoLLcuZyDm4i0alqkG7ls7BQZf0O/exec";
     
     var loggedInRole = "";
@@ -289,8 +347,8 @@
     var currentCategoryName = "";
     var currentLeavesData = [];
     var latestSubmittedData = null;
-    var filteredLeavesData = []; // لتخزين البيانات بعد الفلترة لعملية الطباعة
-    var selectedLeaveIds = new Set(); // لتخزين معرفات الطلبات المحددة للطباعة
+    var filteredLeavesData = []; 
+    var selectedLeaveIds = new Set(); 
 
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
@@ -360,6 +418,7 @@
         document.getElementById("searchSuggestions").style.display = "none";
         selectedLeaveIds.clear();
         document.getElementById("bulkPrintArea").classList.add("hidden");
+        document.getElementById("printableSummaryArea").style.display = "none"; // إخفاء التقرير عند الخروج
     }
 
     function onStartDateChange() {
@@ -533,9 +592,9 @@
         .then(data => {
             if (data.status === "success" && data.data) {
                 currentLeavesData = data.data;
-                filteredLeavesData = [...currentLeavesData]; // نسخة للفلترة
+                filteredLeavesData = [...currentLeavesData]; 
                 renderLeavesCards(filteredLeavesData);
-                applyDashboardDateFilter(); // لتطبيق فلتر التاريخ القادم من صفحة الدخول إن وجد
+                applyDashboardDateFilter(); 
             } else {
                 document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات مسجلة حالياً.</p>`;
             }
@@ -575,18 +634,16 @@
         renderLeavesCards(filteredLeavesData);
     }
 
-    // دالة البحث الذكي وعرض الاقتراحات
     function handleSmartSearch(val) {
         let query = val.toLowerCase().trim();
         let suggestBox = document.getElementById("searchSuggestions");
         
         if (!query) {
             suggestBox.style.display = "none";
-            applyDashboardDateFilter(); // إعادة تعيين البحث
+            applyDashboardDateFilter(); 
             return;
         }
 
-        // تصفية الاقتراحات من البيانات المتاحة
         let matches = currentLeavesData.filter(item => 
             (item.empName && item.empName.toLowerCase().includes(query)) || 
             (item.nationalId && item.nationalId.includes(query))
@@ -594,7 +651,6 @@
 
         if (matches.length > 0) {
             suggestBox.innerHTML = "";
-            // إزالة التكرار بناءً على الرقم القومي
             let uniqueMatches = [];
             let seen = new Set();
             matches.forEach(m => {
@@ -609,9 +665,9 @@
                 div.className = "suggestion-item";
                 div.innerHTML = `<strong>${m.empName}</strong> - ${m.nationalId}`;
                 div.onclick = function() {
-                    document.getElementById("dashSearchInput").value = m.empName; // أو الرقم القومي
+                    document.getElementById("dashSearchInput").value = m.empName; 
                     suggestBox.style.display = "none";
-                    applyDashboardDateFilter(); // تنفيذ البحث فوراً
+                    applyDashboardDateFilter(); 
                 };
                 suggestBox.appendChild(div);
             });
@@ -621,7 +677,6 @@
         }
     }
 
-    // إخفاء قائمة الاقتراحات عند النقر خارجها
     document.addEventListener('click', function(e) {
         let suggestBox = document.getElementById("searchSuggestions");
         let searchInput = document.getElementById("dashSearchInput");
@@ -783,7 +838,6 @@
         });
     }
 
-    // دالة مساعدة لتوليد العلامة المائية في الطباعة
     function getPrintWatermarkHtml(item) {
         let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
         let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
@@ -965,6 +1019,159 @@
         document.getElementById("startDate").min = todayStr;
         document.getElementById("endDate").min = todayStr;
     }
+
+    // ==========================================
+    // 🟢 دوال التقرير التجميعي
+    // ==========================================
+
+    var summaryDataForExcel = []; // لتخزين بيانات التقرير للتحميل كإكسل
+
+    function generateSummaryReport() {
+        let sDate = document.getElementById("summaryStartDate").value;
+        let eDate = document.getElementById("summaryEndDate").value;
+
+        if (!sDate || !eDate) {
+            showCustomAlert("خطأ في التاريخ", "يرجى تحديد تاريخ البداية والنهاية للتقرير.");
+            return;
+        }
+
+        if (sDate > eDate) {
+            showCustomAlert("خطأ في التاريخ", "تاريخ البداية يجب أن يكون قبل تاريخ النهاية.");
+            return;
+        }
+
+        // تصفية الطلبات بناءً على فترة التقرير
+        let reportLeaves = currentLeavesData.filter(item => {
+            return item.startDate >= sDate && item.startDate <= eDate;
+        });
+
+        if (reportLeaves.length === 0) {
+            showCustomAlert("لا توجد بيانات", "لا توجد طلبات إجازة مسجلة في هذه الفترة المحددة.");
+            document.getElementById("printableSummaryArea").style.display = "none";
+            return;
+        }
+
+        // تجميع البيانات حسب الموظف (الرقم القومي)
+        let aggregated = {};
+        reportLeaves.forEach(item => {
+            let nid = item.nationalId;
+            if (!aggregated[nid]) {
+                aggregated[nid] = {
+                    empName: item.empName,
+                    nationalId: nid,
+                    casual: 0,      // عارضة
+                    annual: 0,      // اعتيادية
+                    sick: 0         // مرضية
+                };
+            }
+            
+            let days = parseFloat(item.daysCount) || 0;
+            if (item.leaveType === "عارضة") aggregated[nid].casual += days;
+            else if (item.leaveType === "اعتيادية" || item.leaveType === "رصيد سنوات سابقة") aggregated[nid].annual += days;
+            else if (item.leaveType === "مرضية") aggregated[nid].sick += days;
+        });
+
+        // تحويل البيانات المجمعة إلى مصفوفة
+        let finalData = Object.values(aggregated).map(emp => {
+            let total = emp.casual + emp.annual + emp.sick;
+            return { ...emp, total: total };
+        });
+
+        // حساب الإجمالي العام لكل عمود
+        let grandTotalCasual = 0, grandTotalAnnual = 0, grandTotalSick = 0, grandTotal = 0;
+        finalData.forEach(emp => {
+            grandTotalCasual += emp.casual;
+            grandTotalAnnual += emp.annual;
+            grandTotalSick += emp.sick;
+            grandTotal += emp.total;
+        });
+
+        // بناء الجدول HTML
+        let tbody = document.getElementById("summaryReportBody");
+        let rowsHtml = "";
+        
+        // عرض 15 صفاً كحد أقصى في الصفحة الأولى (يمكنك زيادة العدد حسب الحاجة)
+        let maxRowsToShow = 15; 
+        let displayedRows = finalData.slice(0, maxRowsToShow);
+
+        displayedRows.forEach((emp, index) => {
+            rowsHtml += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td style="text-align: right; font-weight: bold;">${emp.empName}</td>
+                    <td>${emp.nationalId}</td>
+                    <td>${emp.casual}</td>
+                    <td>${emp.annual}</td>
+                    <td>${emp.sick}</td>
+                    <td style="font-weight: bold; background-color: #f0fdf4;">${emp.total}</td>
+                </tr>
+            `;
+        });
+
+        // إضافة صف الإجمالي في نهاية الجدول
+        rowsHtml += `
+            <tr class="total-row">
+                <td colspan="3">الإجمالي العام</td>
+                <td>${grandTotalCasual}</td>
+                <td>${grandTotalAnnual}</td>
+                <td>${grandTotalSick}</td>
+                <td>${grandTotal}</td>
+            </tr>
+        `;
+
+        tbody.innerHTML = rowsHtml;
+        
+        // تحديث نص الفترة
+        document.getElementById("reportPeriodText").innerText = `عن الفترة من: ${sDate} إلى: ${eDate}`;
+        
+        // إظهار مساحة التقرير
+        document.getElementById("printableSummaryArea").style.display = "block";
+
+        // تجهيز بيانات الإكسل
+        summaryDataForExcel = [
+            ['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'المجموع']
+        ];
+        finalData.forEach((emp, index) => {
+            summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.total]);
+        });
+        summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, grandTotal]);
+
+        showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك الآن طباعته أو تحميله كملف إكسل.");
+    }
+
+    function downloadExcelSummary() {
+        if (summaryDataForExcel.length <= 1) {
+            showCustomAlert("لا توجد بيانات", "يرجى عرض التقرير أولاً قبل تحميله.");
+            return;
+        }
+
+        // إنشاء ملف إكسل
+        let wb = XLSX.utils.book_new();
+        let ws = XLSX.utils.aoa_to_sheet(summaryDataForExcel);
+
+        // تنسيق عرض الأعمدة (اختياري)
+        ws['!cols'] = [
+            { wch: 5 },  // م
+            { wch: 30 }, // اسم الموظف
+            { wch: 15 }, // الرقم القومي
+            { wch: 12 }, // عارضة
+            { wch: 12 }, // اعتيادية
+            { wch: 12 }, // مرضية
+            { wch: 10 }  // المجموع
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, "تقرير الإجازات");
+        XLSX.writeFile(wb, `تقرير_الإجازات_التجميعي_${document.getElementById("summaryStartDate").value}_${document.getElementById("summaryEndDate").value}.xlsx`);
+    }
+
+    function printSummaryReport() {
+        if (document.getElementById("printableSummaryArea").style.display === "none") {
+            showCustomAlert("لا يوجد تقرير", "يرجى عرض التقرير أولاً قبل طباعته.");
+            return;
+        }
+        window.print();
+    }
+
 </script>
 </body>
 </html>
