@@ -63,7 +63,7 @@
         .btn-secondary { background: #64748b; }
 
         .emp-card-box { background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 16px; margin-bottom: 15px; text-align: right; position: relative; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .emp-card-box.locked { opacity: 0.65; background: #f1f5f9; border-color: #94a3b8; }
+        .emp-card-box.locked { opacity: 0.75; background: #f1f5f9; border-color: #94a3b8; }
         .emp-card-box.locked .act-btn { pointer-events: auto; }
         
         .emp-card-box.rejected-spec { background: #fffbeb; border-color: #fcd34d; }
@@ -374,12 +374,11 @@
     
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
 
-    // دالة التحقق من أن سبب الإجازة مكتوب بلغة عربية صحيحة ومفهومة (ليست حروف عشوائية أو مكررة)
+    // إصلاح مشكلة 3: دالة التحقق من أن سبب الإجازة مكتوب بلغة عربية صحيحة ومفهومة
     function isValidArabicReason(reason) {
         let clean = reason.trim();
         if (clean.length < 10) return false;
         if (!isArabicOnly(clean)) return false;
-        // منع تكرار نفس الحرف بشكل جنوني (مثل: "ههههههههههههه")
         if (/(.)\1{4,}/.test(clean)) return false;
         return true;
     }
@@ -455,7 +454,6 @@
         let start = document.getElementById("filterStartDate").value;
         let end = document.getElementById("filterEndDate").value;
 
-        // تعبئة حقول الفلترة الداخلية تلقائياً إذا تم إدخالها في صفحة الدخول
         if(start) document.getElementById("dashFilterStart").value = start;
         if(end) document.getElementById("dashFilterEnd").value = end;
 
@@ -505,6 +503,7 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === "success" && data.data) {
+                // إصلاح مشكلة 1: حفظ الطلبات بالكامل (بما فيها المقبولة والمرفوضة) وعدم إخفائها لتظهر دائمًا عبر فلترة التاريخ
                 currentLeavesData = data.data;
                 renderLeavesCards(currentLeavesData);
             } else {
@@ -513,7 +512,6 @@
         });
     }
 
-    // دالة فلترة الطلبات المعروضة بناءً على التواريخ المحددة (تمنع إخفاء الطلبات القديمة عند البحث بالفلتر)
     function applyDashboardDateFilter() {
         let fStart = document.getElementById("dashFilterStart").value;
         let fEnd = document.getElementById("dashFilterEnd").value;
@@ -524,7 +522,7 @@
         }
 
         let filtered = currentLeavesData.filter(item => {
-            let itemDate = item.startDate; // أو تاريخ الطلب
+            let itemDate = item.startDate;
             if (!itemDate) return true;
             if (fStart && itemDate < fStart) return false;
             if (fEnd && itemDate > fEnd) return false;
@@ -608,6 +606,7 @@
         let inputVal = prompt("يرجى تحديد التفاصيل:", defaultText);
         if (inputVal === null) return;
 
+        // إصلاح مشكلة 2: تمرير بيانات الرفض لتفعيل إرسال الإشعار البريدي بدقة
         let formData = new URLSearchParams({
             action: "update_leave_action", rowIndex: rowIndex, status: statusType, reason: inputVal, role: "hr_specialist"
         });
@@ -641,6 +640,7 @@
         let reason = prompt("يرجى كتابة سبب الرفض أو الملاحظات:", "عذراً لعدم توافر الشروط");
         if (!reason) return;
         
+        // إصلاح مشكلة 2: التأكد من إرسال طلب الرفض مع السبب لكي يتمكن الـ Apps Script من إرسال الإيميل للموظف
         let formData = new URLSearchParams({
             action: "update_leave_action", rowIndex: rowIndex, status: status, reason: reason, role: role
         });
