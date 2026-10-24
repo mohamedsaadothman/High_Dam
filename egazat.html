@@ -62,7 +62,6 @@
         .btn-warning { background: #f59e0b; color: #000; }
         .btn-secondary { background: #64748b; }
 
-        /* تصميم الكروت بحجم خطوط أكبر وأوضح */
         .emp-card-box { background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 16px; margin-bottom: 15px; text-align: right; position: relative; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         .emp-card-box.locked { opacity: 0.65; background: #f1f5f9; border-color: #94a3b8; }
         .emp-card-box.locked .act-btn { pointer-events: auto; }
@@ -180,7 +179,7 @@
                     <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="endDate" required onchange="calculateDays()"></div>
                 </div>
                 <div class="input-group"><label>عدد الأيام:</label><input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;"></div>
-                <div class="input-group"><label>السبب: (لا يقل عن 10 أحرف مفهومة)</label><textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة..."></textarea></div>
+                <div class="input-group"><label>السبب: (لا يقل عن 10 أحرف باللغة العربية ومفهومة)</label><textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة..."></textarea></div>
 
                 <button type="submit" class="btn-submit-main"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
             </form>
@@ -240,7 +239,18 @@
                     <p id="welcomeManagerText" style="color: #198754; font-weight: bold; font-size: 12px;"></p>
                 </div>
             </div>
-            <div id="leavesCardsContainer" style="margin-top: 15px;">
+            
+            <!-- زر تفعيل الفلترة الميدانية للطلبات المعروضة -->
+            <div style="margin: 10px 0; background: #f1f5f9; padding: 10px; border-radius: 8px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+                <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
+                    <span style="font-size: 11px; font-weight: bold; color: #334155;">من:</span> <input type="date" id="dashFilterStart" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #334155;">إلى:</span> <input type="date" id="dashFilterEnd" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                </div>
+                <button class="act-btn btn-ex" onclick="applyDashboardDateFilter()" style="padding: 5px 12px; font-size: 11px;"><i class="fas fa-filter"></i> تطبيق الفلترة</button>
+                <button class="act-btn btn-secondary" onclick="resetDashboardDateFilter()" style="padding: 5px 10px; font-size: 11px;">إلغاء</button>
+            </div>
+
+            <div id="leavesCardsContainer" style="margin-top: 10px;">
                 <p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">جاري تحميل الطلبات...</p>
             </div>
         </div>
@@ -347,12 +357,11 @@
 
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
     
-    // دالة توحيد وتصحيح الأسماء (تدمج المسافات مثل عبدالرازق وعبد الرازق لتصبح متطابقة)
     function cleanNameForCompare(name) {
         if (!name) return "";
         return name.toString().trim()
-                   .replace(/\s+/g, ' ')              // مسافات متعددة إلى مسافة واحدة
-                   .replace(/عبد\s+الرازق/g, 'عبدالرازق') // توحيد عبدالرازق بكل حالاتها
+                   .replace(/\s+/g, ' ')
+                   .replace(/عبد\s+الرازق/g, 'عبدالرازق')
                    .replace(/عبد\s+الرحيم/g, 'عبدالرحيم')
                    .replace(/عبد\s+الله/g, 'عبدالله');
     }
@@ -362,7 +371,18 @@
         let parts = normalized.split(' ');
         return parts.length >= 4; 
     }
+    
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
+
+    // دالة التحقق من أن سبب الإجازة مكتوب بلغة عربية صحيحة ومفهومة (ليست حروف عشوائية أو مكررة)
+    function isValidArabicReason(reason) {
+        let clean = reason.trim();
+        if (clean.length < 10) return false;
+        if (!isArabicOnly(clean)) return false;
+        // منع تكرار نفس الحرف بشكل جنوني (مثل: "ههههههههههههه")
+        if (/(.)\1{4,}/.test(clean)) return false;
+        return true;
+    }
 
     function submitLeaveForm(e) {
         e.preventDefault();
@@ -380,11 +400,11 @@
 
         let todayStr = new Date().toISOString().split('T')[0];
         if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي."); return; }
-        if (!isArabicOnly(name) || !isQuadrupleName(name)) { showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة (مع مراعاة تداخل أو مسافات الكلمات مثل عبدالرازق)."); return; }
+        if (!isArabicOnly(name) || !isQuadrupleName(name)) { showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); return; }
         if (!isArabicOnly(mName) || !isQuadrupleName(mName)) { showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); return; }
         if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) { showCustomAlert("خطأ في الرقم القومي", "يجب أن يكون الرقم القومي مكوناً من 14 رقماً بالأرقام الإنجليزية الصحيحة."); return; }
         if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); return; }
-        if (reason.length < 10) { showCustomAlert("خطأ في السبب", "سبب الإجازة قصير جداً، يجب ألا يقل عن 10 أحرف مفهومة."); return; }
+        if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب الإجازة", "يجب أن يكون سبب الإجازة مكتوباً باللغة العربية وبشكل مفهوم وواضح وألا يقل عن 10 أحرف صحيحة."); return; }
 
         let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
@@ -435,6 +455,10 @@
         let start = document.getElementById("filterStartDate").value;
         let end = document.getElementById("filterEndDate").value;
 
+        // تعبئة حقول الفلترة الداخلية تلقائياً إذا تم إدخالها في صفحة الدخول
+        if(start) document.getElementById("dashFilterStart").value = start;
+        if(end) document.getElementById("dashFilterEnd").value = end;
+
         let loginBtn = document.getElementById("loginBtn");
         loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
         loginBtn.disabled = true;
@@ -459,7 +483,7 @@
                 document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
                 
-                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName, start, end);
+                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
             } else {
                 showCustomAlert("خطأ في الدخول", res.message || "كلمة المرور غير صحيحة.");
             }
@@ -471,7 +495,7 @@
         });
     }
 
-    function loadDepartmentLeaves(deptName, role, category, start, end) {
+    function loadDepartmentLeaves(deptName, role, category) {
         let actionUrl = LEAVE_SCRIPT_URL + `?action=get_department_leaves&dept=${encodeURIComponent(deptName)}&role=${role}`;
         if (role === "hr_specialist") {
             actionUrl = LEAVE_SCRIPT_URL + `?action=get_leaves_by_category&category=${encodeURIComponent(category)}`;
@@ -480,69 +504,104 @@
         fetch(actionUrl)
         .then(res => res.json())
         .then(data => {
-            let container = document.getElementById("leavesCardsContainer");
-            if (data.status === "success" && data.data && data.data.length > 0) {
+            if (data.status === "success" && data.data) {
                 currentLeavesData = data.data;
-                let html = "";
-                
-                data.data.forEach((item, index) => {
-                    let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
-                    let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-                    let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف";
-                    
-                    let cardClass = "";
-                    let watermarkHtml = "";
-                    
-                    if (isSpecRejected) {
-                        cardClass = "rejected-spec locked";
-                        watermarkHtml = `<div class="watermark-rejected spec">مرفوض من المختص<br><span style="font-size: 14px;">${item.specRejectTime ? item.specRejectTime.split(' ')[0] : ''}</span></div>`;
-                    } else if (isMgrRejected) {
-                        cardClass = "rejected-mgr locked";
-                        watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
-                    } else if (isApprovedByMgr) {
-                        cardClass = "approved-mgr";
-                    }
-
-                    html += `
-                    <div class="emp-card-box ${cardClass}">
-                        ${watermarkHtml}
-                        <h4>الموظف: ${item.empName} (${item.requestId})</h4>
-                        <p><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
-                        <p><strong>نوع الإجازة:</strong> ${item.leaveType} (${item.daysCount} أيام)</p>
-                        <p><strong>الفترة:</strong> من ${item.startDate} إلى ${item.endDate}</p>
-                        <p><strong>السبب:</strong> ${item.reason}</p>
-                        <p><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
-                        <p><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
-                        ${item.rejectionReason ? `<p style="color:#dc3545;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
-                        
-                        <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
-                            ${role === 'hr_specialist' ? `
-                                ${item.specialistStatus === "قيد الانتظار" ? `
-                                    <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
-                                    <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
-                                ` : ''}
-                                ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
-                                    <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
-                                ` : ''}
-                            ` : `
-                                ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
-                                    <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
-                                    <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
-                                ` : ''}
-                                ${item.managerStatus === "مرفوض من المدير" ? `
-                                    <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
-                                    <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
-                                ` : ''}
-                            `}
-                            <button class="act-btn btn-pd" onclick="printSingleEmp(${index})"><i class="fas fa-print"></i> طباعة / PDF</button>
-                        </div>
-                    </div>`;
-                });
-                container.innerHTML = html;
+                renderLeavesCards(currentLeavesData);
             } else {
-                container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات بانتظار الاعتماد حالياً.</p>`;
+                document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات مسجلة حالياً.</p>`;
             }
         });
+    }
+
+    // دالة فلترة الطلبات المعروضة بناءً على التواريخ المحددة (تمنع إخفاء الطلبات القديمة عند البحث بالفلتر)
+    function applyDashboardDateFilter() {
+        let fStart = document.getElementById("dashFilterStart").value;
+        let fEnd = document.getElementById("dashFilterEnd").value;
+
+        if (!fStart && !fEnd) {
+            renderLeavesCards(currentLeavesData);
+            return;
+        }
+
+        let filtered = currentLeavesData.filter(item => {
+            let itemDate = item.startDate; // أو تاريخ الطلب
+            if (!itemDate) return true;
+            if (fStart && itemDate < fStart) return false;
+            if (fEnd && itemDate > fEnd) return false;
+            return true;
+        });
+
+        renderLeavesCards(filtered);
+    }
+
+    function resetDashboardDateFilter() {
+        document.getElementById("dashFilterStart").value = "";
+        document.getElementById("dashFilterEnd").value = "";
+        renderLeavesCards(currentLeavesData);
+    }
+
+    function renderLeavesCards(dataList) {
+        let container = document.getElementById("leavesCardsContainer");
+        if (!dataList || dataList.length === 0) {
+            container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات تطابق فترة الفلترة المحددة.</p>`;
+            return;
+        }
+
+        let html = "";
+        dataList.forEach((item, index) => {
+            let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
+            let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
+            let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف";
+            
+            let cardClass = "";
+            let watermarkHtml = "";
+            
+            if (isSpecRejected) {
+                cardClass = "rejected-spec locked";
+                watermarkHtml = `<div class="watermark-rejected spec">مرفوض من المختص<br><span style="font-size: 14px;">${item.specRejectTime ? item.specRejectTime.split(' ')[0] : ''}</span></div>`;
+            } else if (isMgrRejected) {
+                cardClass = "rejected-mgr locked";
+                watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
+            } else if (isApprovedByMgr) {
+                cardClass = "approved-mgr";
+            }
+
+            html += `
+            <div class="emp-card-box ${cardClass}">
+                ${watermarkHtml}
+                <h4>الموظف: ${item.empName} (${item.requestId})</h4>
+                <p><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
+                <p><strong>نوع الإجازة:</strong> ${item.leaveType} (${item.daysCount} أيام)</p>
+                <p><strong>الفترة:</strong> من ${item.startDate} إلى ${item.endDate}</p>
+                <p><strong>السبب:</strong> ${item.reason}</p>
+                <p><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
+                <p><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
+                ${item.rejectionReason ? `<p style="color:#dc3545;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
+                
+                <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${loggedInRole === 'hr_specialist' ? `
+                        ${item.specialistStatus === "قيد الانتظار" ? `
+                            <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
+                            <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
+                        ` : ''}
+                        ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
+                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
+                        ` : ''}
+                    ` : `
+                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
+                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
+                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
+                        ` : ''}
+                        ${item.managerStatus === "مرفوض من المدير" ? `
+                            <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
+                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
+                        ` : ''}
+                    `}
+                    <button class="act-btn btn-pd" onclick="printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;')})"><i class="fas fa-print"></i> طباعة / PDF</button>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
     }
 
     function promptSpecialistAction(rowIndex, statusType, defaultText) {
@@ -621,7 +680,6 @@
         let mgrStatusText = item.managerStatus || "قيد الانتظار";
         let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
         
-        // استخراج تاريخ التسجيل المباشر أسفل السيريال
         let reqDate = item.requestDate || new Date().toISOString().split('T')[0];
 
         let htmlContent = `
@@ -677,6 +735,10 @@
     function printSingleEmp(index) {
         let item = currentLeavesData[index];
         if (item) { openPrintWindow(item); }
+    }
+
+    function printCardEmp(itemObj) {
+        if (itemObj) { openPrintWindow(itemObj); }
     }
 
     function printLatestRequest() {
