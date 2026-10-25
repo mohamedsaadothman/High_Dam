@@ -71,12 +71,14 @@
 
         .custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(11, 19, 30, 0.85); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 15px; animation: fadeIn 0.3s ease; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .custom-modal-box { background: #ffffff; width: 100%; max-width: 380px; border-radius: 16px; padding: 25px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+        .custom-modal-box { background: #ffffff; width: 100%; max-width: 400px; border-radius: 16px; padding: 25px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
         .custom-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; justify-content: center; }
         .custom-modal-header i { font-size: 36px; color: #dc3545; }
         .custom-modal-header h3 { color: #1a365d; font-size: 18px; font-weight: 900; margin: 0; }
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
+        .modal-btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        .modal-btn-group button { flex: 1; }
 
         .print-chk { width: 18px; height: 18px; cursor: pointer; accent-color: #198754; margin-left: 8px; vertical-align: middle; }
 
@@ -135,12 +137,10 @@
                     <i class="fas fa-calendar-plus"></i>
                     <h4>تقديم طلب إجازة رسمي</h4>
                 </div>
-                <!-- زر إضافة موظف جديد (Modal) -->
                 <div class="feature-card" onclick="openSpecialistAuthModal()" style="margin-top: 12px; border-color: #0d6efd;">
                     <i class="fas fa-user-plus" style="color: #0d6efd;"></i>
                     <h4>إضافة موظف جديد</h4>
                 </div>
-                <!-- زر الاستعلام عن الرصيد -->
                 <div class="feature-card" onclick="openBalanceInquiry()" style="margin-top: 12px; border-color: #f59e0b;">
                     <i class="fas fa-user-check" style="color: #f59e0b;"></i>
                     <h4>الاستعلام عن الرصيد</h4>
@@ -482,9 +482,45 @@
         </div>
     </div>
 
+    <!-- مودال تأكيد التصفير (رسالة تحذيرية) -->
+    <div id="renewWarningModal" class="custom-modal-overlay hidden">
+        <div class="custom-modal-box">
+            <div class="custom-modal-header">
+                <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
+                <h3>تحذير هام</h3>
+            </div>
+            <div class="custom-modal-body">
+                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك.<br>
+                هل أنت متأكد من المتابعة؟
+            </div>
+            <div class="modal-btn-group">
+                <button class="custom-modal-btn" style="background: #198754;" onclick="proceedToCarryOver()">نعم، متأكد</button>
+                <button class="custom-modal-btn" style="background: #64748b;" onclick="closeRenewModals()">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال خيار الترحيل (رسالة تأكيدية) -->
+    <div id="renewCarryOverModal" class="custom-modal-overlay hidden">
+        <div class="custom-modal-box">
+            <div class="custom-modal-header">
+                <i class="fas fa-question-circle" style="color: #0d6efd;"></i>
+                <h3>خيار الترحيل</h3>
+            </div>
+            <div class="custom-modal-body">
+                هل تريد ترحيل <b>الرصيد المتبقي من الإجازة الاعتيادية</b> فقط إلى "رصيد سنوات سابقة"؟<br>
+                <span style="color: #dc3545; font-size: 12px;">(ملاحظة: الإجازة العارضة لا تُرحل بأي حال).</span>
+            </div>
+            <div class="modal-btn-group">
+                <button class="custom-modal-btn" style="background: #0d6efd;" onclick="executeRenew('نعم')">نعم، رحل المتبقي</button>
+                <button class="custom-modal-btn" style="background: #64748b;" onclick="executeRenew('لا')">لا، بدون ترحيل</button>
+            </div>
+        </div>
+    </div>
+
 <script>
     // ⚠️ الرابط الجديد
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZp94gwH7mO6ijAw4Gdd39aLzjIgC8okGVYHwmjv0F3p1IaZlmus-PfLjHD1S4844/exec";
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYWrwvlBLqrcmRpDjHbJPRNhLxjf7Jagn6wr5fHZ04UJr5jJDI4CdU9f466bnWfE3W/exec";
     
     var loggedInRole = "";
     var currentDeptOrCat = "";
@@ -699,12 +735,27 @@
     function renewBalances() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
-        if (!confirm(`هل أنت متأكد من تصفير أرصدة فئة (${cat}) للعام الجديد؟`)) return;
+        document.getElementById('renewWarningModal').classList.remove('hidden');
+    }
+
+    function closeRenewModals() {
+        document.getElementById('renewWarningModal').classList.add('hidden');
+        document.getElementById('renewCarryOverModal').classList.add('hidden');
+    }
+
+    function proceedToCarryOver() {
+        document.getElementById('renewWarningModal').classList.add('hidden');
+        document.getElementById('renewCarryOverModal').classList.remove('hidden');
+    }
+
+    function executeRenew(carryOverChoice) {
+        let cat = document.getElementById("hiddenJobCategory").value;
+        closeRenewModals();
         
-        let formData = new URLSearchParams({ action: "renew_balances_now", category: cat });
+        let formData = new URLSearchParams({ action: "renew_balances_now", category: cat, carryOverAnnual: carryOverChoice });
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم", res.message);
+                showCustomAlert("تم بنجاح", res.message);
             } else {
                 showCustomAlert("خطأ", res.message);
             }
