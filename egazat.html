@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- إضافة مكتبة الرسم البياني -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
@@ -104,7 +103,6 @@
         .summary-report-table tr:hover { background-color: #e2e8f0; }
         .summary-report-table .total-row { background-color: #c59b27 !important; font-weight: 900; color: #fff; }
 
-        /* تنسيقات إضافية للداشبورد */
         .dashboard-card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: center; }
         .dashboard-numbers { display: flex; justify-content: space-around; margin-bottom: 20px; }
         .num-box { background: #e0f2fe; padding: 15px; border-radius: 10px; width: 45%; }
@@ -149,8 +147,8 @@
                     <i class="fas fa-calendar-plus"></i>
                     <h4>تقديم طلب إجازة رسمي</h4>
                 </div>
-                <!-- زر إضافة موظف جديد -->
-                <div class="feature-card" onclick="openAddEmployeeForm()" style="margin-top: 12px; border-color: #0d6efd;">
+                <!-- زر إضافة موظف جديد (يتطلب باسورد) -->
+                <div class="feature-card" onclick="promptSpecialistPassword()" style="margin-top: 12px; border-color: #0d6efd;">
                     <i class="fas fa-user-plus" style="color: #0d6efd;"></i>
                     <h4>إضافة موظف جديد</h4>
                 </div>
@@ -184,6 +182,7 @@
                 <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="newEmpName" required placeholder="مثال: محمد أحمد علي محمود"></div>
                 <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="newEmpNationalId" maxlength="14" required placeholder="أدخل الرقم القومي"></div>
                 <div class="input-group"><label>تاريخ التعيين:</label><input type="date" id="newEmpHireDate" required></div>
+                <div class="input-group"><label>تاريخ المعاش (اختياري):</label><input type="date" id="newEmpRetireDate"></div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="0" oninput="calcAutoBal()"></div>
@@ -207,7 +206,7 @@
         </div>
     </section>
 
-    <!-- 3. نموذج الاستعلام عن الرصيد -->
+    <!-- 3. نموذج الاستعلام عن الرصيد وسجل الإجازات -->
     <section id="balanceInquirySection" class="service-full-page hidden">
         <div class="watermark-bg">Inquiry</div>
         <div class="service-card-wrapper large">
@@ -215,13 +214,15 @@
                 <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
                 <div class="service-title-area">
                     <h2>الاستعلام وسجل الإجازات</h2>
-                    <p>ابحث بالرقم القومي</p>
+                    <p>ابحث باستخدام اسم المستخدم وكلمة المرور (الرقم القومي)</p>
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <input type="text" id="inquirySearchInput" placeholder="أدخل الرقم القومي..." style="flex: 1; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px;">
-                <button class="act-btn btn-pd" onclick="performBalanceInquiry()" style="padding: 10px 20px;"><i class="fas fa-search"></i> بحث</button>
+            <!-- تسجيل الدخول للموظف -->
+            <div id="empLoginBox" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="text" id="inquiryUsername" placeholder="اسم المستخدم (الرقم القومي)..." style="flex: 1; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px;">
+                <input type="password" id="inquiryPassword" placeholder="كلمة المرور..." style="flex: 1; padding: 10px; border: 1.5px solid #cbd5e1; border-radius: 8px;">
+                <button class="act-btn btn-pd" onclick="performEmployeeLogin()" style="padding: 10px 20px;"><i class="fas fa-sign-in-alt"></i> دخول</button>
             </div>
 
             <div id="inquiryResultBox" class="hidden">
@@ -233,7 +234,7 @@
                     <button class="act-btn btn-warning" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> تغيير كلمة المرور</button>
                 </div>
 
-                <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center;">
+                <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center; flex-wrap: wrap;">
                     <input type="date" id="historyFilterStart" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
                     <span>إلى</span>
                     <input type="date" id="historyFilterEnd" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
@@ -246,7 +247,7 @@
             </div>
             <div id="inquiryErrorBox" class="hidden" style="text-align: center; color: #dc3545; padding: 20px; font-weight: bold;">
                 <i class="fas fa-times-circle" style="font-size: 30px; margin-bottom: 10px;"></i>
-                <p>لا يوجد موظف بهذا الرقم القومي.</p>
+                <p>اسم المستخدم أو كلمة المرور غير صحيحة.</p>
             </div>
         </div>
     </section>
@@ -271,12 +272,20 @@
                 <button class="act-btn btn-pd" onclick="printDashboardPDF()" style="margin-top: 15px; width: 100%;"><i class="fas fa-print"></i> طباعة الداشبورد PDF</button>
             </div>
 
+            <!-- عرض قائمة الموظفين -->
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                 <input type="text" id="searchEmpInput" placeholder="ابحث بالاسم أو الرقم القومي..." style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px;" oninput="filterEmployeesList()">
                 <button class="act-btn btn-ex" onclick="printEmployeesList('pdf')"><i class="fas fa-print"></i> طباعة</button>
                 <button class="act-btn btn-ex" onclick="printEmployeesList('excel')"><i class="fas fa-file-excel"></i> Excel</button>
             </div>
             <div id="employeesListContainer" style="max-height: 400px; overflow-y: auto;"></div>
+
+            <!-- عرض الموظفين المحالين للمعاش -->
+            <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 15px;">
+                <h3 style="color: #1a365d; font-size: 15px; margin-bottom: 10px;">الموظفون المحالون للمعاش</h3>
+                <button class="act-btn btn-secondary" onclick="loadRetiredEmployees()"><i class="fas fa-search"></i> عرض المحالين للمعاش</button>
+                <div id="retiredEmployeesContainer" style="margin-top: 10px;"></div>
+            </div>
         </div>
     </section>
 
@@ -480,8 +489,8 @@
     </div>
 
 <script>
-    // ⚠️ تم تحديث الرابط الجديد هنا
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyhikVtxdWaCj00YRs_gaAnPdX6vPTTEvapkGeD0kfL0ioFifjfSZNFhmk9ZlScTq_D/exec";
+    // ⚠️ الرابط الجديد
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqlLIH_qaZpGWWtzCYwH7GKiNBHPjYcINEm9uUxwdS-W-5Xd7OLtRGVhqWQLa_aJou/exec";
     
     var loggedInRole = "";
     var currentDeptOrCat = "";
@@ -491,7 +500,6 @@
     var latestSubmittedData = null;
     var filteredLeavesData = []; 
     var selectedLeaveIds = new Set(); 
-    var currentSpecCategory = "";
     var currentInquiryNationalId = "";
     var currentInquiryHistory = [];
     var currentEmployeesList = [];
@@ -501,7 +509,6 @@
         let todayStr = new Date().toISOString().split('T')[0];
         let startDateInput = document.getElementById("startDate");
         let endDateInput = document.getElementById("endDate");
-        
         if (startDateInput) startDateInput.min = todayStr;
         if (endDateInput) endDateInput.min = todayStr;
     });
@@ -509,7 +516,6 @@
     function showCustomAlert(title, message) {
         let existingOverlay = document.getElementById("customAlertModal");
         if (existingOverlay) existingOverlay.remove();
-
         let overlay = document.createElement("div");
         overlay.id = "customAlertModal";
         overlay.className = "custom-modal-overlay";
@@ -527,20 +533,30 @@
     }
 
     // --- التنقل ---
-    function openLeaveForm() {
+    function backToEgazatMenu() {
+        document.querySelectorAll('section, main').forEach(el => el.classList.add('hidden'));
+        document.getElementById("mainEgazatMenu").classList.remove("hidden");
+        
+        document.getElementById("loginPassword").value = "";
+        document.getElementById("dashSearchInput").value = "";
+        document.getElementById("searchSuggestions").style.display = "none";
+        selectedLeaveIds.clear();
+        document.getElementById("bulkPrintArea").classList.add("hidden");
+        document.getElementById("printableSummaryArea").style.display = "none"; 
+        document.getElementById("inquiryResultBox").classList.add("hidden");
+        document.getElementById("inquiryErrorBox").classList.add("hidden");
+        document.getElementById("inquiryUsername").value = "";
+        document.getElementById("inquiryPassword").value = "";
+    }
+
+    function openLeaveForm() { 
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("leaveFormSection").classList.remove("hidden");
     }
 
-    function openAddEmployeeForm() {
-        // بناءً على التعديل، يجب التحقق من باسورد المختص أولاً
-        // لتبسيط الأمر هنا، سنفتح نموذج الإضافة مباشرة، ولكن في تطبيقك الفعلي يفضل وضع شاشة باسورد
-        document.getElementById("mainEgazatMenu").classList.add("hidden");
-        document.getElementById("addEmployeeSection").classList.remove("hidden");
-    }
-
     function openBalanceInquiry() {
-        document.getElementById("inquirySearchInput").value = "";
+        document.getElementById("inquiryUsername").value = "";
+        document.getElementById("inquiryPassword").value = "";
         document.getElementById("inquiryResultBox").classList.add("hidden");
         document.getElementById("inquiryErrorBox").classList.add("hidden");
         document.getElementById("mainEgazatMenu").classList.add("hidden");
@@ -571,24 +587,22 @@
         });
     }
 
-    function backToEgazatMenu() {
-        document.getElementById("leaveFormSection").classList.add("hidden");
-        document.getElementById("addEmployeeSection").classList.add("hidden");
-        document.getElementById("balanceInquirySection").classList.add("hidden");
-        document.getElementById("managerLoginSection").classList.add("hidden");
-        document.getElementById("managerDashboardSection").classList.add("hidden");
-        document.getElementById("specialistDashboardSection").classList.add("hidden");
-        document.getElementById("mainEgazatMenu").classList.remove("hidden");
+    // --- 1. إضافة موظف جديد (التحقق من باسورد المختص) ---
+    function promptSpecialistPassword() {
+        let pass = prompt("أدخل كلمة المرور الخاصة بالموظف المختص:");
+        if (!pass) return;
         
-        document.getElementById("loginPassword").value = "";
-        document.getElementById("dashSearchInput").value = "";
-        document.getElementById("searchSuggestions").style.display = "none";
-        document.getElementById("inquirySearchInput").value = "";
-        document.getElementById("inquiryResultBox").classList.add("hidden");
-        document.getElementById("inquiryErrorBox").classList.add("hidden");
-        selectedLeaveIds.clear();
-        document.getElementById("bulkPrintArea").classList.add("hidden");
-        document.getElementById("printableSummaryArea").style.display = "none"; 
+        let formData = new URLSearchParams({ action: "verify_specialist_password", password: pass });
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
+            if (res.status === "success") {
+                document.getElementById("specCategoryDisplay").innerText = "الفئة: " + res.category;
+                document.getElementById("hiddenJobCategory").value = res.category;
+                document.getElementById("mainEgazatMenu").classList.add("hidden");
+                document.getElementById("addEmployeeSection").classList.remove("hidden");
+            } else {
+                showCustomAlert("خطأ", res.message);
+            }
+        });
     }
 
     function calcAutoBal() {
@@ -598,53 +612,46 @@
         document.getElementById('newEmpCurrentBal').value = annual + casual + sick259;
     }
 
-    // --- 1. إرسال بيانات موظف جديد ---
     function submitAddEmployee(e) {
         e.preventDefault();
         let btn = document.querySelector("#addEmployeeForm .btn-submit-main");
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق والحفظ...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...'; 
         btn.disabled = true;
-
+        
         let formData = new URLSearchParams({
-            action: "add_new_employee",
+            action: "add_new_employee", 
             name: document.getElementById("newEmpName").value.trim(),
-            nationalId: document.getElementById("newEmpNationalId").value.trim(),
+            nationalId: document.getElementById("newEmpNationalId").value.trim(), 
             hireDate: document.getElementById("newEmpHireDate").value,
-            annual: document.getElementById("newEmpAnnual").value,
+            retireDate: document.getElementById("newEmpRetireDate").value,
+            annual: document.getElementById("newEmpAnnual").value, 
             casual: document.getElementById("newEmpCasual").value,
-            sick259: document.getElementById("newEmpSick259").value,
+            sick259: document.getElementById("newEmpSick259").value, 
             prevBal: document.getElementById("newEmpPrevBal").value,
-            jobCategory: "تخصصية" // يمكنك تعديل هذا ليكون ديناميكياً حسب المختص
+            jobCategory: document.getElementById("hiddenJobCategory").value
         });
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            btn.innerHTML = '<i class="fas fa-save"></i> حفظ وترحيل البيانات';
+        
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
+            btn.innerHTML = '<i class="fas fa-save"></i> حفظ'; 
             btn.disabled = false;
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تمت إضافة الموظف وترحيل بياناته بنجاح.");
-                document.getElementById("addEmployeeForm").reset();
+            if (res.status === "success") { 
+                showCustomAlert("تم بنجاح", "تمت إضافة الموظف بنجاح."); 
+                document.getElementById("addEmployeeForm").reset(); 
                 calcAutoBal();
-            } else {
-                showCustomAlert("تعذر الحفظ", res.message);
+                backToEgazatMenu();
+            } else { 
+                showCustomAlert("تعذر الحفظ", res.message); 
             }
-        }).catch(err => { btn.innerHTML = '<i class="fas fa-save"></i> حفظ'; btn.disabled = false; showCustomAlert("خطأ", "تعذر الاتصال بالخادم."); });
+        });
     }
 
-    // --- 2. الاستعلام عن الرصيد ---
-    function performBalanceInquiry() {
-        let query = document.getElementById("inquirySearchInput").value.trim();
-        if (!query) { showCustomAlert("تنبيه", "يرجى إدخال الرقم القومي."); return; }
+    // --- 2. الاستعلام عن الرصيد (باسم المستخدم والباسورد) ---
+    function performEmployeeLogin() {
+        let username = document.getElementById("inquiryUsername").value.trim();
+        let password = document.getElementById("inquiryPassword").value.trim();
+        if (!username || !password) return showCustomAlert("تنبيه", "أدخل اسم المستخدم وكلمة المرور.");
 
-        document.getElementById("inquiryResultBox").classList.add("hidden");
-        document.getElementById("inquiryErrorBox").classList.add("hidden");
-        
-        let resultBox = document.getElementById("inquiryResultBox");
-        document.getElementById("inquiryDataContainer").innerHTML = '<p style="grid-column: span 2; text-align: center; color: #64748b;"><i class="fas fa-spinner fa-spin"></i> جاري البحث...</p>';
-        resultBox.classList.remove("hidden");
-
-        fetch(LEAVE_SCRIPT_URL + `?action=inquiry_balance&query=${encodeURIComponent(query)}`)
+        fetch(LEAVE_SCRIPT_URL + `?action=employee_login_inquiry&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`)
         .then(res => res.json())
         .then(res => {
             if (res.status === "success" && res.data) {
@@ -654,19 +661,17 @@
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; grid-column: span 2;"><strong>الاسم:</strong> ${emp.name}</div>
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>الرقم القومي:</strong> ${emp.nationalId}</div>
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>الفئة:</strong> ${emp.jobCategory}</div>
-                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>اعتيادي متبقي:</strong> <span>${emp.annual}</span></div>
-                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>عارضة متبقي:</strong> <span>${emp.casual}</span></div>
-                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي الفعلي:</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${emp.remainingBal}</span></div>
+                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>الاعتيادية:</strong> <span>${emp.annual}</span></div>
+                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>العارضة:</strong> <span>${emp.casual}</span></div>
+                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي:</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${emp.remainingBal}</span></div>
                 `;
+                document.getElementById("inquiryResultBox").classList.remove("hidden");
+                document.getElementById("inquiryErrorBox").classList.add("hidden");
                 loadEmployeeHistory(emp.nationalId);
             } else {
-                resultBox.classList.add("hidden");
+                document.getElementById("inquiryResultBox").classList.add("hidden");
                 document.getElementById("inquiryErrorBox").classList.remove("hidden");
             }
-        })
-        .catch(err => {
-            showCustomAlert("خطأ", "حدث خطأ أثناء الاتصال بالخادم.");
-            resultBox.classList.add("hidden");
         });
     }
 
@@ -680,7 +685,7 @@
     }
 
     function renderHistoryTable(data) {
-        let html = `<table class="summary-report-table"><thead><tr><th>الطلب</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th><th>الحالة</th></tr></thead><tbody>`;
+        let html = `<table class="summary-report-table"><thead><tr><th>الطلب</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th><th>الحالة النهائية</th></tr></thead><tbody>`;
         if(data.length === 0) {
             html += `<tr><td colspan="6">لا توجد إجازات سابقة</td></tr>`;
         } else {
@@ -705,7 +710,6 @@
     }
 
     function printHistoryPDF() { window.print(); }
-    
     function exportHistoryExcel() {
         let wb = XLSX.utils.table_to_book(document.getElementById("historyContainer"));
         XLSX.writeFile(wb, "سجل_الإجازات.xlsx");
@@ -730,8 +734,7 @@
         });
     }
 
-    // --- 3. دوال الداشبورد (للمختص) ---
-    // سيتم تفعيلها عند إضافة شاشة المختص
+    // --- 3. دوال المختص (الداشبورد والمعاش) ---
     function showSpecialistDashboard(category) {
         document.getElementById("specDashboardCatTitle").innerText = category;
         fetch(LEAVE_SCRIPT_URL + `?action=get_specialist_dashboard_data&category=${category}`).then(res => res.json()).then(res => {
@@ -765,12 +768,12 @@
     }
 
     function renderEmployeesList(data) {
-        let html = `<table class="summary-report-table"><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الاعتيادي</th><th>العارضة</th><th>المتبقي</th></tr></thead><tbody>`;
+        let html = `<table class="summary-report-table"><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الاعتيادي</th><th>العارضة</th><th>المتبقي</th><th>تاريخ المعاش</th></tr></thead><tbody>`;
         if(data.length === 0) {
-            html += `<tr><td colspan="5">لا يوجد موظفين</td></tr>`;
+            html += `<tr><td colspan="6">لا يوجد موظفين</td></tr>`;
         } else {
             data.forEach(emp => { 
-                html += `<tr><td>${emp.name}</td><td>${emp.nationalId}</td><td>${emp.annual}</td><td>${emp.casual}</td><td>${emp.remainingBal}</td></tr>`; 
+                html += `<tr><td>${emp.name}</td><td>${emp.nationalId}</td><td>${emp.annual}</td><td>${emp.casual}</td><td>${emp.remainingBal}</td><td>${emp.retireDate || 'غير محدد'}</td></tr>`; 
             });
         }
         html += `</tbody></table>`; 
@@ -793,20 +796,31 @@
         } else {
             let win = window.open('', '_blank');
             win.document.write(`<html dir="rtl"><head><title>طباعة الموظفين</title><style>body{font-family:Cairo;padding:20px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #000;padding:8px;text-align:center;}</style></head><body><h2>قائمة الموظفين</h2>${table}</body></html>`);
-            win.document.close(); 
-            win.print();
+            win.document.close(); win.print();
         }
     }
 
-    // --- 4. باقي الدوال الأصلية (التقديم، الطباعة، إلخ) ---
+    function loadRetiredEmployees() {
+        let cat = document.getElementById("specDashboardCatTitle").innerText;
+        fetch(LEAVE_SCRIPT_URL + `?action=get_retired_employees&category=${cat}`).then(res => res.json()).then(res => {
+            if (res.status === "success") {
+                let html = `<table class="summary-report-table"><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>تاريخ المعاش</th></tr></thead><tbody>`;
+                res.data.forEach(emp => { 
+                    html += `<tr><td>${emp.name}</td><td>${emp.nationalId}</td><td>${emp.retireDate}</td></tr>`; 
+                });
+                html += `</tbody></table>`;
+                document.getElementById("retiredEmployeesContainer").innerHTML = html;
+            }
+        });
+    }
+
+    // --- 4. تقديم الإجازة وتسجيل دخول المدير ---
     function onStartDateChange() {
         let start = document.getElementById("startDate").value;
         let endDateInput = document.getElementById("endDate");
         if (start) {
             endDateInput.min = start;
-            if (endDateInput.value && endDateInput.value < start) {
-                endDateInput.value = start;
-            }
+            if (endDateInput.value && endDateInput.value < start) endDateInput.value = start;
         }
         calculateDays();
     }
@@ -922,11 +936,16 @@
                 
                 document.getElementById("leavesCardsContainer").innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">جاري تحميل الطلبات...</p>';
                 document.getElementById("managerLoginSection").classList.add("hidden");
-                document.getElementById("managerDashboardSection").classList.remove("hidden");
-                document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
-                document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
                 
-                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
+                if (res.role === "hr_specialist") {
+                    // توجيه المختص للداشبورد الخاص به
+                    showSpecialistDashboard(currentCategoryName);
+                } else {
+                    document.getElementById("managerDashboardSection").classList.remove("hidden");
+                    document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
+                    document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
+                    loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
+                }
             } else {
                 showCustomAlert("خطأ في الدخول", res.message || "كلمة المرور غير صحيحة.");
             }
