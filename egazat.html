@@ -147,7 +147,7 @@
                     <i class="fas fa-calendar-plus"></i>
                     <h4>تقديم طلب إجازة رسمي</h4>
                 </div>
-                <!-- زر إضافة موظف جديد (يتطلب باسورد) -->
+                <!-- زر إضافة موظف جديد -->
                 <div class="feature-card" onclick="promptSpecialistPassword()" style="margin-top: 12px; border-color: #0d6efd;">
                     <i class="fas fa-user-plus" style="color: #0d6efd;"></i>
                     <h4>إضافة موظف جديد</h4>
@@ -187,6 +187,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="0" oninput="calcAutoBal()"></div>
                     <div class="input-group"><label>إجازة عارضة:</label><input type="number" id="newEmpCasual" required value="0" oninput="calcAutoBal()"></div>
+                    <div class="input-group"><label>إجازة مرضية:</label><input type="number" id="newEmpSick" required value="0" oninput="calcAutoBal()"></div>
                     <div class="input-group">
                         <label>مرضية بقرار 259:</label>
                         <select id="newEmpSick259" required onchange="calcAutoBal()">
@@ -234,11 +235,16 @@
                     <button class="act-btn btn-warning" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> تغيير كلمة المرور</button>
                 </div>
 
-                <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center; flex-wrap: wrap;">
+                <!-- أدوات البحث في السجلات القديمة (السنة والتاريخ) -->
+                <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center; flex-wrap: wrap; background: #f1f5f9; padding: 10px; border-radius: 8px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #334155;">تصفية السجلات:</label>
+                    <select id="historyFiscalYear" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;" onchange="filterEmployeeHistory()">
+                        <option value="">كل السنوات</option>
+                        <!-- سيتم ملؤها ديناميكياً -->
+                    </select>
                     <input type="date" id="historyFilterStart" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
                     <span>إلى</span>
                     <input type="date" id="historyFilterEnd" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-                    <button class="act-btn btn-ex" onclick="filterEmployeeHistory()">فلترة</button>
                     <button class="act-btn btn-pd" onclick="printHistoryPDF()"><i class="fas fa-print"></i> PDF</button>
                     <button class="act-btn btn-ex" onclick="exportHistoryExcel()"><i class="fas fa-file-excel"></i> Excel</button>
                 </div>
@@ -490,7 +496,7 @@
 
 <script>
     // ⚠️ الرابط الجديد
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqlLIH_qaZpGWWtzCYwH7GKiNBHPjYcINEm9uUxwdS-W-5Xd7OLtRGVhqWQLa_aJou/exec";
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwdQkwVZj0dAPRJrycc-6fHsDGPNYIpmfmkNgI-nfMe_zuZZINW_jOp72F3GckQvkt/exec";
     
     var loggedInRole = "";
     var currentDeptOrCat = "";
@@ -608,8 +614,9 @@
     function calcAutoBal() {
         let annual = parseFloat(document.getElementById('newEmpAnnual').value) || 0;
         let casual = parseFloat(document.getElementById('newEmpCasual').value) || 0;
+        let sick = parseFloat(document.getElementById('newEmpSick').value) || 0;
         let sick259 = document.getElementById('newEmpSick259').value === "نعم" ? 1 : 0;
-        document.getElementById('newEmpCurrentBal').value = annual + casual + sick259;
+        document.getElementById('newEmpCurrentBal').value = annual + casual + sick + sick259;
     }
 
     function submitAddEmployee(e) {
@@ -626,6 +633,7 @@
             retireDate: document.getElementById("newEmpRetireDate").value,
             annual: document.getElementById("newEmpAnnual").value, 
             casual: document.getElementById("newEmpCasual").value,
+            sick: document.getElementById("newEmpSick").value,
             sick259: document.getElementById("newEmpSick259").value, 
             prevBal: document.getElementById("newEmpPrevBal").value,
             jobCategory: document.getElementById("hiddenJobCategory").value
@@ -663,6 +671,8 @@
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>الفئة:</strong> ${emp.jobCategory}</div>
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>الاعتيادية:</strong> <span>${emp.annual}</span></div>
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>العارضة:</strong> <span>${emp.casual}</span></div>
+                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>المرضية:</strong> <span>${emp.sick}</span></div>
+                    <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;"><strong>مرضية 259:</strong> <span>${emp.sick259}</span></div>
                     <div style="background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي:</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${emp.remainingBal}</span></div>
                 `;
                 document.getElementById("inquiryResultBox").classList.remove("hidden");
@@ -679,8 +689,41 @@
         fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nid}`).then(res => res.json()).then(res => {
             if (res.status === "success") { 
                 currentInquiryHistory = res.data; 
+                populateFiscalYears(currentInquiryHistory);
                 renderHistoryTable(currentInquiryHistory); 
             }
+        });
+    }
+
+    // دالة ملء قائمة السنوات المالية ديناميكياً
+    function populateFiscalYears(data) {
+        let yearSelect = document.getElementById("historyFiscalYear");
+        let currentYear = new Date().getFullYear();
+        let years = new Set();
+        
+        // إضافة السنة الحالية والسنة السابقة
+        years.add(currentYear.toString());
+        years.add((currentYear - 1).toString());
+        
+        // استخراج السنوات من السجلات
+        data.forEach(item => {
+            if (item.startDate) {
+                let d = new Date(item.startDate);
+                if (!isNaN(d.getFullYear())) {
+                    years.add(d.getFullYear().toString());
+                }
+            }
+        });
+        
+        // ترتيب السنوات تنازلياً
+        let sortedYears = Array.from(years).sort((a, b) => b - a);
+        
+        yearSelect.innerHTML = '<option value="">كل السنوات</option>';
+        sortedYears.forEach(y => {
+            let opt = document.createElement("option");
+            opt.value = y;
+            opt.textContent = y;
+            yearSelect.appendChild(opt);
         });
     }
 
@@ -698,12 +741,23 @@
     }
 
     function filterEmployeeHistory() {
+        let selectedYear = document.getElementById("historyFiscalYear").value;
         let s = document.getElementById("historyFilterStart").value; 
         let e = document.getElementById("historyFilterEnd").value;
+        
         let filtered = currentInquiryHistory.filter(item => { 
             let match = true; 
+            
+            // الفلترة بالسنة
+            if (selectedYear && item.startDate) {
+                let itemYear = item.startDate.split('-')[0];
+                if (itemYear !== selectedYear) match = false;
+            }
+            
+            // الفلترة بالتاريخ
             if(s && item.startDate < s) match = false; 
             if(e && item.startDate > e) match = false; 
+            
             return match; 
         });
         renderHistoryTable(filtered);
