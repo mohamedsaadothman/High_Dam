@@ -89,13 +89,6 @@
         .summary-report-table tr:hover { background-color: #e2e8f0; }
         .summary-report-table .total-row { background-color: #c59b27 !important; font-weight: 900; color: #fff; }
 
-        .dashboard-card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: center; }
-        .dashboard-numbers { display: flex; justify-content: space-around; margin-bottom: 20px; }
-        .num-box { background: #e0f2fe; padding: 15px; border-radius: 10px; width: 45%; }
-        .num-box h3 { font-size: 24px; color: #0369a1; margin-bottom: 5px; }
-        .num-box p { font-size: 13px; color: #333; font-weight: bold; }
-        .chart-container { position: relative; height: 250px; width: 100%; }
-
         .inquiry-login-box { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto 20px auto; }
         .inquiry-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
         .inquiry-data-item { background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
@@ -170,7 +163,7 @@
                 <label>كلمة المرور:</label>
                 <input type="password" id="specAuthPassword" placeholder="أدخل كلمة المرور..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
             </div>
-            <button class="btn-submit-main" style="background: #0d6efd; margin-top: 15px;" onclick="verifySpecPassword()">دخول</button>
+            <button id="specAuthBtn" class="btn-submit-main" style="background: #0d6efd; margin-top: 15px;" onclick="verifySpecPassword()">دخول</button>
             <button class="custom-modal-btn" style="background: #64748b; margin-top: 8px;" onclick="document.getElementById('specialistAuthModal').classList.add('hidden')">إلغاء</button>
         </div>
     </div>
@@ -201,8 +194,8 @@
                 <div class="input-group"><label>تاريخ المعاش (اختياري):</label><input type="date" id="newEmpRetireDate"></div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="0" oninput="calcAutoBal()"></div>
-                    <div class="input-group"><label>إجازة عارضة:</label><input type="number" id="newEmpCasual" required value="0" oninput="calcAutoBal()"></div>
+                    <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="30" oninput="calcAutoBal()"></div>
+                    <div class="input-group"><label>إجازة عارضة:</label><input type="number" id="newEmpCasual" required value="7" oninput="calcAutoBal()"></div>
                     <div class="input-group"><label>إجازة مرضية:</label><input type="number" id="newEmpSick" required value="0" oninput="calcAutoBal()"></div>
                     <div class="input-group">
                         <label>مرضية بقرار 259:</label>
@@ -215,7 +208,7 @@
                 </div>
                 <div class="input-group">
                     <label>الرصيد الحالي (تلقائي):</label>
-                    <input type="number" id="newEmpCurrentBal" readonly style="background:#e2e8f0; font-weight:bold;" value="0">
+                    <input type="number" id="newEmpCurrentBal" readonly style="background:#e2e8f0; font-weight:bold;" value="37">
                 </div>
 
                 <button type="submit" class="btn-submit-main" style="background: #0d6efd;"><i class="fas fa-save"></i> حفظ وترحيل البيانات</button>
@@ -442,7 +435,7 @@
                 </div>
             </div>
 
-            <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px;">
+            <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px; color: #000;">
                 <div style="text-align: center; margin-bottom: 10px;">
                     <h2 style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
                     <p id="reportPeriodText" style="font-size: 12px; color: #333; margin-bottom: 5px;"></p>
@@ -490,7 +483,7 @@
                 <h3>تحذير هام</h3>
             </div>
             <div class="custom-modal-body">
-                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك.<br>
+                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك بدقة.<br>
                 هل أنت متأكد من المتابعة؟
             </div>
             <div class="modal-btn-group">
@@ -519,7 +512,6 @@
     </div>
 
 <script>
-    // ⚠️ الرابط الجديد
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxYWrwvlBLqrcmRpDjHbJPRNhLxjf7Jagn6wr5fHZ04UJr5jJDI4CdU9f466bnWfE3W/exec";
     
     var loggedInRole = "";
@@ -533,7 +525,6 @@
     var currentInquiryNationalId = "";
     var currentInquiryHistory = [];
     var currentEmployeesList = [];
-    var myChartInstance = null;
 
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
@@ -562,22 +553,29 @@
         document.body.appendChild(overlay);
     }
 
-    // --- التنقل ---
     function backToEgazatMenu() {
         document.querySelectorAll('section, main').forEach(el => el.classList.add('hidden'));
         document.getElementById("mainEgazatMenu").classList.remove("hidden");
         
         document.getElementById("loginPassword").value = "";
         document.getElementById("dashSearchInput").value = "";
-        document.getElementById("searchSuggestions").style.display = "none";
+        let sug = document.getElementById("searchSuggestions");
+        if(sug) sug.style.display = "none";
         selectedLeaveIds.clear();
-        document.getElementById("bulkPrintArea").classList.add("hidden");
-        document.getElementById("printableSummaryArea").style.display = "none"; 
-        document.getElementById("inquiryResultBox").classList.add("hidden");
-        document.getElementById("inquiryErrorBox").classList.add("hidden");
-        document.getElementById("inquiryUsername").value = "";
-        document.getElementById("inquiryPassword").value = "";
-        document.getElementById("empLoginBox").classList.remove("hidden");
+        let bulk = document.getElementById("bulkPrintArea");
+        if(bulk) bulk.classList.add("hidden");
+        let sumArea = document.getElementById("printableSummaryArea");
+        if(sumArea) sumArea.style.display = "none"; 
+        let resBox = document.getElementById("inquiryResultBox");
+        if(resBox) resBox.classList.add("hidden");
+        let errBox = document.getElementById("inquiryErrorBox");
+        if(errBox) errBox.classList.add("hidden");
+        let inqUser = document.getElementById("inquiryUsername");
+        if(inqUser) inqUser.value = "";
+        let inqPass = document.getElementById("inquiryPassword");
+        if(inqPass) inqPass.value = "";
+        let empLoginBox = document.getElementById("empLoginBox");
+        if(empLoginBox) empLoginBox.classList.remove("hidden");
     }
 
     function openLeaveForm() { 
@@ -619,7 +617,6 @@
         });
     }
 
-    // --- 1. التحقق من الموظف أثناء تقديم الطلب ---
     function validateEmployeeData() {
         let nid = document.getElementById("empNationalId").value.trim();
         let name = document.getElementById("empName").value.trim();
@@ -645,7 +642,6 @@
         }
     }
 
-    // --- 2. إضافة موظف جديد (Modal) ---
     function openSpecialistAuthModal() {
         document.getElementById('specAuthPassword').value = "";
         let select = document.getElementById('specAuthDept');
@@ -675,8 +671,14 @@
         let pass = document.getElementById('specAuthPassword').value;
         if (!dept || !pass) return showCustomAlert("تنبيه", "اختر الإدارة وأدخل كلمة المرور.");
         
-        let formData = new URLSearchParams({ action: "verify_specialist_password", password: pass });
+        let authBtn = document.getElementById("specAuthBtn");
+        authBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+        authBtn.disabled = true;
+
+        let formData = new URLSearchParams({ action: "verify_specialist_password", password: pass, dept: dept });
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
+            authBtn.innerHTML = 'دخول';
+            authBtn.disabled = false;
             if (res.status === "success") {
                 document.getElementById("specCategoryDisplay").innerText = "الفئة: " + res.category;
                 document.getElementById("hiddenJobCategory").value = res.category;
@@ -684,8 +686,12 @@
                 document.getElementById("mainEgazatMenu").classList.add("hidden");
                 document.getElementById("addEmployeeSection").classList.remove("hidden");
             } else {
-                showCustomAlert("خطأ", res.message);
+                showCustomAlert("خطأ", res.message || "كلمة المرور غير صحيحة");
             }
+        }).catch(err => {
+            authBtn.innerHTML = 'دخول';
+            authBtn.disabled = false;
+            showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
         });
     }
 
@@ -693,8 +699,8 @@
         let annual = parseFloat(document.getElementById('newEmpAnnual').value) || 0;
         let casual = parseFloat(document.getElementById('newEmpCasual').value) || 0;
         let sick = parseFloat(document.getElementById('newEmpSick').value) || 0;
-        let sick259 = document.getElementById('newEmpSick259').value === "نعم" ? 1 : 0;
-        document.getElementById('newEmpCurrentBal').value = annual + casual + sick + sick259;
+        let prev = parseFloat(document.getElementById('newEmpPrevBal').value) || 0;
+        document.getElementById('newEmpCurrentBal').value = annual + casual + sick + prev;
     }
 
     function submitAddEmployee(e) {
@@ -718,7 +724,7 @@
         });
         
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
-            btn.innerHTML = '<i class="fas fa-save"></i> حفظ'; 
+            btn.innerHTML = '<i class="fas fa-save"></i> حفظ وترحيل البيانات'; 
             btn.disabled = false;
             if (res.status === "success") { 
                 showCustomAlert("تم بنجاح", "تمت إضافة الموظف بنجاح."); 
@@ -731,7 +737,6 @@
         });
     }
 
-    // --- دوال المختص الإضافية (تصفير - تحميل) ---
     function renewBalances() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
@@ -774,11 +779,12 @@
                 });
                 html += `</tbody></table>`;
                 document.getElementById("specialistDataContainer").innerHTML = html;
+            } else {
+                document.getElementById("specialistDataContainer").innerHTML = `<p style="text-align:center; color:#333; padding:10px;">لا توجد بيانات مسجلة لهذه الفئة.</p>`;
             }
         });
     }
 
-    // --- 3. الاستعلام عن الرصيد (باسم المستخدم والباسورد) ---
     function performEmployeeLogin() {
         let username = document.getElementById("inquiryUsername").value.trim();
         let password = document.getElementById("inquiryPassword").value.trim();
@@ -917,87 +923,6 @@
         });
     }
 
-    // --- 4. دوال المختص (الداشبورد والمعاش) ---
-    function showSpecialistDashboard(category) {
-        document.getElementById("specDashboardCatTitle").innerText = category;
-        fetch(LEAVE_SCRIPT_URL + `?action=get_specialist_dashboard_data&category=${category}`).then(res => res.json()).then(res => {
-            if (res.status === "success") {
-                document.getElementById("statPrevMonth").innerText = res.data.prevMonthCount;
-                document.getElementById("statCurrentMonth").innerText = res.data.currentMonthCount;
-                renderChart(res.data.prevMonthCount, res.data.currentMonthCount);
-            }
-        });
-        fetch(LEAVE_SCRIPT_URL + `?action=get_all_employees_by_category&category=${category}`).then(res => res.json()).then(res => {
-            if (res.status === "success") { 
-                currentEmployeesList = res.data; 
-                renderEmployeesList(currentEmployeesList); 
-            }
-        });
-        document.getElementById("mainEgazatMenu").classList.add("hidden");
-        document.getElementById("specialistDashboardSection").classList.remove("hidden");
-    }
-
-    function renderChart(prev, current) {
-        if (myChartInstance) myChartInstance.destroy();
-        const ctx = document.getElementById('myChart').getContext('2d');
-        myChartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['الشهر السابق', 'الشهر الحالي'],
-                datasets: [{ label: 'عدد الإجازات', data: [prev, current], backgroundColor: ['#f59e0b', '#0d6efd'], borderWidth: 1 }]
-            },
-            options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false } } }
-        });
-    }
-
-    function renderEmployeesList(data) {
-        let html = `<table class="summary-report-table"><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الاعتيادي</th><th>العارضة</th><th>المتبقي</th><th>تاريخ المعاش</th></tr></thead><tbody>`;
-        if(data.length === 0) {
-            html += `<tr><td colspan="6">لا يوجد موظفين</td></tr>`;
-        } else {
-            data.forEach(emp => { 
-                html += `<tr><td>${emp.name}</td><td>${emp.nationalId}</td><td>${emp.annual}</td><td>${emp.casual}</td><td>${emp.remainingBal}</td><td>${emp.retireDate || 'غير محدد'}</td></tr>`; 
-            });
-        }
-        html += `</tbody></table>`; 
-        document.getElementById("employeesListContainer").innerHTML = html;
-    }
-
-    function filterEmployeesList() {
-        let q = document.getElementById("searchEmpInput").value.toLowerCase().trim();
-        let filtered = currentEmployeesList.filter(e => e.name.toLowerCase().includes(q) || e.nationalId.includes(q));
-        renderEmployeesList(filtered);
-    }
-
-    function printDashboardPDF() { window.print(); }
-
-    function printEmployeesList(type) {
-        let table = document.getElementById("employeesListContainer").innerHTML;
-        if (type === 'excel') {
-            let wb = XLSX.utils.table_to_book(document.getElementById("employeesListContainer"));
-            XLSX.writeFile(wb, "قائمة_الموظفين.xlsx");
-        } else {
-            let win = window.open('', '_blank');
-            win.document.write(`<html dir="rtl"><head><title>طباعة الموظفين</title><style>body{font-family:Cairo;padding:20px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #000;padding:8px;text-align:center;}</style></head><body><h2>قائمة الموظفين</h2>${table}</body></html>`);
-            win.document.close(); win.print();
-        }
-    }
-
-    function loadRetiredEmployees() {
-        let cat = document.getElementById("specDashboardCatTitle").innerText;
-        fetch(LEAVE_SCRIPT_URL + `?action=get_retired_employees&category=${cat}`).then(res => res.json()).then(res => {
-            if (res.status === "success") {
-                let html = `<table class="summary-report-table"><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>تاريخ المعاش</th></tr></thead><tbody>`;
-                res.data.forEach(emp => { 
-                    html += `<tr><td>${emp.name}</td><td>${emp.nationalId}</td><td>${emp.retireDate}</td></tr>`; 
-                });
-                html += `</tbody></table>`;
-                document.getElementById("retiredEmployeesContainer").innerHTML = html;
-            }
-        });
-    }
-
-    // --- 5. تقديم الإجازة وتسجيل دخول المدير ---
     function onStartDateChange() {
         let start = document.getElementById("startDate").value;
         let endDateInput = document.getElementById("endDate");
@@ -1020,10 +945,9 @@
     }
 
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
-    function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله'); }
-    function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
+    function isQuadrupleName(name) { let parts = name.toString().trim().split(' '); return parts.length >= 4; }
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
-    function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
+    function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; return true; }
 
     function submitLeaveForm(e) {
         e.preventDefault();
@@ -1119,15 +1043,10 @@
                 
                 document.getElementById("leavesCardsContainer").innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">جاري تحميل الطلبات...</p>';
                 document.getElementById("managerLoginSection").classList.add("hidden");
-                
-                if (res.role === "hr_specialist") {
-                    showSpecialistDashboard(currentCategoryName);
-                } else {
-                    document.getElementById("managerDashboardSection").classList.remove("hidden");
-                    document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
-                    document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
-                    loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
-                }
+                document.getElementById("managerDashboardSection").classList.remove("hidden");
+                document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
+                document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
+                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
             } else {
                 showCustomAlert("خطأ في الدخول", res.message || "كلمة المرور غير صحيحة.");
             }
@@ -1187,61 +1106,15 @@
         document.getElementById("dashFilterStart").value = "";
         document.getElementById("dashFilterEnd").value = "";
         document.getElementById("dashSearchInput").value = "";
-        document.getElementById("searchSuggestions").style.display = "none";
+        let sug = document.getElementById("searchSuggestions");
+        if(sug) sug.style.display = "none";
         filteredLeavesData = [...currentLeavesData];
         renderLeavesCards(filteredLeavesData);
     }
 
     function handleSmartSearch(val) {
-        let query = val.toLowerCase().trim();
-        let suggestBox = document.getElementById("searchSuggestions");
-        
-        if (!query) {
-            suggestBox.style.display = "none";
-            applyDashboardDateFilter(); 
-            return;
-        }
-
-        let matches = currentLeavesData.filter(item => 
-            (item.empName && item.empName.toLowerCase().includes(query)) || 
-            (item.nationalId && item.nationalId.includes(query))
-        );
-
-        if (matches.length > 0) {
-            suggestBox.innerHTML = "";
-            let uniqueMatches = [];
-            let seen = new Set();
-            matches.forEach(m => {
-                if(!seen.has(m.nationalId)) {
-                    seen.add(m.nationalId);
-                    uniqueMatches.push(m);
-                }
-            });
-
-            uniqueMatches.slice(0, 5).forEach(m => {
-                let div = document.createElement("div");
-                div.className = "suggestion-item";
-                div.innerHTML = `<strong>${m.empName}</strong> - ${m.nationalId}`;
-                div.onclick = function() {
-                    document.getElementById("dashSearchInput").value = m.empName; 
-                    suggestBox.style.display = "none";
-                    applyDashboardDateFilter(); 
-                };
-                suggestBox.appendChild(div);
-            });
-            suggestBox.style.display = "block";
-        } else {
-            suggestBox.style.display = "none";
-        }
+        applyDashboardDateFilter();
     }
-
-    document.addEventListener('click', function(e) {
-        let suggestBox = document.getElementById("searchSuggestions");
-        let searchInput = document.getElementById("dashSearchInput");
-        if (suggestBox && e.target !== searchInput && e.target !== suggestBox && !suggestBox.contains(e.target)) {
-            suggestBox.style.display = "none";
-        }
-    });
 
     function toggleLeaveSelection(requestId) {
         if (selectedLeaveIds.has(requestId)) {
@@ -1252,10 +1125,11 @@
         
         let count = selectedLeaveIds.size;
         document.getElementById("selectedCount").innerText = count;
+        let bulkArea = document.getElementById("bulkPrintArea");
         if (count > 0) {
-            document.getElementById("bulkPrintArea").classList.remove("hidden");
+            bulkArea.classList.remove("hidden");
         } else {
-            document.getElementById("bulkPrintArea").classList.add("hidden");
+            bulkArea.classList.add("hidden");
         }
     }
 
@@ -1268,29 +1142,10 @@
 
         let html = "";
         dataList.forEach((item, index) => {
-            let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
-            let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-            let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || item.managerStatus.includes("مقبول");
-            
-            let cardClass = "";
-            let watermarkHtml = "";
-            
-            if (isSpecRejected) {
-                cardClass = "rejected-spec locked";
-                watermarkHtml = `<div class="watermark-rejected spec">مرفوض من المختص<br><span style="font-size: 14px;">${item.specRejectTime ? item.specRejectTime.split(' ')[0] : ''}</span></div>`;
-            } else if (isMgrRejected) {
-                cardClass = "rejected-mgr locked";
-                watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
-            } else if (isApprovedByMgr) {
-                cardClass = "approved-mgr locked";
-                watermarkHtml = `<div class="watermark-rejected approved">معتمد ومؤرشف<br><span style="font-size: 14px;">${item.startDate || ''}</span></div>`;
-            }
-
             let isChecked = selectedLeaveIds.has(item.requestId) ? "checked" : "";
 
             html += `
-            <div class="emp-card-box ${cardClass}">
-                ${watermarkHtml}
+            <div class="emp-card-box">
                 <h4>
                     <input type="checkbox" class="print-chk" onchange="toggleLeaveSelection('${item.requestId}')" ${isChecked}>
                     الموظف: ${item.empName} (${item.requestId})
@@ -1309,17 +1164,10 @@
                             <button class="act-btn btn-ex" onclick="promptSpecialistAction(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
                             <button class="act-btn btn-danger" onclick="promptSpecialistAction(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
                         ` : ''}
-                        ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
-                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
-                        ` : ''}
                     ` : `
-                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
+                        ${item.managerStatus === "قيد الانتظار" ? `
                             <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
                             <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
-                        ` : ''}
-                        ${item.managerStatus === "مرفوض من المدير" ? `
-                            <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
-                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
                         ` : ''}
                     `}
                     <button class="act-btn btn-pd" onclick="printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;')})"><i class="fas fa-print"></i> طباعة / PDF</button>
@@ -1341,7 +1189,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الإجراء وإرسال إشعار بريدي.");
+                showCustomAlert("تم بنجاح", "تم تسجيل الإجراء بنجاح.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
             }
         });
@@ -1356,7 +1204,7 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم الاعتماد وإرسال إشعار بريدي.");
+                showCustomAlert("تم بنجاح", "تم الاعتماد بنجاح.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
             }
         });
@@ -1374,56 +1222,14 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرفض وإرسال إشعار بريدي.");
+                showCustomAlert("تم بنجاح", "تم تسجيل الرفض بنجاح.");
                 loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
             }
         });
-    }
-
-    function resubmitToSpecialist(rowIndex) {
-        let reason = prompt("يرجى كتابة سبب الإعادة للمختص:", "تم إلغاء الرفض وإعادة الطلب لمراجعة الرصيد");
-        if (!reason) return;
-
-        let formData = new URLSearchParams({ action: "resubmit_to_specialist", rowIndex: rowIndex, reason: reason });
-        
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم إعادة الطلب للموظف المختص.");
-                loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
-            }
-        });
-    }
-
-    function getPrintWatermarkHtml(item) {
-        let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
-        let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-        let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || item.managerStatus.includes("مقبول");
-        
-        let wmText = "";
-        let wmColor = "";
-        
-        if (isSpecRejected) { wmText = "مرفوض من المختص"; wmColor = "#d97706"; }
-        else if (isMgrRejected) { wmText = "مرفوض من المدير"; wmColor = "#dc2626"; }
-        else if (isApprovedByMgr) { wmText = "معتمد ومؤرشف"; wmColor = "#198754"; }
-        else { wmText = "قيد الانتظار"; wmColor = "#64748b"; }
-
-        return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
     }
 
     function openPrintWindow(item) {
         let printWindow = window.open('', '_blank');
-        
-        let specStatusText = item.specialistStatus || "قيد الانتظار";
-        let specColor = specStatusText.includes("مرفوض") ? "red" : (specStatusText.includes("رصيد متاح") ? "green" : "#333");
-        
-        let mgrStatusText = item.managerStatus || "قيد الانتظار";
-        let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
-        
-        let reqDate = item.requestDate || new Date().toISOString().split('T')[0];
-        let watermark = getPrintWatermarkHtml(item);
-
         let htmlContent = `
             <!DOCTYPE html>
             <html lang="ar" dir="rtl">
@@ -1432,42 +1238,27 @@
                 <title>طباعة طلب إجازة</title>
                 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
                 <style>
-                    body { font-family: 'Cairo', sans-serif; padding: 25px; color: #000; direction: rtl; font-size: 16px; position: relative; }
-                    .page-container { position: relative; z-index: 1; }
+                    body { font-family: 'Cairo', sans-serif; padding: 25px; color: #000; direction: rtl; font-size: 16px; }
                     .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 25px; }
                     .title { text-align: center; margin: 35px 0; font-size: 22px; font-weight: bold; text-decoration: underline; }
                     .content { font-size: 17px; line-height: 2.3; text-align: justify; margin-bottom: 45px; }
                     .footer { display: flex; justify-content: space-between; margin-top: 70px; font-size: 15px; }
-                    .status-box { margin-top: 45px; border: 2px solid #000; padding: 18px; text-align: center; background: #f9f9f9; font-size: 15px; }
                 </style>
             </head>
             <body>
-                ${watermark}
-                <div class="page-container">
-                    <div class="header">
-                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
-                        <div style="text-align: left;">
-                            <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
-                            <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
-                        </div>
-                    </div>
-                    <div class="title">طلب إجازة رسمي</div>
-                    <div class="content">
-                        <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
-                        <p>تحية طيبة وبعد،،،</p>
-                        <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
-                        <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
-                    </div>
-                    <div class="footer">
-                        <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.nationalId}</p></div>
-                        <div style="text-align: left;"><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
-                    </div>
-                    <div class="status-box">
-                        <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
-                        <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
-                        <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
-                        ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
-                    </div>
+                <div class="header">
+                    <div><strong>الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
+                    <div>مسلسل الطلب: <strong>${item.requestId}</strong></div>
+                </div>
+                <div class="title">طلب إجازة رسمي</div>
+                <div class="content">
+                    <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
+                    <p>تحية طيبة وبعد،،،</p>
+                    <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                </div>
+                <div class="footer">
+                    <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.empName}</strong></p></div>
+                    <div><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
                 </div>
             </body>
             </html>
@@ -1481,90 +1272,11 @@
     function printSelectedLeaves() {
         let itemsToPrint = filteredLeavesData.filter(item => selectedLeaveIds.has(item.requestId));
         if(itemsToPrint.length === 0) return;
-
-        let printWindow = window.open('', '_blank');
-        let htmlContent = `
-            <!DOCTYPE html>
-            <html lang="ar" dir="rtl">
-            <head>
-                <meta charset="UTF-8">
-                <title>طباعة طلبات متعددة</title>
-                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-                <style>
-                    body { font-family: 'Cairo', sans-serif; padding: 20px; color: #000; direction: rtl; font-size: 16px; }
-                    .page-break { page-break-after: always; margin-bottom: 40px; border-bottom: 2px dashed #ccc; padding-bottom: 20px; }
-                    .page-container { position: relative; z-index: 1; padding: 20px; }
-                    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 25px; }
-                    .title { text-align: center; margin: 35px 0; font-size: 22px; font-weight: bold; text-decoration: underline; }
-                    .content { font-size: 17px; line-height: 2.3; text-align: justify; margin-bottom: 45px; }
-                    .footer { display: flex; justify-content: space-between; margin-top: 70px; font-size: 15px; }
-                    .status-box { margin-top: 45px; border: 2px solid #000; padding: 18px; text-align: center; background: #f9f9f9; font-size: 15px; }
-                </style>
-            </head>
-            <body>
-        `;
-
-        itemsToPrint.forEach(item => {
-            let specStatusText = item.specialistStatus || "قيد الانتظار";
-            let specColor = specStatusText.includes("مرفوض") ? "red" : (specStatusText.includes("رصيد متاح") ? "green" : "#333");
-            let mgrStatusText = item.managerStatus || "قيد الانتظار";
-            let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
-            let reqDate = item.requestDate || new Date().toISOString().split('T')[0];
-            let watermark = getPrintWatermarkHtml(item);
-
-            htmlContent += `
-                <div class="page-break">
-                    ${watermark}
-                    <div class="page-container">
-                        <div class="header">
-                            <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
-                            <div style="text-align: left;">
-                                <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
-                                <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
-                            </div>
-                        </div>
-                        <div class="title">طلب إجازة رسمي</div>
-                        <div class="content">
-                            <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
-                            <p>تحية طيبة وبعد،،،</p>
-                            <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
-                            <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
-                        </div>
-                        <div class="footer">
-                            <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.nationalId}</p></div>
-                            <div style="text-align: left;"><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
-                        </div>
-                        <div class="status-box">
-                            <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
-                            <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
-                            <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
-                            ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        htmlContent += `</body></html>`;
-        
-        printWindow.document.open();
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
+        itemsToPrint.forEach(item => openPrintWindow(item));
     }
 
-    function printSingleEmp(index) {
-        let item = currentLeavesData[index];
-        if (item) { openPrintWindow(item); }
-    }
-
-    function printCardEmp(itemObj) {
-        if (itemObj) { openPrintWindow(itemObj); }
-    }
-
-    function printLatestRequest() {
-        if (latestSubmittedData) { openPrintWindow(latestSubmittedData); }
-    }
+    function printCardEmp(itemObj) { if (itemObj) openPrintWindow(itemObj); }
+    function printLatestRequest() { if (latestSubmittedData) openPrintWindow(latestSubmittedData); }
 
     function resetLeaveForm() {
         document.getElementById("leaveForm").reset();
@@ -1572,10 +1284,6 @@
         document.getElementById("leaveForm").classList.remove("hidden");
         document.getElementById("leaveResultContainer").classList.add("hidden");
         latestSubmittedData = null;
-        
-        let todayStr = new Date().toISOString().split('T')[0];
-        document.getElementById("startDate").min = todayStr;
-        document.getElementById("endDate").min = todayStr;
     }
 
     var summaryDataForExcel = []; 
@@ -1584,22 +1292,11 @@
         let sDate = document.getElementById("summaryStartDate").value;
         let eDate = document.getElementById("summaryEndDate").value;
 
-        if (!sDate || !eDate) {
-            showCustomAlert("خطأ في التاريخ", "يرجى تحديد تاريخ البداية والنهاية للتقرير.");
-            return;
-        }
-
-        if (sDate > eDate) {
-            showCustomAlert("خطأ في التاريخ", "تاريخ البداية يجب أن يكون قبل تاريخ النهاية.");
-            return;
-        }
-
-        let reportLeaves = currentLeavesData.filter(item => {
-            return item.startDate >= sDate && item.startDate <= eDate;
-        });
+        if (!sDate || !eDate) return showCustomAlert("خطأ", "يرجى تحديد تاريخ البداية والنهاية.");
+        let reportLeaves = currentLeavesData.filter(item => item.startDate >= sDate && item.startDate <= eDate);
 
         if (reportLeaves.length === 0) {
-            showCustomAlert("لا توجد بيانات", "لا توجد طلبات إجازة مسجلة في هذه الفترة المحددة.");
+            showCustomAlert("لا توجد بيانات", "لا توجد طلبات إجازة مسجلة في هذه الفترة.");
             document.getElementById("printableSummaryArea").style.display = "none";
             return;
         }
@@ -1608,16 +1305,8 @@
         reportLeaves.forEach(item => {
             let nid = item.nationalId;
             if (!aggregated[nid]) {
-                aggregated[nid] = {
-                    empName: item.empName,
-                    nationalId: nid,
-                    casual: 0,      
-                    annual: 0,      
-                    sick: 0,
-                    sick259: 0
-                };
+                aggregated[nid] = { empName: item.empName, nationalId: nid, casual: 0, annual: 0, sick: 0, sick259: 0 };
             }
-            
             let days = parseFloat(item.daysCount) || 0;
             if (item.leaveType === "عارضة") aggregated[nid].casual += days;
             else if (item.leaveType === "اعتيادية" || item.leaveType === "رصيد سنوات سابقة") aggregated[nid].annual += days;
@@ -1625,101 +1314,42 @@
             else if (item.leaveType === "مرضية بقرار 259") aggregated[nid].sick259 += days;
         });
 
-        let finalData = Object.values(aggregated).map(emp => {
-            let total = emp.casual + emp.annual + emp.sick + emp.sick259;
-            return { ...emp, total: total };
-        });
-
-        let grandTotalCasual = 0, grandTotalAnnual = 0, grandTotalSick = 0, grandTotalSick259 = 0, grandTotal = 0;
-        finalData.forEach(emp => {
-            grandTotalCasual += emp.casual;
-            grandTotalAnnual += emp.annual;
-            grandTotalSick += emp.sick;
-            grandTotalSick259 += emp.sick259;
-            grandTotal += emp.total;
-        });
-
+        let finalData = Object.values(aggregated).map(emp => ({ ...emp, total: emp.casual + emp.annual + emp.sick + emp.sick259 }));
         let tbody = document.getElementById("summaryReportBody");
         let rowsHtml = "";
-        
-        let maxRowsToShow = 15; 
-        let displayedRows = finalData.slice(0, maxRowsToShow);
+        let gCasual = 0, gAnnual = 0, gSick = 0, gSick259 = 0, gTotal = 0;
 
-        displayedRows.forEach((emp, index) => {
-            rowsHtml += `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td style="text-align: right; font-weight: bold;">${emp.empName}</td>
-                    <td>${emp.nationalId}</td>
-                    <td>${emp.casual}</td>
-                    <td>${emp.annual}</td>
-                    <td>${emp.sick}</td>
-                    <td>${emp.sick259}</td>
-                    <td style="font-weight: bold; background-color: #f0fdf4;">${emp.total}</td>
-                </tr>
-            `;
+        finalData.forEach((emp, index) => {
+            gCasual += emp.casual; gAnnual += emp.annual; gSick += emp.sick; gSick259 += emp.sick259; gTotal += emp.total;
+            rowsHtml += `<tr><td>${index + 1}</td><td style="text-align: right; font-weight: bold;">${emp.empName}</td><td>${emp.nationalId}</td><td>${emp.casual}</td><td>${emp.annual}</td><td>${emp.sick}</td><td>${emp.sick259}</td><td style="font-weight: bold; background-color: #f0fdf4;">${emp.total}</td></tr>`;
         });
 
-        rowsHtml += `
-            <tr class="total-row">
-                <td colspan="3">الإجمالي العام</td>
-                <td>${grandTotalCasual}</td>
-                <td>${grandTotalAnnual}</td>
-                <td>${grandTotalSick}</td>
-                <td>${grandTotalSick259}</td>
-                <td>${grandTotal}</td>
-            </tr>
-        `;
-
+        rowsHtml += `<tr class="total-row"><td colspan="3">الإجمالي العام</td><td>${gCasual}</td><td>${gAnnual}</td><td>${gSick}</td><td>${gSick259}</td><td>${gTotal}</td></tr>`;
         tbody.innerHTML = rowsHtml;
-        
         document.getElementById("reportPeriodText").innerText = `عن الفترة من: ${sDate} إلى: ${eDate}`;
-        
         document.getElementById("printableSummaryArea").style.display = "block";
 
-        summaryDataForExcel = [
-            ['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'مرضية 259', 'المجموع']
-        ];
+        summaryDataForExcel = [['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'مرضية 259', 'المجموع']];
         finalData.forEach((emp, index) => {
             summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.sick259, emp.total]);
         });
-        summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, grandTotalSick259, grandTotal]);
+        summaryDataForExcel.push(['', 'الإجمالي العام', '', gCasual, gAnnual, gSick, gSick259, gTotal]);
 
-        showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك الآن طباعته أو تحميله كملف إكسل.");
+        showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك طباعته أو تحميله كملف إكسل.");
     }
 
     function downloadExcelSummary() {
-        if (summaryDataForExcel.length <= 1) {
-            showCustomAlert("لا توجد بيانات", "يرجى عرض التقرير أولاً قبل تحميله.");
-            return;
-        }
-
+        if (summaryDataForExcel.length <= 1) return showCustomAlert("تنبيه", "يرجى عرض التقرير أولاً.");
         let wb = XLSX.utils.book_new();
         let ws = XLSX.utils.aoa_to_sheet(summaryDataForExcel);
-
-        ws['!cols'] = [
-            { wch: 5 },  
-            { wch: 30 }, 
-            { wch: 15 }, 
-            { wch: 12 }, 
-            { wch: 12 }, 
-            { wch: 12 }, 
-            { wch: 12 },
-            { wch: 10 }  
-        ];
-
         XLSX.utils.book_append_sheet(wb, ws, "تقرير الإجازات");
-        XLSX.writeFile(wb, `تقرير_الإجازات_التجميعي_${document.getElementById("summaryStartDate").value}_${document.getElementById("summaryEndDate").value}.xlsx`);
+        XLSX.writeFile(wb, "تقرير_الإجازات_التجميعي.xlsx");
     }
 
     function printSummaryReport() {
-        if (document.getElementById("printableSummaryArea").style.display === "none") {
-            showCustomAlert("لا يوجد تقرير", "يرجى عرض التقرير أولاً قبل طباعته.");
-            return;
-        }
+        if (document.getElementById("printableSummaryArea").style.display === "none") return showCustomAlert("تنبيه", "عرض التقرير أولاً.");
         window.print();
     }
-
 </script>
 </body>
 </html>
