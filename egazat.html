@@ -94,7 +94,6 @@
         .num-box p { font-size: 13px; color: #333; font-weight: bold; }
         .chart-container { position: relative; height: 250px; width: 100%; }
 
-        /* تحسينات كارت الاستعلام */
         .inquiry-login-box { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto 20px auto; }
         .inquiry-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
         .inquiry-data-item { background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
@@ -188,6 +187,12 @@
                 </div>
             </div>
 
+            <!-- أزرار المختص (تصفير - تحميل البيانات) -->
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; background: #f1f5f9; padding: 10px; border-radius: 8px;">
+                <button class="act-btn btn-warning" onclick="renewBalances()" style="flex: 1;"><i class="fas fa-sync-alt"></i> تصفير عداد الإجازات للفئة</button>
+                <button class="act-btn btn-pd" onclick="loadSpecialistData()" style="flex: 1;"><i class="fas fa-download"></i> تحميل بيانات الفئة</button>
+            </div>
+
             <form id="addEmployeeForm" onsubmit="submitAddEmployee(event)">
                 <input type="hidden" id="hiddenJobCategory">
                 <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="newEmpName" required placeholder="مثال: محمد أحمد علي محمود"></div>
@@ -215,6 +220,9 @@
 
                 <button type="submit" class="btn-submit-main" style="background: #0d6efd;"><i class="fas fa-save"></i> حفظ وترحيل البيانات</button>
             </form>
+            
+            <!-- مكان عرض بيانات الفئة بعد التحميل -->
+            <div id="specialistDataContainer" style="margin-top: 20px;"></div>
         </div>
     </section>
 
@@ -238,7 +246,7 @@
                 <div class="input-group" style="margin-bottom: 0;">
                     <input type="password" id="inquiryPassword" placeholder="كلمة المرور..." style="padding: 12px;">
                 </div>
-                <button class="btn-submit-main" onclick="performEmployeeLogin()" style="margin-top: 0;"><i class="fas fa-sign-in-alt"></i> دخول</button>
+                <button class="btn-submit-main" id="empLoginBtn" onclick="performEmployeeLogin()" style="margin-top: 0;"><i class="fas fa-sign-in-alt"></i> دخول</button>
             </div>
 
             <div id="inquiryResultBox" class="hidden">
@@ -443,11 +451,12 @@
                     <thead>
                         <tr>
                             <th style="width: 5%;">م</th>
-                            <th style="width: 30%;">اسم الموظف</th>
+                            <th style="width: 25%;">اسم الموظف</th>
                             <th style="width: 15%;">الرقم القومي</th>
                             <th style="width: 10%;">إجازة عارضة</th>
                             <th style="width: 10%;">إجازة اعتيادية</th>
                             <th style="width: 10%;">إجازة مرضية</th>
+                            <th style="width: 10%;">مرضية 259</th>
                             <th style="width: 10%;">المجموع</th>
                         </tr>
                     </thead>
@@ -475,7 +484,7 @@
 
 <script>
     // ⚠️ الرابط الجديد
-    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzVIFHfSCb7KXkc6GQPa8I-xiuCXI7rrv88XV9HY3iwmOGJt5aNd-jplPSnRqDX98yG/exec";
+    const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZp94gwH7mO6ijAw4Gdd39aLzjIgC8okGVYHwmjv0F3p1IaZlmus-PfLjHD1S4844/exec";
     
     var loggedInRole = "";
     var currentDeptOrCat = "";
@@ -532,7 +541,7 @@
         document.getElementById("inquiryErrorBox").classList.add("hidden");
         document.getElementById("inquiryUsername").value = "";
         document.getElementById("inquiryPassword").value = "";
-        document.getElementById("empLoginBox").classList.remove("hidden"); // إظهار كارت الدخول
+        document.getElementById("empLoginBox").classList.remove("hidden");
     }
 
     function openLeaveForm() { 
@@ -545,7 +554,7 @@
         document.getElementById("inquiryPassword").value = "";
         document.getElementById("inquiryResultBox").classList.add("hidden");
         document.getElementById("inquiryErrorBox").classList.add("hidden");
-        document.getElementById("empLoginBox").classList.remove("hidden"); // إظهار كارت الدخول
+        document.getElementById("empLoginBox").classList.remove("hidden");
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("balanceInquirySection").classList.remove("hidden");
     }
@@ -585,7 +594,6 @@
             .then(res => {
                 if (res.status === "success") {
                     let dbName = res.data.name;
-                    // تنظيف الأسماء للمقارنة
                     let cleanDbName = dbName.replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله');
                     let cleanInputName = name.replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله');
                     
@@ -687,15 +695,53 @@
         });
     }
 
+    // --- دوال المختص الإضافية (تصفير - تحميل) ---
+    function renewBalances() {
+        let cat = document.getElementById("hiddenJobCategory").value;
+        if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
+        if (!confirm(`هل أنت متأكد من تصفير أرصدة فئة (${cat}) للعام الجديد؟`)) return;
+        
+        let formData = new URLSearchParams({ action: "renew_balances_now", category: cat });
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم", res.message);
+            } else {
+                showCustomAlert("خطأ", res.message);
+            }
+        });
+    }
+
+    function loadSpecialistData() {
+        let cat = document.getElementById("hiddenJobCategory").value;
+        if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
+        
+        fetch(LEAVE_SCRIPT_URL + `?action=get_all_employees_by_category&category=${cat}`).then(res => res.json()).then(res => {
+            if (res.status === "success" && res.data) {
+                let html = `<table class="summary-report-table"><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الاعتيادي</th><th>العارضة</th><th>المتبقي</th></tr></thead><tbody>`;
+                res.data.forEach(emp => {
+                    html += `<tr><td>${emp.name}</td><td>${emp.nationalId}</td><td>${emp.annual}</td><td>${emp.casual}</td><td>${emp.remainingBal}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                document.getElementById("specialistDataContainer").innerHTML = html;
+            }
+        });
+    }
+
     // --- 3. الاستعلام عن الرصيد (باسم المستخدم والباسورد) ---
     function performEmployeeLogin() {
         let username = document.getElementById("inquiryUsername").value.trim();
         let password = document.getElementById("inquiryPassword").value.trim();
         if (!username || !password) return showCustomAlert("تنبيه", "أدخل اسم المستخدم وكلمة المرور.");
 
+        let btn = document.getElementById("empLoginBtn");
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الدخول...';
+        btn.disabled = true;
+
         fetch(LEAVE_SCRIPT_URL + `?action=employee_login_inquiry&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`)
         .then(res => res.json())
         .then(res => {
+            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+            btn.disabled = false;
             if (res.status === "success" && res.data) {
                 let emp = res.data;
                 currentInquiryNationalId = emp.nationalId;
@@ -711,12 +757,16 @@
                 `;
                 document.getElementById("inquiryResultBox").classList.remove("hidden");
                 document.getElementById("inquiryErrorBox").classList.add("hidden");
-                document.getElementById("empLoginBox").classList.add("hidden"); // إخفاء كارت الدخول بعد النجاح
+                document.getElementById("empLoginBox").classList.add("hidden");
                 loadEmployeeHistory(emp.nationalId);
             } else {
                 document.getElementById("inquiryResultBox").classList.add("hidden");
                 document.getElementById("inquiryErrorBox").classList.remove("hidden");
             }
+        }).catch(err => {
+            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+            btn.disabled = false;
+            showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
         });
     }
 
@@ -730,26 +780,19 @@
         });
     }
 
-    // دالة ملء قائمة السنوات المالية ديناميكياً
     function populateFiscalYears(data) {
         let yearSelect = document.getElementById("historyFiscalYear");
         let currentYear = new Date().getFullYear();
         let years = new Set();
-        
         years.add(currentYear.toString());
         years.add((currentYear - 1).toString());
-        
         data.forEach(item => {
             if (item.startDate) {
                 let d = new Date(item.startDate);
-                if (!isNaN(d.getFullYear())) {
-                    years.add(d.getFullYear().toString());
-                }
+                if (!isNaN(d.getFullYear())) years.add(d.getFullYear().toString());
             }
         });
-        
         let sortedYears = Array.from(years).sort((a, b) => b - a);
-        
         yearSelect.innerHTML = '<option value="">كل السنوات</option>';
         sortedYears.forEach(y => {
             let opt = document.createElement("option");
@@ -791,13 +834,12 @@
     }
 
     function printHistoryPDF() { 
-        // طباعة الجدول فقط
         let printContents = document.getElementById("historyContainer").innerHTML;
         let originalContents = document.body.innerHTML;
         document.body.innerHTML = `<div dir="rtl" style="font-family:Cairo; padding:20px;"><h2>سجل الإجازات</h2>${printContents}</div>`;
         window.print();
         document.body.innerHTML = originalContents;
-        location.reload(); // إعادة تحميل الصفحة لاستعادة الحالة
+        location.reload();
     }
     
     function exportHistoryExcel() {
@@ -1028,7 +1070,6 @@
                 document.getElementById("managerLoginSection").classList.add("hidden");
                 
                 if (res.role === "hr_specialist") {
-                    // توجيه المختص للداشبورد الخاص به
                     showSpecialistDashboard(currentCategoryName);
                 } else {
                     document.getElementById("managerDashboardSection").classList.remove("hidden");
@@ -1521,26 +1562,29 @@
                     nationalId: nid,
                     casual: 0,      
                     annual: 0,      
-                    sick: 0         
+                    sick: 0,
+                    sick259: 0
                 };
             }
             
             let days = parseFloat(item.daysCount) || 0;
             if (item.leaveType === "عارضة") aggregated[nid].casual += days;
             else if (item.leaveType === "اعتيادية" || item.leaveType === "رصيد سنوات سابقة") aggregated[nid].annual += days;
-            else if (item.leaveType === "مرضية" || item.leaveType === "مرضية بقرار 259") aggregated[nid].sick += days;
+            else if (item.leaveType === "مرضية") aggregated[nid].sick += days;
+            else if (item.leaveType === "مرضية بقرار 259") aggregated[nid].sick259 += days;
         });
 
         let finalData = Object.values(aggregated).map(emp => {
-            let total = emp.casual + emp.annual + emp.sick;
+            let total = emp.casual + emp.annual + emp.sick + emp.sick259;
             return { ...emp, total: total };
         });
 
-        let grandTotalCasual = 0, grandTotalAnnual = 0, grandTotalSick = 0, grandTotal = 0;
+        let grandTotalCasual = 0, grandTotalAnnual = 0, grandTotalSick = 0, grandTotalSick259 = 0, grandTotal = 0;
         finalData.forEach(emp => {
             grandTotalCasual += emp.casual;
             grandTotalAnnual += emp.annual;
             grandTotalSick += emp.sick;
+            grandTotalSick259 += emp.sick259;
             grandTotal += emp.total;
         });
 
@@ -1559,6 +1603,7 @@
                     <td>${emp.casual}</td>
                     <td>${emp.annual}</td>
                     <td>${emp.sick}</td>
+                    <td>${emp.sick259}</td>
                     <td style="font-weight: bold; background-color: #f0fdf4;">${emp.total}</td>
                 </tr>
             `;
@@ -1570,6 +1615,7 @@
                 <td>${grandTotalCasual}</td>
                 <td>${grandTotalAnnual}</td>
                 <td>${grandTotalSick}</td>
+                <td>${grandTotalSick259}</td>
                 <td>${grandTotal}</td>
             </tr>
         `;
@@ -1581,12 +1627,12 @@
         document.getElementById("printableSummaryArea").style.display = "block";
 
         summaryDataForExcel = [
-            ['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'المجموع']
+            ['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'مرضية 259', 'المجموع']
         ];
         finalData.forEach((emp, index) => {
-            summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.total]);
+            summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.sick259, emp.total]);
         });
-        summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, grandTotal]);
+        summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, grandTotalSick259, grandTotal]);
 
         showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك الآن طباعته أو تحميله كملف إكسل.");
     }
@@ -1607,6 +1653,7 @@
             { wch: 12 }, 
             { wch: 12 }, 
             { wch: 12 }, 
+            { wch: 12 },
             { wch: 10 }  
         ];
 
