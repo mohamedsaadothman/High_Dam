@@ -575,6 +575,25 @@
     var currentSpecActionRow = null;
     var currentSpecActionStatus = "";
 
+    // دوال التحقق من النصوص
+    function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
+    function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله'); }
+    function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
+    function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
+    function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
+
+    function normalizeArabicText(text) {
+        if (!text) return "";
+        return text.toString().trim()
+            .replace(/[\u064B-\u065F\u0670]/g, "")
+            .replace(/[أإآٱ]/g, "ا")
+            .replace(/ة/g, "ه")
+            .replace(/[ىي]/g, "ي")
+            .replace(/ؤ/g, "و")
+            .replace(/ئ/g, "ي")
+            .replace(/\s+/g, " ");
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
         let startDateInput = document.getElementById("startDate");
@@ -661,19 +680,6 @@
         });
     }
 
-    // ✅ إصلاح: دالة توحيد النصوص العربية (تتجاهل الهمزات، التشكيل، المسافات، التاء المربوطة، إلخ)
-    function normalizeArabicText(text) {
-        if (!text) return "";
-        return text.toString().trim()
-            .replace(/[\u064B-\u065F\u0670]/g, "") // إزالة التشكيل
-            .replace(/[أإآٱ]/g, "ا")              // توحيد الألف والهمزات
-            .replace(/ة/g, "ه")                    // توحيد التاء المربوطة
-            .replace(/[ىي]/g, "ي")                 // توحيد الياء والألف المقصورة
-            .replace(/ؤ/g, "و")                    // توحيد الواو
-            .replace(/ئ/g, "ي")                    // توحيد الياء
-            .replace(/\s+/g, " ");                 // إزالة المسافات الزائدة
-    }
-
     function validateEmployeeData() {
         let nid = document.getElementById("empNationalId").value.trim();
         let name = document.getElementById("empName").value.trim();
@@ -687,7 +693,6 @@
                     let cleanDbName = normalizeArabicText(dbName);
                     let cleanInputName = normalizeArabicText(name);
                     
-                    // مقارنة الاسمين بعد توحيدهما
                     if (cleanDbName !== cleanInputName) {
                         showCustomAlert("تنبيه هام", "الاسم المكتوب لا يطابق الاسم المسجل بهذا الرقم القومي.<br><br><b>الاسم المسجل لدينا:</b> " + dbName);
                         document.getElementById("empNationalId").value = "";
@@ -1102,10 +1107,6 @@
         }
     }
 
-    function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
-    function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
-    function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
-
     function submitLeaveForm(e) {
         e.preventDefault();
         let name = document.getElementById("empName").value.trim();
@@ -1139,6 +1140,14 @@
         if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب الإجازة", "يجب أن يكون سبب الإجازة مكتوباً باللغة العربية وبشكل مفهوم وواضح وألا يقل عن 10 أحرف صحيحة."); return; }
 
         let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
+        
+        if (type === "اعتيادية + رصيد سنوات سابقة") {
+            if ((dAnnual + dPrev) !== totalDays) {
+                showCustomAlert("تنبيه هام", "مجموع الأيام (الاعتيادي + رصيد سابق) وهو (" + (dAnnual + dPrev) + " يوم) لا يتطابق مع المدة المحسوبة بين التاريخين وهي (" + totalDays + " يوم). يرجى تعديل التواريخ أو الأرقام.");
+                return;
+            }
+        }
+
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
         let submissionDateStr = new Date().toISOString().split('T')[0];
 
@@ -1169,7 +1178,14 @@
         for (const key in payload) { formData.append(key, payload[key]); }
 
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
+        .then(async res => {
+            let text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error("استجابة غير صالحة من الخادم. يرجى التأكد من نشر كود Apps Script (Deploy -> New Version).");
+            }
+        })
         .then(res => {
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
@@ -1184,13 +1200,13 @@
                 document.getElementById("leaveForm").classList.add("hidden");
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
             } else {
-                showCustomAlert("عذراً، تعذر قبول الطلب", res.message);
+                showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
             }
         })
-        .catch(() => {
+        .catch((err) => {
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
-            showCustomAlert("خطأ في الاتصال", "تعذر الاتصال بالخادم، يرجى المحاولة مرة أخرى.");
+            showCustomAlert("خطأ في الاتصال", err.message);
         });
     }
 
