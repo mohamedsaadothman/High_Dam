@@ -556,7 +556,7 @@
     </div>
 
 <script>
-    // ⚠️ تم تحديث الرابط الجديد هنا
+    // ⚠️ الرابط الجديد
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbweLf0LNlsQp69JEgxk7hmu3v7JN27unJoTCPP48FV7mMCEThiLAwerOVc9Qu4umNq_/exec";
     
     var loggedInRole = "";
@@ -661,18 +661,19 @@
         });
     }
 
-    // دالة تطهير الاسم للمقارنة (تتجاهل المسافات، الهمزات، التاء المربوطة، الياء)
-    function cleanNameForCompare(name) {
-        if (!name) return "";
-        return name.toString().trim()
-            .replace(/\s+/g, '') // حذف كل المسافات
-            .replace(/[أإآ]/g, 'ا') // توحيد الهمزات
-            .replace(/ة/g, 'ه') // التاء المربوطة
-            .replace(/ى/g, 'ي') // الألف المقصورة
-            .replace(/[\u064B-\u065F]/g, ''); // حذف التشكيل
+    // ✅ إصلاح: دالة توحيد النصوص العربية (تتجاهل الهمزات، التشكيل، المسافات، التاء المربوطة، إلخ)
+    function normalizeArabicText(text) {
+        if (!text) return "";
+        return text.toString().trim()
+            .replace(/[\u064B-\u065F\u0670]/g, "") // إزالة التشكيل
+            .replace(/[أإآٱ]/g, "ا")              // توحيد الألف والهمزات
+            .replace(/ة/g, "ه")                    // توحيد التاء المربوطة
+            .replace(/[ىي]/g, "ي")                 // توحيد الياء والألف المقصورة
+            .replace(/ؤ/g, "و")                    // توحيد الواو
+            .replace(/ئ/g, "ي")                    // توحيد الياء
+            .replace(/\s+/g, " ");                 // إزالة المسافات الزائدة
     }
 
-    // التحقق من تطابق الاسم والرقم القومي
     function validateEmployeeData() {
         let nid = document.getElementById("empNationalId").value.trim();
         let name = document.getElementById("empName").value.trim();
@@ -681,14 +682,15 @@
             fetch(LEAVE_SCRIPT_URL + `?action=check_employee_exists&query=${nid}`)
             .then(res => res.json())
             .then(res => {
-                if (res.status === "success" && res.data) {
+                if (res.status === "success") {
                     let dbName = res.data.name;
-                    let cleanedDbName = cleanNameForCompare(dbName);
-                    let cleanedInputName = cleanNameForCompare(name);
+                    let cleanDbName = normalizeArabicText(dbName);
+                    let cleanInputName = normalizeArabicText(name);
                     
-                    if (cleanedDbName !== cleanedInputName) {
-                        showCustomAlert("تنبيه هام", "عذراً، الاسم المكتوب لا يتطابق مع الاسم المسجل بهذا الرقم القومي.<br><br>الاسم المسجل لدينا: <b>" + dbName + "</b>");
-                        document.getElementById("empName").value = "";
+                    // مقارنة الاسمين بعد توحيدهما
+                    if (cleanDbName !== cleanInputName) {
+                        showCustomAlert("تنبيه هام", "الاسم المكتوب لا يطابق الاسم المسجل بهذا الرقم القومي.<br><br><b>الاسم المسجل لدينا:</b> " + dbName);
+                        document.getElementById("empNationalId").value = "";
                     }
                 } else {
                     showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل في قاعدة البيانات. يرجى مراجعة الموارد البشرية.");
@@ -1101,7 +1103,6 @@
     }
 
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
-    function isQuadrupleName(name) { let cleaned = cleanNameForCompare(name); return cleaned.length >= 8; } // تقريباً 4 كلمات
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
     function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
 
