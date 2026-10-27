@@ -110,7 +110,7 @@
     <div id="loginScreen">
         <div class="login-box">
             <h2><i class="fas fa-lock"></i> تسجيل الدخول للدردشة</h2>
-            <input type="text" id="loginName" placeholder="الاسم (كما في الشيت)">
+            <input type="text" id="loginName" placeholder="الاسم">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
             <button onclick="login()">دخول</button>
         </div>
@@ -154,10 +154,16 @@
 
         let currentUserName = "";
 
-        // دالة تنظيف النص (نفس الموجودة في Apps Script)
+        // دالة تنظيف النص (ذكية جداً في التعامل مع المسافات والهمزات)
         function normalizeText(text) {
             if (!text) return "";
-            return text.toString().trim().replace(/\s+/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').toLowerCase();
+            return text.toString()
+                .trim()
+                .replace(/\s+/g, '') // مسح كل المسافات
+                .replace(/[أإآ]/g, 'ا') // توحيد الهمزات
+                .replace(/ة/g, 'ه') // توحيد التاء المربوطة
+                .replace(/ى/g, 'ي') // توحيد الألف المقصورة
+                .toLowerCase(); 
         }
 
         // دالة تسجيل الدخول
@@ -165,7 +171,6 @@
             const nameInput = document.getElementById('loginName').value;
             const passInput = document.getElementById('loginPassword').value;
             
-            // الرابط الخاص بك تم دمجه هنا
             const scriptUrl = "https://script.google.com/macros/s/AKfycbxu6D8FxohniAfWowgZCqG4C-wSpUp8v4j8YHzUVEtlQjyCQdj2pxZrBT7lMe4YMs6uqA/exec";
 
             if (!nameInput || !passInput) {
@@ -177,27 +182,32 @@
                 const btn = document.querySelector('#loginScreen button');
                 btn.innerText = "جاري التحقق...";
 
+                // جلب البيانات من الشيت
                 const response = await fetch(scriptUrl);
                 const users = await response.json();
 
+                // تنظيف المدخلات
                 const cleanInputName = normalizeText(nameInput);
                 const cleanInputPass = normalizeText(passInput);
 
-                // البحث عن المستخدم
+                // البحث عن المستخدم بطريقة ذكية
                 const user = users.find(u => u.name === cleanInputName && u.password === cleanInputPass);
 
                 if (user) {
                     // نجاح الدخول
                     currentUserName = nameInput.trim(); 
                     localStorage.setItem('chat_user_name', currentUserName);
+                    
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('chatScreen').style.display = 'block';
                 } else {
-                    alert("خطأ في الاسم أو كلمة المرور، أو أنك غير مسجل في النظام.");
+                    // في حالة الفشل، نظهر الأسماء المتاحة للتأكد من مطابقتها
+                    let sampleNames = users.slice(0, 3).map(u => `الاسم: ${u.name} - الباسورد: ${u.password}`).join('\n');
+                    alert("لم يتم العثور على تطابق. تأكد من كتابة الاسم والباسورد بشكل صحيح.\n\nأمثلة من الأسماء التي تم تحميلها:\n" + sampleNames);
                     btn.innerText = "دخول";
                 }
             } catch (error) {
-                alert("حدث خطأ في الاتصال. تأكد من الرابط.");
+                alert("حدث خطأ في الاتصال بالخادم.");
                 document.querySelector('#loginScreen button').innerText = "دخول";
             }
         }
