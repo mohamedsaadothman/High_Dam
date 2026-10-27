@@ -172,14 +172,14 @@
                             </select>
                         </div>
 
-                        <!-- الإدارة الأم -->
+                        <!-- الإدارة (تم إزالة كلمة قطاع) -->
                         <div class="form-group">
-                            <label>الإدارة الأم:</label>
+                            <label>الإدارة:</label>
                             <select id="parentDepartment" required onchange="updateSubDepartments()">
-                                <option value="">اختر الإدارة الأم...</option>
-                                <option value="قطاع الموارد البشرية">قطاع الموارد البشرية</option>
-                                <option value="قطاع الشئون المالية والإدارية">قطاع الشئون المالية والإدارية</option>
-                                <option value="قطاع العقود والمشتريات">قطاع العقود والمشتريات</option>
+                                <option value="">اختر الإدارة...</option>
+                                <option value="الموارد البشرية">الموارد البشرية</option>
+                                <option value="الشئون المالية والإدارية">الشئون المالية والإدارية</option>
+                                <option value="العقود والمشتريات">العقود والمشتريات</option>
                             </select>
                         </div>
 
@@ -187,7 +187,7 @@
                         <div class="form-group">
                             <label>الإدارة الفرعية / المختصة:</label>
                             <select id="subDepartment" required>
-                                <option value="">اختر الإدارة الأم أولاً...</option>
+                                <option value="">اختر الإدارة أولاً...</option>
                             </select>
                         </div>
                         
@@ -220,9 +220,16 @@
                             <input type="number" id="estCost" required placeholder="0.00">
                         </div>
                         <div class="form-group">
-                            <label>المبرر والغرض من الاحتياج:</label>
-                            <textarea id="justification" required placeholder="اشرح سبب الاحتياج..."></textarea>
+                            <label>المبرر والغرض من الاحتياج (باللغة العربية ومفهوم):</label>
+                            <textarea id="justification" required placeholder="اشرح سبب الاحتياج بالتفصيل..."></textarea>
                         </div>
+                        
+                        <!-- حقل كلمة المرور الجديد للتحقق -->
+                        <div class="form-group">
+                            <label>كلمة المرور (للتأكيد):</label>
+                            <input type="password" id="userPassword" required placeholder="أدخل كلمة المرور الخاصة بك...">
+                        </div>
+
                         <button type="submit" class="main-btn" id="submitBtn"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
                     </form>
                 </div>
@@ -303,27 +310,53 @@
     </div>
 
     <script>
-        // الرابط الخاص بك (تم التأكد من صحته)
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbww2vjEBEBoQylJqx279nr94FXKqUAxXIGaImoOoWPPDdRw3DvZ1ZbNcOFgSbbJPYwNrA/exec";
 
-        // دوال التحقق
+        // ==========================================
+        // مصفوفة الإدارات (يمكنك التعديل عليها هنا بسهولة)
+        // ==========================================
+        const departmentsData = {
+            "الموارد البشرية": [
+                "إدارة الاستحقاقات", 
+                "إدارة المواهب", 
+                "إدارة التدريب", 
+                "إدارة شئون العاملين"
+            ],
+            "الشئون المالية والإدارية": [
+                "الإدارة المالية", 
+                "إدارة الحسابات", 
+                "إدارة المشتريات المخزنية", 
+                "إدارة الخدمات المعاونة"
+            ],
+            "العقود والمشتريات": [
+                "إدارة العقود", 
+                "إدارة المشتريات المحلية", 
+                "إدارة المشتريات الخارجية", 
+                "إدارة المخازن"
+            ]
+        };
+
+        // دوال التحقق الصارم
         function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
         function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' '); }
         function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
         function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
+        
+        // التحقق من المبرر (عربي، مفهوم، بدون تكرار حروف، لا يقل عن 10 أحرف)
+        function isValidArabicReason(reason) { 
+            let clean = reason.trim(); 
+            if (clean.length < 10) return false; 
+            if (!isArabicOnly(clean)) return false; 
+            if (/(.)\1{4,}/.test(clean)) return false; // يمنع تكرار الحرف أكثر من 4 مرات متتالية مثل (اااااا)
+            return true; 
+        }
 
-        // قاموس الإدارات (يمكنك إضافة المزيد هنا)
-        const departmentsData = {
-            "قطاع الموارد البشرية": ["إدارة الاستحقاقات", "إدارة المواهب", "إدارة التدريب", "إدارة شئون العاملين"],
-            "قطاع الشئون المالية والإدارية": ["الإدارة المالية", "إدارة الحسابات", "إدارة المشتريات المخزنية", "إدارة الخدمات المعاونة"],
-            "قطاع العقود والمشتريات": ["إدارة العقود", "إدارة المشتريات المحلية", "إدارة المشتريات الخارجية", "إدارة المخازن"]
-        };
-
-        // تحديث الإدارات الفرعية
+        // تحديث الإدارات الفرعية بناءً على الإدارة المختارة
         function updateSubDepartments() {
             const parentSelect = document.getElementById("parentDepartment");
             const subSelect = document.getElementById("subDepartment");
             const selectedParent = parentSelect.value;
+
             subSelect.innerHTML = '<option value="">اختر الإدارة الفرعية...</option>';
 
             if (selectedParent && departmentsData[selectedParent]) {
@@ -334,7 +367,7 @@
                     subSelect.appendChild(option);
                 });
             } else {
-                subSelect.innerHTML = '<option value="">اختر الإدارة الأم أولاً...</option>';
+                subSelect.innerHTML = '<option value="">اختر الإدارة أولاً...</option>';
             }
         }
 
@@ -365,14 +398,14 @@
 
         function resetCreateForm() {
             document.getElementById('requestForm').reset();
-            document.getElementById('subDepartment').innerHTML = '<option value="">اختر الإدارة الأم أولاً...</option>';
+            document.getElementById('subDepartment').innerHTML = '<option value="">اختر الإدارة أولاً...</option>';
             document.getElementById('requestFormContainer').style.display = 'block';
             document.getElementById('successBox').style.display = 'none';
             document.getElementById('submitBtn').innerText = "إرسال الطلب";
             document.getElementById('submitBtn').disabled = false;
         }
 
-        // إرسال طلب الشراء (تم إصلاح الإرسال ليتوافق مع Google Scripts)
+        // إرسال طلب الشراء
         document.getElementById('requestForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -388,8 +421,9 @@
             const qty = document.getElementById('quantity').value.trim();
             const cost = document.getElementById('estCost').value.trim();
             const just = document.getElementById('justification').value.trim();
+            const userPassword = document.getElementById('userPassword').value.trim(); // الباسورد
 
-            // التحقق الصارم
+            // تطبيق الشروط الصارمة
             if (!isArabicOnly(applicant) || !isQuadrupleName(applicant)) { 
                 showCustomAlert("خطأ", "يجب أن يكون اسم مقدم الطلب عربياً ورباعياً (4 مقاطع)."); return; 
             }
@@ -402,6 +436,12 @@
             if (phone.length < 11 || !isEnglishNumbers(phone)) { 
                 showCustomAlert("خطأ", "رقم الهاتف يجب أن يكون 11 رقماً إنجليزياً."); return; 
             }
+            if (!isValidArabicReason(just)) { 
+                showCustomAlert("خطأ في المبرر", "يجب أن يكون المبرر مكتوباً باللغة العربية، مفهوماً، وألا يقل عن 10 أحرف."); return; 
+            }
+            if (!userPassword) { 
+                showCustomAlert("خطأ", "يجب إدخال كلمة المرور الخاصة بك."); return; 
+            }
 
             const btn = document.getElementById('submitBtn');
             btn.innerText = "جاري الإرسال...";
@@ -410,7 +450,7 @@
             const serialNo = "REQ-" + Math.floor(10000 + Math.random() * 90000);
             const reqDate = new Date().toISOString().split('T')[0];
 
-            // استخدام URLSearchParams بدلاً من JSON لحل مشكلة جوجل سكريبت
+            // تجهيز البيانات للإرسال إلى Google Scripts
             const formData = new URLSearchParams();
             formData.append('action', 'createRequest');
             formData.append('applicantName', applicant);
@@ -427,12 +467,12 @@
             formData.append('justification', just);
             formData.append('requestId', serialNo);
             formData.append('requestDate', reqDate);
+            formData.append('userPassword', userPassword); // إرسال الباسورد للسيرفر للتحقق
 
             fetch(SCRIPT_URL, {
                 method: 'POST',
                 body: formData
             }).then(() => {
-                // نعتبر العملية ناجحة طالما لم يحدث خطأ بالشبكة
                 btn.innerText = "تم الإرسال";
                 document.getElementById('requestFormContainer').style.display = 'none';
                 document.getElementById('successBox').style.display = 'block';
@@ -462,7 +502,7 @@
             });
         });
 
-        // دالة الطباعة المعدلة (التوقيعات الثلاثية)
+        // دالة الطباعة
         function printPurchaseRequest(itemObj) {
             if (!itemObj) return alert("لا توجد بيانات للطباعة.");
 
@@ -502,7 +542,7 @@
                         .content { font-size: 15px; text-align: justify; margin-bottom: 40px; }
                         .content p { margin-bottom: 12px; }
                         
-                        /* تصميم التوقيعات الثلاثية */
+                        /* تصميم التوقيعات */
                         .signatures-container { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 60px; font-size: 14px; text-align: center; }
                         .signature-box { width: 30%; }
                         .signature-title { font-weight: bold; margin-bottom: 5px; }
@@ -553,20 +593,19 @@
 
                         <!-- التوقيعات الثلاثية -->
                         <div class="signatures-container">
-                            <!-- 1. الموظف المختص (يمين) -->
+                            <!-- 1. الموظف المختص (تم إزالة كلمة مشتريات ووضع اسم الإدارة الفرعية) -->
                             <div class="signature-box">
                                 <div class="signature-title">الموظف المختص</div>
-                                <div class="signature-name">(المشتريات)</div>
+                                <div class="signature-name">(${itemObj.dept})</div>
                             </div>
                             
-                            <!-- 2. مدير إدارة الاستحقاقات أو المواهب (وسط) -->
+                            <!-- 2. مدير الإدارة (تم إزالة كلمة مدير إدارة ووضع اسم الإدارة) -->
                             <div class="signature-box">
-                                <div class="signature-title">مدير إدارة الاستحقاقات / المواهب</div>
+                                <div class="signature-title">مدير الإدارة</div>
                                 <div class="signature-name">${itemObj.applicantName}</div>
-                                <div class="signature-name">(${itemObj.role})</div>
                             </div>
                             
-                            <!-- 3. يعتمد مدير عام (يسار) -->
+                            <!-- 3. يعتمد مدير عام (تم إزالة كلمة قطاع ووضع اسم الإدارة) -->
                             <div class="signature-box">
                                 <div class="signature-title">يعتمد مدير عام</div>
                                 <div class="signature-name">${itemObj.parentDept}</div>
