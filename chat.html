@@ -168,19 +168,37 @@
         let currentUserName = "";
         let isAdmin = false;
 
-        // ⚠️ اسم الأدمن
         const adminName = "محمد سعد عثمان أحمد"; 
+        
+        // الرابط الجديد الخاص بك (تم دمجه في تسجيل الدخول وفي إرسال الإشعارات)
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbywLUOVMLz0TfpU_10Dovfu26-G7oy-KfjhTMWe_WkGieywop0f9cHKdXbuyu9AcRjA8Q/exec";
 
         function normalizeText(text) {
             if (!text) return "";
             return text.toString().trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').toLowerCase(); 
         }
 
+        // دالة إرسال الإشعار (عبر Apps Script لحماية المفتاح)
+        async function sendNotificationToUser(targetUserName, messageText) {
+            const data = new URLSearchParams();
+            data.append('action', 'sendPush');
+            data.append('targetName', targetUserName);
+            data.append('messageText', messageText);
+
+            try {
+                await fetch(scriptUrl, {
+                    method: 'POST',
+                    body: data,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                });
+            } catch (error) {
+                console.error("خطأ في إرسال الإشعار:", error);
+            }
+        }
+
         window.login = async function() {
             const nameInput = document.getElementById('loginName').value;
             const passInput = document.getElementById('loginPassword').value;
-            
-            const scriptUrl = "https://script.google.com/macros/s/AKfycby0oem0DBmuAhwwqZvRZz7ST-DDpeO9wf2gpfasEX2uBYo4gKrWmiTKYQENJJx-mxt9Cg/exec";
 
             if (!nameInput || !passInput) {
                 alert("الرجاء إدخال الاسم وكلمة المرور");
@@ -203,7 +221,6 @@
                     currentUserName = nameInput.trim(); 
                     localStorage.setItem('chat_user_name', currentUserName);
                     
-                    // ربط المستخدم بـ OneSignal باسمه وطلب الإذن
                     OneSignalDeferred.push(async function(OneSignal) {
                         await OneSignal.login(currentUserName);
                         await OneSignal.Notifications.requestPermission();
@@ -309,6 +326,10 @@
                     userId: myId,
                     timestamp: serverTimestamp()
                 });
+
+                // إرسال إشعار للموظف
+                sendNotificationToUser(targetRoom, "وصلك رد جديد من الدعم الفني: " + text);
+
             } else {
                 const privateRoomRef = ref(db, 'private_chats/' + normalizeText(currentUserName));
                 push(privateRoomRef, {
@@ -317,6 +338,9 @@
                     userId: myId,
                     timestamp: serverTimestamp()
                 });
+
+                // إرسال إشعار للأدمن (أنت)
+                sendNotificationToUser(adminName, "رسالة جديدة من " + currentUserName + ": " + text);
             }
             document.getElementById('msgInput').value = '';
         };
