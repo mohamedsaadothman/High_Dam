@@ -78,7 +78,7 @@
         .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; flex-wrap: wrap; }
         .input-area input, .input-area select { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; font-family: inherit; font-size: 14px; }
         .input-area input { flex: 1; }
-        .input-area select { width: 150px; display: none; } /* مخفي للمستخدم العادي */
+        .input-area select { width: 200px; display: none; font-weight: bold; color: #fbbf24; } 
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; font-family: inherit; transition: 0.3s; flex-shrink: 0; }
 
         @media (max-width: 768px) {
@@ -211,11 +211,13 @@
                     if (isAdmin) {
                         // عرض كل الرسائل للأدمن
                         const allChatsRef = ref(db, 'private_chats');
+                        
+                        // استخدام onValue عشان يحدث الشاشة فوراً لو في رسالة جديدة
                         onValue(allChatsRef, (snapshot) => {
-                            messagesDiv.innerHTML = '';
+                            messagesDiv.innerHTML = ''; // مسح الشاشة قبل الرسم
                             const allChats = snapshot.val();
                             
-                            // تحديث القائمة المنسدلة بأسماء الموظفين الذين لديهم رسائل
+                            // تحديث القائمة المنسدلة بأسماء الموظفين
                             const select = document.getElementById('adminUserSelect');
                             select.innerHTML = '<option value="">اختر موظف للرد عليه...</option>';
                             
@@ -223,7 +225,7 @@
                                 let allMessages = [];
                                 
                                 for (let userRoom in allChats) {
-                                    // إضافة اسم الموظف للقائمة المنسدلة
+                                    // إضافة اسم الموظف للقائمة
                                     select.innerHTML += `<option value="${userRoom}">${userRoom}</option>`;
 
                                     for (let msgId in allChats[userRoom]) {
@@ -233,13 +235,23 @@
                                     }
                                 }
                                 
-                                // ترتيب الرسائل حسب الوقت
+                                // ترتيب الرسائل
                                 allMessages.sort((a, b) => a.timestamp - b.timestamp);
                                 
+                                // عرض الرسائل
                                 allMessages.forEach(msg => {
                                     const msgDiv = document.createElement('div');
-                                    msgDiv.className = 'message';
-                                    msgDiv.innerHTML = `<span class="name">${msg.name} (غرفة: ${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
+                                    
+                                    if (msg.userId === myId) {
+                                        // لو دي رسالة أنا (الأدمن) بعتها
+                                        msgDiv.className = 'message mine'; 
+                                        msgDiv.innerHTML = `<span class="name">أنت (للموظف: ${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
+                                    } else {
+                                        // لو دي رسالة جاية من موظف
+                                        msgDiv.className = 'message'; 
+                                        msgDiv.innerHTML = `<span class="name">${msg.name} (غرفة: ${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
+                                    }
+                                    
                                     messagesDiv.appendChild(msgDiv);
                                 });
                                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -248,13 +260,19 @@
                     } else {
                         // عرض الرسائل الخاصة بالمستخدم فقط
                         const privateRoomRef = ref(db, 'private_chats/' + normalizeText(currentUserName));
-                        onChildAdded(privateRoomRef, (snapshot) => {
-                            const msg = snapshot.val();
-                            const msgDiv = document.createElement('div');
-                            msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
-                            msgDiv.innerHTML = `<span class="name">${msg.name}</span><span class="text">${msg.text}</span>`;
-                            messagesDiv.appendChild(msgDiv);
-                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        onValue(privateRoomRef, (snapshot) => {
+                            messagesDiv.innerHTML = '';
+                            const msgs = snapshot.val();
+                            if(msgs){
+                                let sorted = Object.values(msgs).sort((a,b)=>a.timestamp - b.timestamp);
+                                sorted.forEach(msg => {
+                                    const msgDiv = document.createElement('div');
+                                    msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
+                                    msgDiv.innerHTML = `<span class="name">${msg.name}</span><span class="text">${msg.text}</span>`;
+                                    messagesDiv.appendChild(msgDiv);
+                                });
+                                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                            }
                         });
                     }
 
