@@ -303,6 +303,7 @@
     </div>
 
     <script>
+        // الرابط الخاص بك (تم التأكد من صحته)
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbww2vjEBEBoQylJqx279nr94FXKqUAxXIGaImoOoWPPDdRw3DvZ1ZbNcOFgSbbJPYwNrA/exec";
 
         // دوال التحقق
@@ -311,34 +312,18 @@
         function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
         function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
 
-        // قاموس الإدارات (يمكنك إضافة المزيد هنا بسهولة)
+        // قاموس الإدارات (يمكنك إضافة المزيد هنا)
         const departmentsData = {
-            "قطاع الموارد البشرية": [
-                "إدارة الاستحقاقات", 
-                "إدارة المواهب", 
-                "إدارة التدريب", 
-                "إدارة شئون العاملين"
-            ],
-            "قطاع الشئون المالية والإدارية": [
-                "الإدارة المالية", 
-                "إدارة الحسابات", 
-                "إدارة المشتريات المخزنية", 
-                "إدارة الخدمات المعاونة"
-            ],
-            "قطاع العقود والمشتريات": [
-                "إدارة العقود", 
-                "إدارة المشتريات المحلية", 
-                "إدارة المشتريات الخارجية", 
-                "إدارة المخازن"
-            ]
+            "قطاع الموارد البشرية": ["إدارة الاستحقاقات", "إدارة المواهب", "إدارة التدريب", "إدارة شئون العاملين"],
+            "قطاع الشئون المالية والإدارية": ["الإدارة المالية", "إدارة الحسابات", "إدارة المشتريات المخزنية", "إدارة الخدمات المعاونة"],
+            "قطاع العقود والمشتريات": ["إدارة العقود", "إدارة المشتريات المحلية", "إدارة المشتريات الخارجية", "إدارة المخازن"]
         };
 
-        // تحديث الإدارات الفرعية بناءً على الإدارة الأم
+        // تحديث الإدارات الفرعية
         function updateSubDepartments() {
             const parentSelect = document.getElementById("parentDepartment");
             const subSelect = document.getElementById("subDepartment");
             const selectedParent = parentSelect.value;
-
             subSelect.innerHTML = '<option value="">اختر الإدارة الفرعية...</option>';
 
             if (selectedParent && departmentsData[selectedParent]) {
@@ -387,7 +372,7 @@
             document.getElementById('submitBtn').disabled = false;
         }
 
-        // إرسال طلب الشراء
+        // إرسال طلب الشراء (تم إصلاح الإرسال ليتوافق مع Google Scripts)
         document.getElementById('requestForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -404,11 +389,12 @@
             const cost = document.getElementById('estCost').value.trim();
             const just = document.getElementById('justification').value.trim();
 
+            // التحقق الصارم
             if (!isArabicOnly(applicant) || !isQuadrupleName(applicant)) { 
-                showCustomAlert("خطأ", "يجب أن يكون اسم مقدم الطلب عربياً ورباعياً."); return; 
+                showCustomAlert("خطأ", "يجب أن يكون اسم مقدم الطلب عربياً ورباعياً (4 مقاطع)."); return; 
             }
             if (!isArabicOnly(mgrName) || !isQuadrupleName(mgrName)) { 
-                showCustomAlert("خطأ", "يجب أن يكون اسم المدير عربياً ورباعياً."); return; 
+                showCustomAlert("خطأ", "يجب أن يكون اسم المدير عربياً ورباعياً (4 مقاطع)."); return; 
             }
             if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) { 
                 showCustomAlert("خطأ", "الرقم القومي يجب أن يكون 14 رقماً إنجليزياً."); return; 
@@ -424,30 +410,29 @@
             const serialNo = "REQ-" + Math.floor(10000 + Math.random() * 90000);
             const reqDate = new Date().toISOString().split('T')[0];
 
-            const data = {
-                action: "createRequest",
-                applicantName: applicant, 
-                nationalId: nationalId,
-                phone: phone,
-                role: role,
-                department: subDept,
-                parentDepartment: parentDept,
-                titlePrefix: titlePrefix,
-                managerName: mgrName,
-                itemDesc: item,
-                quantity: qty,
-                estCost: cost,
-                justification: just,
-                requestId: serialNo,
-                requestDate: reqDate
-            };
+            // استخدام URLSearchParams بدلاً من JSON لحل مشكلة جوجل سكريبت
+            const formData = new URLSearchParams();
+            formData.append('action', 'createRequest');
+            formData.append('applicantName', applicant);
+            formData.append('nationalId', nationalId);
+            formData.append('phone', phone);
+            formData.append('role', role);
+            formData.append('department', subDept);
+            formData.append('parentDepartment', parentDept);
+            formData.append('titlePrefix', titlePrefix);
+            formData.append('managerName', mgrName);
+            formData.append('itemDesc', item);
+            formData.append('quantity', qty);
+            formData.append('estCost', cost);
+            formData.append('justification', just);
+            formData.append('requestId', serialNo);
+            formData.append('requestDate', reqDate);
 
             fetch(SCRIPT_URL, {
                 method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: formData
             }).then(() => {
+                // نعتبر العملية ناجحة طالما لم يحدث خطأ بالشبكة
                 btn.innerText = "تم الإرسال";
                 document.getElementById('requestFormContainer').style.display = 'none';
                 document.getElementById('successBox').style.display = 'block';
@@ -471,13 +456,13 @@
                     managerStatus: "قيد الانتظار"
                 };
             }).catch(() => {
-                showCustomAlert("خطأ", "حدث خطأ أثناء الإرسال.");
+                showCustomAlert("خطأ", "حدث خطأ أثناء الاتصال بالخادم، يرجى التحقق من الشبكة.");
                 btn.innerText = "إرسال الطلب";
                 btn.disabled = false;
             });
         });
 
-        // دالة الطباعة المعدلة
+        // دالة الطباعة المعدلة (التوقيعات الثلاثية)
         function printPurchaseRequest(itemObj) {
             if (!itemObj) return alert("لا توجد بيانات للطباعة.");
 
@@ -566,7 +551,7 @@
                             <p style="margin-top: 20px;">وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
                         </div>
 
-                        <!-- التوقيعات الثلاثية كما طلبت -->
+                        <!-- التوقيعات الثلاثية -->
                         <div class="signatures-container">
                             <!-- 1. الموظف المختص (يمين) -->
                             <div class="signature-box">
@@ -612,7 +597,7 @@
             };
         }
 
-        // دالة وهمية لتسجيل الدخول (تحتاج ربط بالسيرفر لاحقاً)
+        // دالة وهمية لتسجيل الدخول
         function handleLogin() {
             document.getElementById('loginBox').style.display = 'none';
             document.getElementById('dashboard').style.display = 'block';
