@@ -53,11 +53,9 @@
 
         #chatScreen { display: none; height: 100%; }
         
-        /* تكبير مربع الدردشة على الكمبيوتر */
         .chat-wrapper {
             position: absolute; top: 85px; bottom: 15px; left: 15px; right: 15px;
-            max-width: 900px; /* تم التكبير من 600 إلى 900 */
-            margin: 0 auto;
+            max-width: 900px; margin: 0 auto;
             background: #1e293b; border-radius: 12px; border: 1px solid #334155;
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             display: flex; flex-direction: column; overflow: hidden;
@@ -77,8 +75,10 @@
         .message.mine .name { text-align: left; }
         .message.mine .text { background: #c59b27; color: #0f172a; font-weight: 700; border-top-right-radius: 15px; border-top-left-radius: 0; }
 
-        .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; }
-        .input-area input { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; font-family: inherit; font-size: 14px; flex: 1; }
+        .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; flex-wrap: wrap; }
+        .input-area input, .input-area select { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; font-family: inherit; font-size: 14px; }
+        .input-area input { flex: 1; }
+        .input-area select { width: 150px; display: none; } /* مخفي للمستخدم العادي */
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; font-family: inherit; transition: 0.3s; flex-shrink: 0; }
 
         @media (max-width: 768px) {
@@ -87,6 +87,7 @@
             .logo-area h1 { font-size: 11px; }
             .back-btn { padding: 5px 8px; font-size: 10px; }
             .chat-wrapper { top: 75px; left: 10px; right: 10px; bottom: 10px; max-width: 100%; }
+            .input-area select { width: 100%; margin-bottom: 5px; }
         }
     </style>
 </head>
@@ -116,11 +117,15 @@
 
     <div id="chatScreen">
         <div class="chat-wrapper">
-            <div class="chat-header-title">
+            <div class="chat-header-title" id="chatHeaderTitle">
                 <i class="fas fa-headset"></i> غرفة الدعم الفني
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
+                <!-- قائمة منسدلة تظهر للأدمن فقط لاختيار من يرد عليه -->
+                <select id="adminUserSelect" style="display: none;">
+                    <option value="">اختر موظف للرد عليه...</option>
+                </select>
                 <input type="text" id="msgInput" placeholder="اكتب رسالتك هنا..." onkeypress="handleEnter(event)">
                 <button class="send-btn" onclick="sendMessage()">إرسال</button>
             </div>
@@ -129,7 +134,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getDatabase, ref, push, onChildAdded, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, push, onChildAdded, serverTimestamp, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCGxjWSdyrPUpPKbXieSapBx--kUvRjwLY",
@@ -143,24 +148,23 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const messagesRef = ref(db, 'messages');
         const messagesDiv = document.getElementById('messagesDiv');
         
         let myId = localStorage.getItem('chat_user_id') || "user_" + Math.floor(Math.random() * 100000);
         localStorage.setItem('chat_user_id', myId);
 
         let currentUserName = "";
+        let isAdmin = false;
 
-        // دالة تنظيف النص
+        // =====================================================================
+        // ⚠️ اكتب اسمك هنا بالضبط كما تدخل به (لتكون أنت الأدمن)
+        // =====================================================================
+        const adminName = "محمد سعد عثمان أحمد"; 
+        // =====================================================================
+
         function normalizeText(text) {
             if (!text) return "";
-            return text.toString()
-                .trim()
-                .replace(/[أإآ]/g, 'ا')
-                .replace(/ة/g, 'ه')
-                .replace(/ى/g, 'ي')
-                .replace(/\s+/g, ' ')
-                .toLowerCase(); 
+            return text.toString().trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').toLowerCase(); 
         }
 
         // دالة تسجيل الدخول
@@ -168,8 +172,7 @@
             const nameInput = document.getElementById('loginName').value;
             const passInput = document.getElementById('loginPassword').value;
             
-            // الرابط الخاص بك
-            const scriptUrl = "https://script.google.com/macros/s/AKfycbyY7BMiZZwHPNsPHR7wpt8rLPRnSFVm6L_bcrpHd8xHjtgLBx9Sx--8S_CeE5n1kArGqg/exec";
+            const scriptUrl = "https://script.google.com/macros/s/AKfycby0oem0DBmuAhwwqZvRZz7ST-DDpeO9wf2gpfasEX2uBYo4gKrWmiTKYQENJJx-mxt9Cg/exec";
 
             if (!nameInput || !passInput) {
                 alert("الرجاء إدخال الاسم وكلمة المرور");
@@ -192,10 +195,70 @@
                     currentUserName = nameInput.trim(); 
                     localStorage.setItem('chat_user_name', currentUserName);
                     
+                    // التحقق إذا كان المستخدم هو الأدمن
+                    if (normalizeText(currentUserName) === normalizeText(adminName)) {
+                        isAdmin = true;
+                        document.getElementById('chatHeaderTitle').innerHTML = `<i class="fas fa-user-shield"></i> لوحة تحكم الدعم الفني (أدمن)`;
+                        document.getElementById('adminUserSelect').style.display = 'block'; // إظهار قائمة الموظفين
+                    } else {
+                        isAdmin = false;
+                        document.getElementById('chatHeaderTitle').innerHTML = `<i class="fas fa-headset"></i> غرفة الدعم الفني - ${currentUserName}`;
+                    }
+
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('chatScreen').style.display = 'block';
 
-                    // إرسال إيميل إشعار الدخول (في الخلفية)
+                    if (isAdmin) {
+                        // عرض كل الرسائل للأدمن
+                        const allChatsRef = ref(db, 'private_chats');
+                        onValue(allChatsRef, (snapshot) => {
+                            messagesDiv.innerHTML = '';
+                            const allChats = snapshot.val();
+                            
+                            // تحديث القائمة المنسدلة بأسماء الموظفين الذين لديهم رسائل
+                            const select = document.getElementById('adminUserSelect');
+                            select.innerHTML = '<option value="">اختر موظف للرد عليه...</option>';
+                            
+                            if (allChats) {
+                                let allMessages = [];
+                                
+                                for (let userRoom in allChats) {
+                                    // إضافة اسم الموظف للقائمة المنسدلة
+                                    select.innerHTML += `<option value="${userRoom}">${userRoom}</option>`;
+
+                                    for (let msgId in allChats[userRoom]) {
+                                        let msg = allChats[userRoom][msgId];
+                                        msg.senderRoom = userRoom;
+                                        allMessages.push(msg);
+                                    }
+                                }
+                                
+                                // ترتيب الرسائل حسب الوقت
+                                allMessages.sort((a, b) => a.timestamp - b.timestamp);
+                                
+                                allMessages.forEach(msg => {
+                                    const msgDiv = document.createElement('div');
+                                    msgDiv.className = 'message';
+                                    msgDiv.innerHTML = `<span class="name">${msg.name} (غرفة: ${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
+                                    messagesDiv.appendChild(msgDiv);
+                                });
+                                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                            }
+                        });
+                    } else {
+                        // عرض الرسائل الخاصة بالمستخدم فقط
+                        const privateRoomRef = ref(db, 'private_chats/' + normalizeText(currentUserName));
+                        onChildAdded(privateRoomRef, (snapshot) => {
+                            const msg = snapshot.val();
+                            const msgDiv = document.createElement('div');
+                            msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
+                            msgDiv.innerHTML = `<span class="name">${msg.name}</span><span class="text">${msg.text}</span>`;
+                            messagesDiv.appendChild(msgDiv);
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        });
+                    }
+
+                    // إرسال إيميل إشعار الدخول
                     const emailData = new URLSearchParams();
                     emailData.append('action', 'loginNotification');
                     emailData.append('name', currentUserName);
@@ -216,26 +279,41 @@
             }
         }
 
+        // إرسال الرسالة
         window.sendMessage = function() {
             const text = document.getElementById('msgInput').value.trim();
             if (!text) return;
-            push(messagesRef, {
-                name: currentUserName,
-                text: text,
-                userId: myId,
-                timestamp: serverTimestamp()
-            });
+
+            if (isAdmin) {
+                // منطق الأدمن
+                const targetRoom = document.getElementById('adminUserSelect').value;
+                if (!targetRoom) {
+                    alert("الرجاء اختيار الموظف الذي تريد الرد عليه من القائمة.");
+                    return;
+                }
+                
+                // إرسال رد الأدمن في غرفة الموظف
+                const targetRef = ref(db, 'private_chats/' + targetRoom);
+                push(targetRef, {
+                    name: "الدعم الفني (الإدارة)", // اسم يظهر للموظف ليعرف أنه رد رسمي
+                    text: text,
+                    userId: myId,
+                    timestamp: serverTimestamp()
+                });
+
+            } else {
+                // منطق المستخدم العادي
+                const privateRoomRef = ref(db, 'private_chats/' + normalizeText(currentUserName));
+                push(privateRoomRef, {
+                    name: currentUserName,
+                    text: text,
+                    userId: myId,
+                    timestamp: serverTimestamp()
+                });
+            }
+            
             document.getElementById('msgInput').value = '';
         };
-
-        onChildAdded(messagesRef, (snapshot) => {
-            const msg = snapshot.val();
-            const msgDiv = document.createElement('div');
-            msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
-            msgDiv.innerHTML = `<span class="name">${msg.name}</span><span class="text">${msg.text}</span>`;
-            messagesDiv.appendChild(msgDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        });
 
         window.handleEnter = function(event) {
             if (event.key === 'Enter') {
