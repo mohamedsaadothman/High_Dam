@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>الدردشة الفورية - بوابة الخدمات الرقمية</title>
+    <title>الدعم الفني - بوابة الخدمات الرقمية</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -109,7 +109,7 @@
     <!-- شاشة الدخول -->
     <div id="loginScreen">
         <div class="login-box">
-            <h2><i class="fas fa-lock"></i> تسجيل الدخول للدردشة</h2>
+            <h2><i class="fas fa-headset"></i> تسجيل الدخول للدعم الفني</h2>
             <input type="text" id="loginName" placeholder="الاسم">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
             <button onclick="login()">دخول</button>
@@ -120,7 +120,7 @@
     <div id="chatScreen">
         <div class="chat-wrapper">
             <div class="chat-header-title">
-                <i class="fas fa-comments"></i> غرفة الدردشة الفورية
+                <i class="fas fa-headset"></i> غرفة الدعم الفني
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
@@ -154,16 +154,10 @@
 
         let currentUserName = "";
 
-        // دالة تنظيف النص (ذكية جداً في التعامل مع المسافات والهمزات)
+        // دالة تنظيف النص
         function normalizeText(text) {
             if (!text) return "";
-            return text.toString()
-                .trim()
-                .replace(/\s+/g, '') // مسح كل المسافات
-                .replace(/[أإآ]/g, 'ا') // توحيد الهمزات
-                .replace(/ة/g, 'ه') // توحيد التاء المربوطة
-                .replace(/ى/g, 'ي') // توحيد الألف المقصورة
-                .toLowerCase(); 
+            return text.toString().trim().replace(/\s+/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').toLowerCase(); 
         }
 
         // دالة تسجيل الدخول
@@ -171,7 +165,8 @@
             const nameInput = document.getElementById('loginName').value;
             const passInput = document.getElementById('loginPassword').value;
             
-            const scriptUrl = "https://script.google.com/macros/s/AKfycbxu6D8FxohniAfWowgZCqG4C-wSpUp8v4j8YHzUVEtlQjyCQdj2pxZrBT7lMe4YMs6uqA/exec";
+            // الرابط الجديد الخاص بك
+            const scriptUrl = "https://script.google.com/macros/s/AKfycbzDtIEu12cAZuMIDQp5MiEsmPxfpe7uxFkHWFoKjc7kfBxinGA3cNl_QHsiMB5EbtsUbg/exec";
 
             if (!nameInput || !passInput) {
                 alert("الرجاء إدخال الاسم وكلمة المرور");
@@ -182,15 +177,12 @@
                 const btn = document.querySelector('#loginScreen button');
                 btn.innerText = "جاري التحقق...";
 
-                // جلب البيانات من الشيت
                 const response = await fetch(scriptUrl);
                 const users = await response.json();
 
-                // تنظيف المدخلات
                 const cleanInputName = normalizeText(nameInput);
                 const cleanInputPass = normalizeText(passInput);
 
-                // البحث عن المستخدم بطريقة ذكية
                 const user = users.find(u => u.name === cleanInputName && u.password === cleanInputPass);
 
                 if (user) {
@@ -200,10 +192,24 @@
                     
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('chatScreen').style.display = 'block';
+
+                    // إرسال إيميل إشعار الدخول (في الخلفية)
+                    const emailData = new URLSearchParams();
+                    emailData.append('action', 'loginNotification');
+                    emailData.append('name', currentUserName);
+
+                    fetch(scriptUrl, {
+                        method: 'POST',
+                        body: emailData,
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                    }).catch(err => console.log("فشل إرسال الإشعار"));
+
                 } else {
-                    // في حالة الفشل، نظهر الأسماء المتاحة للتأكد من مطابقتها
-                    let sampleNames = users.slice(0, 3).map(u => `الاسم: ${u.name} - الباسورد: ${u.password}`).join('\n');
-                    alert("لم يتم العثور على تطابق. تأكد من كتابة الاسم والباسورد بشكل صحيح.\n\nأمثلة من الأسماء التي تم تحميلها:\n" + sampleNames);
+                    let sampleNames = "";
+                    if(users.length > 0) {
+                        sampleNames = "\n\n(للتجربة: أول اسم في الشيت هو: " + users[0].name + " والباسورد: " + users[0].password + ")";
+                    }
+                    alert("لم يتم العثور على تطابق. تأكد من الاسم والباسورد." + sampleNames);
                     btn.innerText = "دخول";
                 }
             } catch (error) {
