@@ -90,6 +90,19 @@
             .input-area select { width: 100%; margin-bottom: 5px; }
         }
     </style>
+
+    <!-- كود إشعارات OneSignal -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(function(OneSignal) {
+        OneSignal.init({
+          appId: "446d368f-2d83-40e5-be23-106bd4f75ca5", 
+          serviceWorkerPath: "OneSignalSDKWorker.js",
+          allowLocalhostAsSecureOrigin: true
+        });
+      });
+    </script>
 </head>
 <body>
 
@@ -122,7 +135,6 @@
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
-                <!-- قائمة منسدلة تظهر للأدمن فقط لاختيار من يرد عليه -->
                 <select id="adminUserSelect" style="display: none;">
                     <option value="">اختر موظف للرد عليه...</option>
                 </select>
@@ -156,18 +168,14 @@
         let currentUserName = "";
         let isAdmin = false;
 
-        // =====================================================================
-        // ⚠️ اكتب اسمك هنا بالضبط كما تدخل به (لتكون أنت الأدمن)
-        // =====================================================================
+        // ⚠️ اسم الأدمن
         const adminName = "محمد سعد عثمان أحمد"; 
-        // =====================================================================
 
         function normalizeText(text) {
             if (!text) return "";
             return text.toString().trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').toLowerCase(); 
         }
 
-        // دالة تسجيل الدخول
         window.login = async function() {
             const nameInput = document.getElementById('loginName').value;
             const passInput = document.getElementById('loginPassword').value;
@@ -195,11 +203,16 @@
                     currentUserName = nameInput.trim(); 
                     localStorage.setItem('chat_user_name', currentUserName);
                     
-                    // التحقق إذا كان المستخدم هو الأدمن
+                    // ربط المستخدم بـ OneSignal باسمه وطلب الإذن
+                    OneSignalDeferred.push(async function(OneSignal) {
+                        await OneSignal.login(currentUserName);
+                        await OneSignal.Notifications.requestPermission();
+                    });
+
                     if (normalizeText(currentUserName) === normalizeText(adminName)) {
                         isAdmin = true;
                         document.getElementById('chatHeaderTitle').innerHTML = `<i class="fas fa-user-shield"></i> لوحة تحكم الدعم الفني (أدمن)`;
-                        document.getElementById('adminUserSelect').style.display = 'block'; // إظهار قائمة الموظفين
+                        document.getElementById('adminUserSelect').style.display = 'block'; 
                     } else {
                         isAdmin = false;
                         document.getElementById('chatHeaderTitle').innerHTML = `<i class="fas fa-headset"></i> غرفة الدعم الفني - ${currentUserName}`;
@@ -209,56 +222,39 @@
                     document.getElementById('chatScreen').style.display = 'block';
 
                     if (isAdmin) {
-                        // عرض كل الرسائل للأدمن
                         const allChatsRef = ref(db, 'private_chats');
-                        
-                        // استخدام onValue عشان يحدث الشاشة فوراً لو في رسالة جديدة
                         onValue(allChatsRef, (snapshot) => {
-                            messagesDiv.innerHTML = ''; // مسح الشاشة قبل الرسم
+                            messagesDiv.innerHTML = ''; 
                             const allChats = snapshot.val();
-                            
-                            // تحديث القائمة المنسدلة بأسماء الموظفين
                             const select = document.getElementById('adminUserSelect');
                             select.innerHTML = '<option value="">اختر موظف للرد عليه...</option>';
                             
                             if (allChats) {
                                 let allMessages = [];
-                                
                                 for (let userRoom in allChats) {
-                                    // إضافة اسم الموظف للقائمة
                                     select.innerHTML += `<option value="${userRoom}">${userRoom}</option>`;
-
                                     for (let msgId in allChats[userRoom]) {
                                         let msg = allChats[userRoom][msgId];
                                         msg.senderRoom = userRoom;
                                         allMessages.push(msg);
                                     }
                                 }
-                                
-                                // ترتيب الرسائل
                                 allMessages.sort((a, b) => a.timestamp - b.timestamp);
-                                
-                                // عرض الرسائل
                                 allMessages.forEach(msg => {
                                     const msgDiv = document.createElement('div');
-                                    
                                     if (msg.userId === myId) {
-                                        // لو دي رسالة أنا (الأدمن) بعتها
                                         msgDiv.className = 'message mine'; 
                                         msgDiv.innerHTML = `<span class="name">أنت (للموظف: ${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
                                     } else {
-                                        // لو دي رسالة جاية من موظف
                                         msgDiv.className = 'message'; 
                                         msgDiv.innerHTML = `<span class="name">${msg.name} (غرفة: ${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
                                     }
-                                    
                                     messagesDiv.appendChild(msgDiv);
                                 });
                                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
                             }
                         });
                     } else {
-                        // عرض الرسائل الخاصة بالمستخدم فقط
                         const privateRoomRef = ref(db, 'private_chats/' + normalizeText(currentUserName));
                         onValue(privateRoomRef, (snapshot) => {
                             messagesDiv.innerHTML = '';
@@ -280,7 +276,6 @@
                     const emailData = new URLSearchParams();
                     emailData.append('action', 'loginNotification');
                     emailData.append('name', currentUserName);
-
                     fetch(scriptUrl, {
                         method: 'POST',
                         body: emailData,
@@ -297,30 +292,24 @@
             }
         }
 
-        // إرسال الرسالة
         window.sendMessage = function() {
             const text = document.getElementById('msgInput').value.trim();
             if (!text) return;
 
             if (isAdmin) {
-                // منطق الأدمن
                 const targetRoom = document.getElementById('adminUserSelect').value;
                 if (!targetRoom) {
                     alert("الرجاء اختيار الموظف الذي تريد الرد عليه من القائمة.");
                     return;
                 }
-                
-                // إرسال رد الأدمن في غرفة الموظف
                 const targetRef = ref(db, 'private_chats/' + targetRoom);
                 push(targetRef, {
-                    name: "الدعم الفني (الإدارة)", // اسم يظهر للموظف ليعرف أنه رد رسمي
+                    name: "الدعم الفني (الإدارة)", 
                     text: text,
                     userId: myId,
                     timestamp: serverTimestamp()
                 });
-
             } else {
-                // منطق المستخدم العادي
                 const privateRoomRef = ref(db, 'private_chats/' + normalizeText(currentUserName));
                 push(privateRoomRef, {
                     name: currentUserName,
@@ -329,7 +318,6 @@
                     timestamp: serverTimestamp()
                 });
             }
-            
             document.getElementById('msgInput').value = '';
         };
 
