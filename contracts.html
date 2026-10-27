@@ -171,15 +171,23 @@
                                 <option value="رئيس قسم">رئيس قسم</option>
                             </select>
                         </div>
+
+                        <!-- الإدارة الأم -->
                         <div class="form-group">
-                            <label>الإدارة التابعة لها:</label>
-                            <select id="department" required>
-                                <option value="">اختر الإدارة...</option>
-                                <option value="الموارد البشرية">الموارد البشرية</option>
-                                <option value="الشئون الإدارية">الشئون الإدارية</option>
-                                <option value="الشئون المالية">الشئون المالية</option>
-                                <option value="الشئون القانونية">الشئون القانونية</option>
-                                <option value="العقود والمشتريات">العقود والمشتريات</option>
+                            <label>الإدارة الأم:</label>
+                            <select id="parentDepartment" required onchange="updateSubDepartments()">
+                                <option value="">اختر الإدارة الأم...</option>
+                                <option value="قطاع الموارد البشرية">قطاع الموارد البشرية</option>
+                                <option value="قطاع الشئون المالية والإدارية">قطاع الشئون المالية والإدارية</option>
+                                <option value="قطاع العقود والمشتريات">قطاع العقود والمشتريات</option>
+                            </select>
+                        </div>
+
+                        <!-- الإدارة الفرعية -->
+                        <div class="form-group">
+                            <label>الإدارة الفرعية / المختصة:</label>
+                            <select id="subDepartment" required>
+                                <option value="">اختر الإدارة الأم أولاً...</option>
                             </select>
                         </div>
                         
@@ -295,14 +303,55 @@
     </div>
 
     <script>
-        // تم تصحيح الخطأ المطبعي هنا (https بدلاً من Https)
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbww2vjEBEBoQylJqx279nr94FXKqUAxXIGaImoOoWPPDdRw3DvZ1ZbNcOFgSbbJPYwNrA/exec";
 
-        // دوال التحقق (نفس نظام الإجازات)
+        // دوال التحقق
         function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
         function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' '); }
         function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
         function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
+
+        // قاموس الإدارات (يمكنك إضافة المزيد هنا بسهولة)
+        const departmentsData = {
+            "قطاع الموارد البشرية": [
+                "إدارة الاستحقاقات", 
+                "إدارة المواهب", 
+                "إدارة التدريب", 
+                "إدارة شئون العاملين"
+            ],
+            "قطاع الشئون المالية والإدارية": [
+                "الإدارة المالية", 
+                "إدارة الحسابات", 
+                "إدارة المشتريات المخزنية", 
+                "إدارة الخدمات المعاونة"
+            ],
+            "قطاع العقود والمشتريات": [
+                "إدارة العقود", 
+                "إدارة المشتريات المحلية", 
+                "إدارة المشتريات الخارجية", 
+                "إدارة المخازن"
+            ]
+        };
+
+        // تحديث الإدارات الفرعية بناءً على الإدارة الأم
+        function updateSubDepartments() {
+            const parentSelect = document.getElementById("parentDepartment");
+            const subSelect = document.getElementById("subDepartment");
+            const selectedParent = parentSelect.value;
+
+            subSelect.innerHTML = '<option value="">اختر الإدارة الفرعية...</option>';
+
+            if (selectedParent && departmentsData[selectedParent]) {
+                departmentsData[selectedParent].forEach(sub => {
+                    const option = document.createElement("option");
+                    option.value = sub;
+                    option.textContent = sub;
+                    subSelect.appendChild(option);
+                });
+            } else {
+                subSelect.innerHTML = '<option value="">اختر الإدارة الأم أولاً...</option>';
+            }
+        }
 
         function showCustomAlert(title, message) {
             let existingOverlay = document.getElementById("customAlertModal");
@@ -331,13 +380,14 @@
 
         function resetCreateForm() {
             document.getElementById('requestForm').reset();
+            document.getElementById('subDepartment').innerHTML = '<option value="">اختر الإدارة الأم أولاً...</option>';
             document.getElementById('requestFormContainer').style.display = 'block';
             document.getElementById('successBox').style.display = 'none';
             document.getElementById('submitBtn').innerText = "إرسال الطلب";
             document.getElementById('submitBtn').disabled = false;
         }
 
-        // إرسال طلب الشراء مع التحقق الصارم
+        // إرسال طلب الشراء
         document.getElementById('requestForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -345,7 +395,8 @@
             const nationalId = document.getElementById('applicantNationalId').value.trim();
             const phone = document.getElementById('applicantPhone').value.trim();
             const role = document.getElementById('applicantRole').value;
-            const dept = document.getElementById('department').value;
+            const parentDept = document.getElementById('parentDepartment').value;
+            const subDept = document.getElementById('subDepartment').value;
             const titlePrefix = document.getElementById('managerTitle').value;
             const mgrName = document.getElementById('managerName').value.trim();
             const item = document.getElementById('itemDesc').value.trim();
@@ -353,28 +404,17 @@
             const cost = document.getElementById('estCost').value.trim();
             const just = document.getElementById('justification').value.trim();
 
-            // 1. التحقق من اسم مقدم الطلب (رباعي وعربي)
             if (!isArabicOnly(applicant) || !isQuadrupleName(applicant)) { 
-                showCustomAlert("خطأ في اسم مقدم الطلب", "يجب أن يكون الاسم باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); 
-                return; 
+                showCustomAlert("خطأ", "يجب أن يكون اسم مقدم الطلب عربياً ورباعياً."); return; 
             }
-
-            // 2. التحقق من اسم المدير (رباعي وعربي)
             if (!isArabicOnly(mgrName) || !isQuadrupleName(mgrName)) { 
-                showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); 
-                return; 
+                showCustomAlert("خطأ", "يجب أن يكون اسم المدير عربياً ورباعياً."); return; 
             }
-
-            // 3. التحقق من الرقم القومي (14 رقم إنجليزي)
             if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) { 
-                showCustomAlert("خطأ في الرقم القومي", "يجب أن يكون الرقم القومي مكوناً من 14 رقماً بالأرقام الإنجليزية الصحيحة."); 
-                return; 
+                showCustomAlert("خطأ", "الرقم القومي يجب أن يكون 14 رقماً إنجليزياً."); return; 
             }
-
-            // 4. التحقق من رقم الهاتف (11 رقم إنجليزي)
             if (phone.length < 11 || !isEnglishNumbers(phone)) { 
-                showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); 
-                return; 
+                showCustomAlert("خطأ", "رقم الهاتف يجب أن يكون 11 رقماً إنجليزياً."); return; 
             }
 
             const btn = document.getElementById('submitBtn');
@@ -390,7 +430,8 @@
                 nationalId: nationalId,
                 phone: phone,
                 role: role,
-                department: dept,
+                department: subDept, // الإدارة الفرعية
+                parentDepartment: parentDept, // الإدارة الأم
                 titlePrefix: titlePrefix,
                 managerName: mgrName,
                 itemDesc: item,
@@ -411,11 +452,11 @@
                 document.getElementById('requestFormContainer').style.display = 'none';
                 document.getElementById('successBox').style.display = 'block';
                 
-                // حفظ البيانات لاستخدامها في الطباعة
                 window.latestPurchaseRequest = {
                     requestId: serialNo,
                     requestDate: reqDate,
-                    dept: dept,
+                    dept: subDept,
+                    parentDept: parentDept,
                     role: role,
                     applicantName: applicant,
                     nationalId: nationalId,
@@ -430,18 +471,15 @@
                     managerStatus: "قيد الانتظار"
                 };
             }).catch(() => {
-                showCustomAlert("خطأ", "حدث خطأ أثناء الإرسال، يرجى المحاولة مرة أخرى.");
+                showCustomAlert("خطأ", "حدث خطأ أثناء الإرسال.");
                 btn.innerText = "إرسال الطلب";
                 btn.disabled = false;
             });
         });
 
-        // دالة الطباعة 
+        // دالة الطباعة المعدلة
         function printPurchaseRequest(itemObj) {
-            if (!itemObj) {
-                alert("لا توجد بيانات للطباعة.");
-                return;
-            }
+            if (!itemObj) return alert("لا توجد بيانات للطباعة.");
 
             let specStatusText = itemObj.specialistStatus || "قيد الانتظار";
             let mgrStatusText = itemObj.managerStatus || "قيد الانتظار";
@@ -450,11 +488,9 @@
             let watermarkColor = "#64748b"; // رمادي
 
             if (specStatusText.includes("مرفوض") || mgrStatusText.includes("مرفوض")) {
-                watermarkText = "مرفوض";
-                watermarkColor = "#dc2626"; // أحمر
+                watermarkText = "مرفوض"; watermarkColor = "#dc2626";
             } else if (mgrStatusText.includes("مقبول") || mgrStatusText.includes("مؤرشف")) {
-                watermarkText = "معتمد";
-                watermarkColor = "#198754"; // أخضر
+                watermarkText = "معتمد"; watermarkColor = "#198754";
             }
 
             let printWindow = window.open('', '_blank');
@@ -481,9 +517,12 @@
                         .content { font-size: 15px; text-align: justify; margin-bottom: 40px; }
                         .content p { margin-bottom: 12px; }
                         
-                        .footer { display: flex; justify-content: space-between; margin-top: 50px; font-size: 14px; }
-                        .footer div { width: 45%; }
-                        
+                        /* تصميم التوقيعات الثلاثية */
+                        .signatures-container { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 50px; font-size: 14px; text-align: center; }
+                        .signature-box { width: 30%; }
+                        .signature-title { font-weight: bold; margin-bottom: 5px; }
+                        .signature-name { color: #333; }
+
                         .status-box { margin-top: 40px; border: 2px solid #000; text-align: center; font-size: 14px; }
                         .status-box-title { background: #f1f5f9; border-bottom: 2px solid #000; padding: 8px; font-weight: 900; font-size: 15px; }
                         .status-row { padding: 8px; border-bottom: 1px solid #ccc; }
@@ -504,7 +543,7 @@
                         <div class="header">
                             <div class="header-left">
                                 <h3>الهيئة العامة للسد العالي وخزان أسوان</h3>
-                                <p>إدارة ${itemObj.dept}</p>
+                                <p>${itemObj.parentDept} - ${itemObj.dept}</p>
                             </div>
                             <div class="header-right">
                                 <div>مسلسل الطلب: <strong>${itemObj.requestId || '---'}</strong></div>
@@ -527,55 +566,12 @@
                             <p style="margin-top: 20px;">وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
                         </div>
 
-                        <div class="footer">
-                            <div>
-                                <p><strong>مقدمه لسيادتكم:</strong></p>
-                                <p>${itemObj.applicantName}</p>
-                                <!-- تمت إضافة الوظيفة تحت الاسم بناءً على طلبك -->
-                                <p style="color: #333;">( ${itemObj.role} )</p>
-                                <p><strong>الرقم القومي:</strong> ${itemObj.nationalId || '---'}</p>
-                                <p><strong>رقم الهاتف:</strong> ${itemObj.phone || '---'}</p>
+                        <!-- التوقيعات الثلاثية -->
+                        <div class="signatures-container">
+                            <!-- 1. الموظف المختص (ثابت) -->
+                            <div class="signature-box">
+                                <div class="signature-title">الموظف المختص</div>
+                                <div class="signature-name">(قسم المشتريات)</div>
                             </div>
-                            <div style="text-align: left;">
-                                <p><strong>يعتمد المدير المسؤول،،</strong></p>
-                                <p>${itemObj.mgrName || '---'}</p>
-                            </div>
-                        </div>
-
-                        <div class="status-box">
-                            <div class="status-box-title">حالة الطلب والاعتمادات</div>
-                            <div class="status-row">
-                                المختص: <span style="color: #333; font-weight: bold;">${specStatusText}</span>
-                            </div>
-                            <div class="status-row">
-                                المدير: <span style="color: #333; font-weight: bold;">${mgrStatusText}</span>
-                            </div>
-                        </div>
-                    </div>
-                </body>
-                </html>
-            `;
-
-            printWindow.document.open();
-            printWindow.document.write(htmlContent);
-            printWindow.document.close();
-            
-            printWindow.onload = function() { 
-                printWindow.focus(); 
-                printWindow.print(); 
-            };
-        }
-
-        // دالة وهمية لتسجيل الدخول (تحتاج ربط بالسيرفر لاحقاً)
-        function handleLogin() {
-            document.getElementById('loginBox').style.display = 'none';
-            document.getElementById('dashboard').style.display = 'block';
-            document.getElementById('requestsList').innerHTML = '<p style="text-align:center;">لا توجد طلبات مسجلة حالياً في هذه الجلسة التجريبية.</p>';
-        }
-
-        function loadTrackRequests() {
-            document.getElementById('trackList').innerHTML = '<p style="text-align:center;">لا توجد طلبات مسجلة حالياً في هذه الجلسة التجريبية.</p>';
-        }
-    </script>
-</body>
-</html>
+                            
+                            <!-- 2. مدير إدارة الاستحقاقات / المواهب (مقدم الط
