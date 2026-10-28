@@ -112,7 +112,7 @@
         }
     </style>
 </head>
-<body>
+<body onload="loadDepartments()">
 
     <header>
         <div class="logo-area">
@@ -171,7 +171,7 @@
 
                         <div class="form-group">
                             <label>3- اسم مقدم الطلب:</label>
-                            <input type="text" id="applicantName" readonly placeholder="يُجلب تلقائياً...">
+                            <input type="text" id="applicantName" readonly placeholder="يُجلب تلقائياً بعد إدخال كلمة المرور...">
                         </div>
 
                         <div class="form-group">
@@ -179,9 +179,12 @@
                             <input type="text" id="applicantRole" required placeholder="اكتب الوظيفة أو المسمى الوظيفي هنا...">
                         </div>
 
+                        <!-- تم تحويل الإدارة إلى قائمة منسدلة يتم اختيارها يدوياً وتحديث عنوان المدير أوتوماتيكياً -->
                         <div class="form-group">
-                            <label>5- الإدارة التابع لها:</label>
-                            <input type="text" id="parentDepartment" readonly placeholder="تُجلب تلقائياً...">
+                            <label>5- الإدارة التابع لها (اختر من القائمة):</label>
+                            <select id="parentDepartment" required onchange="updateManagerTitle(this.value)">
+                                <option value="">-- اختر الإدارة التابع لها --</option>
+                            </select>
                         </div>
 
                         <div class="form-group">
@@ -191,7 +194,7 @@
 
                         <div class="form-group">
                             <label>7- المسمى الوظيفي للمدير:</label>
-                            <input type="text" id="managerTitle" readonly style="background:#e2e8f0; font-weight:bold; color:#000;" placeholder="يُملأ تلقائياً...">
+                            <input type="text" id="managerTitle" readonly style="background:#e2e8f0; font-weight:bold; color:#000;" placeholder="يُملأ تلقائياً عند اختيار الإدارة...">
                         </div>
 
                         <div class="form-group">
@@ -317,7 +320,7 @@
             </div>
         </div>
 
-        <!-- مربع حالة الطلب والاعتمادات المحدث بالتسلسل -->
+        <!-- مربع حالة الطلب والاعتمادات -->
         <div style="margin-top: 25px; border: 1px solid #000; padding: 10px; border-radius: 6px; text-align: center;">
             <h4 style="font-size: 12px; font-weight: 900; margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h4>
             <div style="font-size: 10px; display: flex; flex-direction: column; gap: 4px; text-align: right; padding: 0 10px;">
@@ -335,8 +338,35 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdWY8l-tvNMjYXaPV8qH13vYJGdS0G6p__FaqYuU8PZwb5UaZp31SiH5Xjp7wfNt2vlQ/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxaLduzfYwuZMoON4USg1O6OzAxkASSoE6punxwq2tPTChqugPa3B06bK8xr9Dh8u-BRw/exec";
         let lastCreatedReqId = "REQ-000000";
+
+        // تحميل الإدارات في القائمة المنسدلة عند فتح الصفحة
+        function loadDepartments() {
+            fetch(SCRIPT_URL + "?action=getDepartments")
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === "success" && Array.isArray(data.data)) {
+                    let select = document.getElementById('parentDepartment');
+                    select.innerHTML = '<option value="">-- اختر الإدارة التابع لها --</option>';
+                    data.data.forEach(dept => {
+                        let opt = document.createElement('option');
+                        opt.value = dept;
+                        opt.textContent = dept;
+                        select.appendChild(opt);
+                    });
+                }
+            }).catch(err => console.log("خطأ في تحميل الإدارات"));
+        }
+
+        // تحديث عنوان المدير تلقائياً بناءً على اختيار الإدارة
+        function updateManagerTitle(deptName) {
+            if(deptName) {
+                document.getElementById('managerTitle').value = "السيد / مدير عام إدارة " + deptName;
+            } else {
+                document.getElementById('managerTitle').value = "";
+            }
+        }
 
         function fetchEmployeeData() {
             let nationalId = document.getElementById('applicantNationalId').value;
@@ -348,8 +378,6 @@
                 .then(data => {
                     if(data.status === "success") {
                         document.getElementById('applicantName').value = data.employeeName;
-                        document.getElementById('parentDepartment').value = data.department;
-                        document.getElementById('managerTitle').value = "السيد / مدير عام إدارة " + data.department;
                     } else {
                         showCustomAlert("تنبيه", data.message);
                     }
