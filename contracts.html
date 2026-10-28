@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     
+    <!-- مكتبة تحويل HTML إلى PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
         
@@ -341,15 +344,13 @@
                 <div>5. سلطة مختصة (رئيس مجلس الإدارة): <span id="printStatusChairman" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
             </div>
         </div>
-
-        <!-- العلامة المائية في خلفية الطباعة -->
-        <div style="position: fixed; top: 40%; left: 30%; transform: rotate(-30deg); font-size: 60px; color: rgba(200, 200, 200, 0.2); font-weight: 900; z-index: -1; pointer-events: none;">
-            قيد الانتظار
-        </div>
+        
+        <!-- تم إزالة العلامة المائية من هنا -->
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxzbtTCeII_hoUHO6CX7k1CiXFG3CPlX8drByYt8FEuc5o9VA0ug_K7WNKCCUU1k6hOTg/exec";
+        // تم تحديث الرابط هنا بناءً على طلبك
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjr1RXcJO82O55HjXsUbYbzDl5ejuztfZt4vRM3B8KB1N1DmL42LISp1qGPCfevDQ/exec";
         let lastCreatedReqId = "REQ-000000";
 
         function loadDepartments() {
@@ -459,6 +460,11 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             }).then(() => {
+                // تعبئة بيانات الطباعة أولاً
+                fillPrintData(); 
+                // إرسال الـ PDF
+                sendPdfToAdmin(); 
+
                 document.getElementById('requestFormContainer').style.display = 'none';
                 document.getElementById('successBox').style.display = 'block';
             }).catch(() => {
@@ -468,7 +474,7 @@
             });
         });
 
-        function printReport() {
+        function fillPrintData() {
             document.getElementById('printReqId').innerText = lastCreatedReqId;
             document.getElementById('printDate').innerText = new Date().toLocaleDateString('ar-EG');
             document.getElementById('printManagerTitle').innerText = document.getElementById('managerTitle').value || "المحاسب / مدير عام الإدارة";
@@ -481,8 +487,46 @@
             document.getElementById('printNationalId').innerText = document.getElementById('applicantNationalId').value;
             document.getElementById('printDept').innerText = document.getElementById('parentDepartment').value;
             document.getElementById('printManagerSign').innerText = document.getElementById('managerName').value;
+        }
 
+        function printReport() {
+            fillPrintData();
             window.print();
+        }
+
+        // توليد الـ PDF وإرساله للخادم
+        function sendPdfToAdmin() {
+            const element = document.getElementById('printableArea');
+            
+            // إعدادات تحويل الـ HTML إلى PDF
+            const opt = {
+                margin:       10,
+                filename:     `طلب_شراء_${lastCreatedReqId}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // توليد الـ PDF
+            html2pdf().set(opt).from(element).outputPdf('datauristring').then(function(pdfBase64) {
+                // إرسال الـ PDF كـ Base64 إلى Google Apps Script
+                const pdfData = {
+                    action: "sendPdfEmail",
+                    reqId: lastCreatedReqId,
+                    pdfBase64: pdfBase64
+                };
+
+                fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(pdfData)
+                }).then(() => {
+                    console.log("تم إرسال ملف الـ PDF بنجاح للخادم.");
+                }).catch(err => {
+                    console.error("فشل إرسال ملف الـ PDF:", err);
+                });
+            });
         }
 
         function handleLogin() {
