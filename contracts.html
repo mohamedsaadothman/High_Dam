@@ -314,7 +314,7 @@
         </div>
     </div>
 
-    <!-- منطقة الطباعة -->
+    <!-- منطقة الطباعة الرسمية والمطابقة تماماً لنموذج الـ PDF -->
     <div id="printableArea">
         <div style="width: 210mm; min-height: 297mm; background: white; color: #000; padding: 20mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative;">
             <div style="border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 25px; display: flex; justify-content: space-between;">
@@ -324,24 +324,24 @@
                     <span style="font-size: 13px; font-weight: bold;" id="printParentDept">إدارة التعاقدات والمشتريات</span>
                 </div>
                 <div style="text-align: left; font-size: 12px; border: 1px solid #333; padding: 8px 12px; border-radius: 4px;">
-                    <div>رقم الطلب: <span id="printReqId" style="font-weight: bold;">REQ-000000</span></div>
-                    <div>التاريخ: <span id="printDate">--/--/----</span></div>
+                    <div>رقم الطلب (مسلسل): <span id="printReqId" style="font-weight: bold;">REQ-000000</span></div>
+                    <div>تاريخ التحرير: <span id="printDate">--/--/----</span></div>
                 </div>
             </div>
             <div style="text-align: center; margin: 20px 0 25px 0;"><h2 style="font-size: 20px; font-weight: 900; text-decoration: underline;">طلب شراء واحتياجات مؤسسي</h2></div>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px;">
                 <thead>
-                    <tr style="background: #f2f2f2;"><th style="border: 1px solid #333; padding: 10px;">بيان الصنف</th><th style="border: 1px solid #333; padding: 10px;">الكمية</th><th style="border: 1px solid #333; padding: 10px;">التكلفة</th><th style="border: 1px solid #333; padding: 10px;">الغرض</th></tr>
+                    <tr style="background: #f2f2f2;"><th style="border: 1px solid #333; padding: 10px; text-align: right;">بيان الصنف / الوصف</th><th style="border: 1px solid #333; padding: 10px; text-align: center;">الكمية</th><th style="border: 1px solid #333; padding: 10px; text-align: center;">التكلفة التقديرية (ج.م)</th><th style="border: 1px solid #333; padding: 10px; text-align: right;">الغرض من الاحتياج</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td style="border: 1px solid #333; padding: 10px;" id="printItem">---</td><td style="border: 1px solid #333; padding: 10px;" id="printQty">---</td><td style="border: 1px solid #333; padding: 10px;" id="printCost">---</td><td style="border: 1px solid #333; padding: 10px;" id="printJustification">---</td></tr>
+                    <tr><td style="border: 1px solid #333; padding: 10px; font-weight: bold;" id="printItem">---</td><td style="border: 1px solid #333; padding: 10px; text-align: center; font-weight: bold;" id="printQty">---</td><td style="border: 1px solid #333; padding: 10px; text-align: center; font-weight: bold;" id="printCost">---</td><td style="border: 1px solid #333; padding: 10px;" id="printJustification">---</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBak0zqn3znzNU3HSMAyseef6Z32HiC0OHly-zwdGpypK0HspmdU7XC0QtOYCJ3QButw/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyK312oE-QRbY9_wQeOKGsPIb6SFY-Drl7-0CMgWpMQBV1XbAVabR_3x05X7G4inhB73w/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
@@ -588,8 +588,42 @@
                 const container = document.getElementById('requestsList');
                 container.innerHTML = "";
                 if (!data || data.length === 0) { container.innerHTML = '<p class="empty-state">لا توجد طلبات معلقة بحاجة لمراجعتك.</p>'; return; }
-                data.forEach(req => container.appendChild(buildRequestCard(req, false)));
+                data.forEach(req => container.appendChild(buildRequestCard(req, true)));
             });
+        }
+
+        function processAction(requestId, actionType, extraData = {}) {
+            const payload = { action: "updateStatus", requestId: requestId, actionType: actionType, ...extraData };
+            const formData = new URLSearchParams(payload);
+            fetch(SCRIPT_URL, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب بنجاح.");
+                    loadReviewRequests();
+                } else {
+                    showCustomAlert("خطأ", res.message || "حدث خطأ أثناء التنفيذ.");
+                }
+            })
+            .catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+        }
+
+        function promptReject(requestId, actionName = "reject") {
+            const reason = prompt("يرجى إدخال سبب الرفض:");
+            if (reason !== null && reason.trim() !== "") {
+                processAction(requestId, actionName, { rejectReason: reason.trim() });
+            } else if (reason !== null) {
+                showCustomAlert("تنبيه", "يجب كتابة سبب الرفض لإتمام العملية.");
+            }
+        }
+
+        function promptTransfer(requestId) {
+            const dept = prompt("اختر الجهة المحول إليها (اكتب: إدارة الميزانية أو إدارة التخطيط والمتابعة):");
+            if (dept && (dept.includes("الميزانية") || dept.includes("التخطيط"))) {
+                processAction(requestId, "chairman_transfer", { targetDept: dept.trim() });
+            } else if (dept) {
+                showCustomAlert("خطأ", "اسم الإدارة غير صحيح. يرجى الاختيار بين إدارة الميزانية أو إدارة التخطيط والمتابعة.");
+            }
         }
 
         /* ================= متابعة الطلب (الموظف) ================= */
@@ -603,7 +637,6 @@
             const btn = document.getElementById('trackLoginBtn');
             btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الدخول...';
 
-            // التحقق من الموظف في شيت Employees
             fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
             .then(res => res.json())
             .then(data => {
@@ -638,7 +671,6 @@
             const container = document.getElementById('trackRequestsList');
             container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
-            // نستخدم الإجراء الخاص بجلب طلبات الموظف برقمه القومي
             fetch(SCRIPT_URL + `?action=getMyRequests&nationalId=${currentTrackUser.nationalId}`)
             .then(res => res.json())
             .then(data => {
@@ -652,7 +684,7 @@
             .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
         }
 
-        /* ================= كارت الطلب ================= */
+        /* ================= بناء كارت الطلب والأزرار التفاعلية ================= */
         function buildRequestCard(req, withActions) {
             const div = document.createElement('div'); div.className = 'request-card';
             const stage = (req.Current_Stage || "").toString();
@@ -663,6 +695,40 @@
             else if (stage.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
             else if (stage.indexOf("بانتظار رد") === 0 || stage.indexOf("بانتظار قرار") === 0) badgeClass = 'badge-info';
 
+            let buttonsHtml = "";
+            if (withActions) {
+                if (stage === "مراجعة المدير العام") {
+                    buttonsHtml = `
+                        <div class="req-actions">
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
+                            <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>
+                        </div>
+                    `;
+                } else if (stage === "مراجعة رئيس الإدارة المركزية") {
+                    buttonsHtml = `
+                        <div class="req-actions">
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
+                            <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>
+                        </div>
+                    `;
+                } else if (stage === "مراجعة رئيس مجلس الإدارة" || stage.indexOf("بانتظار قرار رئيس مجلس") === 0) {
+                    buttonsHtml = `
+                        <div class="req-actions">
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> 1. الموافقة بالأمر المباشر</button>
+                            <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> 2. التحويل (الميزانية / التخطيط)</button>
+                            <button class="main-btn" style="background:#ffc107; color:#000;" onclick="processAction('${req.Request_ID}', 'chairman_final_approve')"><i class="fas fa-check-double"></i> 3. الموافقة بعد رد الإدارتين</button>
+                            <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> 4. الرفض مع ذكر السبب</button>
+                        </div>
+                    `;
+                } else if (stage.indexOf("بانتظار رد") === 0) {
+                    buttonsHtml = `
+                        <div class="req-actions">
+                            <button class="main-btn" style="background:#0d6efd;" onclick="processAction('${req.Request_ID}', 'dept_reply')"><i class="fas fa-reply"></i> تسجيل ورد الرد (إرسال لرئيس مجلس الإدارة)</button>
+                        </div>
+                    `;
+                }
+            }
+
             div.innerHTML = `
                 <div class="req-title"><span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span><span class="badge ${badgeClass}">${stage || '-'}</span></div>
                 <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.Applicant_Name || '-'} (${req.Role || '-'})</span></div>
@@ -672,15 +738,16 @@
                 <div class="req-row"><strong>التكلفة:</strong> <span>${req.Estimated_Cost || '-'} ج.م</span></div>
                 <div class="req-row"><strong>الغرض:</strong> <span>${req.Justification || '-'}</span></div>
                 <div class="req-row"><strong>الحالة:</strong> <span>${status || '-'}</span></div>
+                ${buttonsHtml}
             `;
             return div;
         }
 
-        /* ================= الطباعة ================= */
+        /* ================= الطباعة الرسمية ================= */
         function printReport() {
             document.getElementById('printReqId').textContent = lastCreatedReqId;
             document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
-            document.getElementById('printParentDept').textContent = document.getElementById('parentDepartment').value || "إدارة التعاقدات والمشتريات";
+            document.getElementById('printParentDept').textContent = document.getElementById('parentDepartment').value ? "إدارة " + document.getElementById('parentDepartment').value : "إدارة التعاقدات والمشتريات";
             document.getElementById('printItem').textContent = document.getElementById('itemDesc').value || "---";
             document.getElementById('printQty').textContent = document.getElementById('quantity').value || "---";
             document.getElementById('printCost').textContent = (document.getElementById('estCost').value || "0") + " ج.م";
