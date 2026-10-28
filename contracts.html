@@ -130,7 +130,7 @@
         .badge-info { background: rgba(13,110,253,0.2); color: #60a5fa; }
     </style>
 </head>
-<body onload="loadDepartments(); loadTrackUsersList();">
+<body onload="loadDepartments(); loadReviewUsersList();">
 
     <header>
         <div class="logo-area">
@@ -220,7 +220,7 @@
                 <div id="successBox">
                     <i class="fas fa-check-circle"></i>
                     <h3>تم تقديم الطلب بنجاح</h3>
-                    <p>تم إرسال الطلب ومعالجته في الشيت بنجاح، وتم إرسال إشعار للمدير العام.</p>
+                    <p>تم إرسال الطلب ومعالجته في الشيت بنجاح.</p>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                         <button class="print-btn" onclick="printReport()"><i class="fas fa-print"></i> حفظ الطلب كـ PDF</button>
                         <button class="back-btn" onclick="resetCreateForm()" style="background: #2563eb; justify-content: center; padding: 10px;"><i class="fas fa-plus"></i> تقديم طلب جديد</button>
@@ -229,14 +229,24 @@
             </div>
         </div>
 
-        <!-- مراجعة -->
+        <!-- مراجعة الطلبات (للمسؤولين) -->
         <div id="reviewView" class="section-view">
             <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
             <div class="form-box">
                 <div id="loginBox">
                     <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">تسجيل دخول المسؤولين</h2>
-                    <div class="form-group"><label>اسم المستخدم:</label><input type="text" id="username" placeholder="اسم المستخدم"></div>
-                    <div class="form-group"><label>كلمة المرور:</label><input type="password" id="password" placeholder="كلمة المرور"></div>
+                    <div class="form-group">
+                        <label>اسم المستخدم:</label>
+                        <div class="custom-select-wrap" id="reviewUserSelectWrap" data-placeholder="-- اختر اسم المستخدم --">
+                            <div class="custom-select-trigger placeholder" id="reviewUserTrigger" tabindex="0">
+                                <span class="custom-select-label">-- اختر اسم المستخدم --</span>
+                                <i class="fas fa-chevron-down select-arrow"></i>
+                            </div>
+                            <div class="custom-select-menu" id="reviewUserMenu"></div>
+                            <input type="hidden" id="reviewUsername" name="reviewUsername">
+                        </div>
+                    </div>
+                    <div class="form-group"><label>كلمة المرور:</label><input type="password" id="reviewPassword" placeholder="كلمة المرور"></div>
                     <button class="main-btn" onclick="handleLogin()">دخول</button>
                 </div>
                 <div id="dashboard" style="display: none;">
@@ -246,31 +256,24 @@
             </div>
         </div>
 
-        <!-- متابعة الطلب -->
+        <!-- متابعة الطلب (للموظفين) -->
         <div id="trackView" class="section-view">
             <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
             <div class="form-box">
-                <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">متابعة الطلب</h2>
+                <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">متابعة حالة الطلب</h2>
 
                 <div id="trackLoginBox">
                     <p style="font-size:13px; color:#94a3b8; margin-bottom:15px; text-align:center;">
-                        اختر اسمك من القائمة وأدخل كلمة المرور لعرض الطلبات الموجهة إليك
+                        أدخل رقمك القومي وكلمة المرور لعرض الطلبات الخاصة بك
                     </p>
 
                     <div class="form-group">
-                        <label><i class="fas fa-user" style="color:#fbbf24;"></i> اسم المستخدم:</label>
-                        <div class="custom-select-wrap" id="trackUserSelectWrap" data-placeholder="-- اختر اسم المستخدم --">
-                            <div class="custom-select-trigger placeholder" id="trackUserTrigger" tabindex="0">
-                                <span class="custom-select-label">-- اختر اسم المستخدم --</span>
-                                <i class="fas fa-chevron-down select-arrow"></i>
-                            </div>
-                            <div class="custom-select-menu" id="trackUserMenu"></div>
-                            <input type="hidden" id="trackUsername" name="trackUsername">
-                        </div>
+                        <label>الرقم القومي (14 رقماً):</label>
+                        <input type="text" id="trackNationalId" maxlength="14" placeholder="أدخل الرقم القومي...">
                     </div>
 
                     <div class="form-group">
-                        <label><i class="fas fa-lock" style="color:#fbbf24;"></i> كلمة المرور:</label>
+                        <label>كلمة المرور:</label>
                         <input type="password" id="trackPassword" placeholder="أدخل كلمة المرور..." onkeypress="if(event.key==='Enter') trackLogin()">
                     </div>
 
@@ -338,7 +341,7 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeThQTCi0f09PkXz-63lCMpFUulCw2SqocJEFUVoEcVUnHIlhulUCjYt0SSYO_esUxNw/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxBak0zqn3znzNU3HSMAyseef6Z32HiC0OHly-zwdGpypK0HspmdU7XC0QtOYCJ3QButw/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
@@ -418,11 +421,11 @@
             }
         }
 
-        let deptSelect, titleSelect, trackUserSelect;
+        let deptSelect, titleSelect, reviewUserSelect;
 
-        /* ================= البيانات ================= */
+        /* ================= الدوال الأساسية ================= */
         function loadDepartments() {
-            fetch(SCRIPT_URL + "?action=getUniqueDepartments")
+            fetch(SCRIPT_URL + "?action=getDepartments")
             .then(res => res.json())
             .then(data => {
                 if (data.status === "success" && Array.isArray(data.data)) {
@@ -432,13 +435,13 @@
             });
         }
 
-        function loadTrackUsersList() {
+        function loadReviewUsersList() {
             fetch(SCRIPT_URL + "?action=getAllUsersList")
             .then(res => res.json())
             .then(data => {
                 if (data.status === "success" && Array.isArray(data.data)) {
-                    if (!trackUserSelect) trackUserSelect = new CustomSelect('trackUserSelectWrap', data.data, "");
-                    else trackUserSelect.setOptions(data.data, true);
+                    if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', data.data, "");
+                    else reviewUserSelect.setOptions(data.data, true);
                 }
             });
         }
@@ -554,11 +557,13 @@
 
         /* ================= تسجيل دخول المراجعة ================= */
         function handleLogin() {
-            const user = document.getElementById('username').value.trim();
-            const pass = document.getElementById('password').value.trim();
-            if (!user || !pass) { showCustomAlert("تنبيه", "أدخل اسم المستخدم وكلمة المرور."); return; }
+            const username = document.getElementById('reviewUsername').value;
+            const password = document.getElementById('reviewPassword').value;
+            
+            if (!username) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
+            if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
 
-            const formData = new URLSearchParams({ action: "login", username: user, password: pass });
+            const formData = new URLSearchParams({ action: "login", username, password });
             fetch(SCRIPT_URL, { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
@@ -568,7 +573,9 @@
                     document.getElementById('dashboard').style.display = 'block';
                     document.getElementById('welcomeTitle').innerText = "مرحباً: " + data.name + " (" + data.role + ")";
                     loadReviewRequests();
-                } else showCustomAlert("خطأ", data.message);
+                } else {
+                    showCustomAlert("خطأ", data.message);
+                }
             })
             .catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
         }
@@ -585,28 +592,32 @@
             });
         }
 
-        /* ================= متابعة الطلب ================= */
+        /* ================= متابعة الطلب (الموظف) ================= */
         function trackLogin() {
-            const username = document.getElementById('trackUsername').value;
-            const password = document.getElementById('trackPassword').value;
-            if (!username) { showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم."); return; }
-            if (!password) { showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور."); return; }
+            const nationalId = document.getElementById('trackNationalId').value.trim();
+            const password = document.getElementById('trackPassword').value.trim();
+            
+            if (nationalId.length !== 14) return showCustomAlert("تنبيه", "الرقم القومي يجب أن يكون 14 رقماً.");
+            if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
 
             const btn = document.getElementById('trackLoginBtn');
             btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الدخول...';
 
-            const formData = new URLSearchParams({ action: "login", username, password });
-            fetch(SCRIPT_URL, { method: 'POST', body: formData })
+            // التحقق من الموظف في شيت Employees
+            fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
             .then(res => res.json())
             .then(data => {
                 btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+                
                 if (data.status === "success") {
-                    currentTrackUser = { name: data.name, role: data.role, department: data.department || "" };
+                    currentTrackUser = { name: data.employeeName, nationalId: nationalId };
                     document.getElementById('trackLoginBox').style.display = 'none';
                     document.getElementById('trackDashboard').style.display = 'block';
-                    document.getElementById('trackWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.name} <span style="color:#94a3b8; font-size:12px;">(${data.role})</span>`;
+                    document.getElementById('trackWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.employeeName}`;
                     loadTrackRequestsForUser();
-                } else showCustomAlert("خطأ", data.message);
+                } else {
+                    showCustomAlert("خطأ", data.message);
+                }
             })
             .catch(() => {
                 btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
@@ -616,8 +627,8 @@
 
         function trackLogout() {
             currentTrackUser = null;
+            document.getElementById('trackNationalId').value = "";
             document.getElementById('trackPassword').value = "";
-            if (trackUserSelect) trackUserSelect.setValue("", false);
             document.getElementById('trackLoginBox').style.display = 'block';
             document.getElementById('trackDashboard').style.display = 'none';
         }
@@ -627,16 +638,16 @@
             const container = document.getElementById('trackRequestsList');
             container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
-            const formData = new URLSearchParams({ action: "getRequests", username: currentTrackUser.name, role: currentTrackUser.role, department: currentTrackUser.department || "" });
-            fetch(SCRIPT_URL, { method: 'POST', body: formData })
+            // نستخدم الإجراء الخاص بجلب طلبات الموظف برقمه القومي
+            fetch(SCRIPT_URL + `?action=getMyRequests&nationalId=${currentTrackUser.nationalId}`)
             .then(res => res.json())
             .then(data => {
                 container.innerHTML = "";
                 if (!Array.isArray(data) || data.length === 0) {
-                    container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات موجهة إليك حالياً.</p>';
+                    container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات مسجلة لهذا الرقم.</p>';
                     return;
                 }
-                data.forEach(req => container.appendChild(buildRequestCard(req, true)));
+                data.forEach(req => container.appendChild(buildRequestCard(req, false)));
             })
             .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
         }
@@ -646,30 +657,11 @@
             const div = document.createElement('div'); div.className = 'request-card';
             const stage = (req.Current_Stage || "").toString();
             const status = (req.Status || "").toString();
-            const role = (currentTrackUser && currentTrackUser.role) || (loggedInUser && loggedInUser.role) || "";
-            const isAdmin = ((currentTrackUser && currentTrackUser.name) === "mohsaadothman@gmail.com") || ((loggedInUser && loggedInUser.name) === "mohsaadothman@gmail.com") || role.indexOf("أدمن") !== -1;
-
+            
             let badgeClass = 'badge-wait';
             if (stage.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
             else if (stage.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
             else if (stage.indexOf("بانتظار رد") === 0 || stage.indexOf("بانتظار قرار") === 0) badgeClass = 'badge-info';
-
-            let buttons = "";
-            if (withActions) {
-                if (stage === "مراجعة المدير العام" && (role.indexOf("مدير عام") !== -1 || role.indexOf("مدير الإدارة") !== -1 || isAdmin)) {
-                    buttons = `<button class="main-btn" style="background:#198754;" onclick="promptSendToCentral('${req.Request_ID}')"><i class="fas fa-paper-plane"></i> موافقة وتحويل لرؤساء الإدارات المركزية</button><button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>`;
-                } else if (stage === "مراجعة رئيس الإدارة المركزية" && (role.indexOf("رئيس الإدارة المركزية") !== -1 || isAdmin)) {
-                    buttons = `<button class="main-btn" style="background:#198754;" onclick="promptSendToChairman('${req.Request_ID}')"><i class="fas fa-arrow-up"></i> موافقة وتحويل لرئيس مجلس الإدارة</button><button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>`;
-                } else if (stage === "مراجعة رئيس مجلس الإدارة" && (role.indexOf("رئيس مجلس") !== -1 || role.indexOf("السلطة المختصة") !== -1 || isAdmin)) {
-                    buttons = `<button class="main-btn" style="background:#198754;" onclick="chairmanApproveDirect('${req.Request_ID}')"><i class="fas fa-check-double"></i> موافقة نهائية بالأمر المباشر</button><button class="main-btn" style="background:#0d6efd;" onclick="chairmanTransfer('${req.Request_ID}')"><i class="fas fa-share"></i> موافقة مبدئية وتحويل (الميزانية / التخطيط)</button><button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>`;
-                } else if ((stage === "بانتظار رد إدارة الميزانية" && role.indexOf("الميزانية") !== -1) || (stage === "بانتظار رد إدارة التخطيط والمتابعة" && role.indexOf("التخطيط") !== -1) || (stage.indexOf("بانتظار رد") === 0 && isAdmin)) {
-                    buttons = `<button class="main-btn" style="background:#198754;" onclick="deptReplyToChairman('${req.Request_ID}')"><i class="fas fa-check"></i> الموافقة وإرسال الرد لرئيس مجلس الإدارة</button><button class="main-btn" style="background:#dc3545;" onclick="promptDeptReject('${req.Request_ID}')"><i class="fas fa-times"></i> الرفض مع ذكر السبب</button>`;
-                } else if (stage.indexOf("بانتظار قرار رئيس مجلس الإدارة بعد رد") === 0 && (role.indexOf("رئيس مجلس") !== -1 || role.indexOf("السلطة المختصة") !== -1 || isAdmin)) {
-                    buttons = `<button class="main-btn" style="background:#198754;" onclick="chairmanFinalApprove('${req.Request_ID}')"><i class="fas fa-check-double"></i> موافقة نهائية بعد رد الإدارة</button><button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض مع سبب</button>`;
-                } else {
-                    buttons = `<p style="color:#fbbf24; margin-top:10px; font-size:12px; text-align:center;">لا توجد إجراءات متاحة لك في هذه المرحلة.</p>`;
-                }
-            }
 
             div.innerHTML = `
                 <div class="req-title"><span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span><span class="badge ${badgeClass}">${stage || '-'}</span></div>
@@ -680,76 +672,8 @@
                 <div class="req-row"><strong>التكلفة:</strong> <span>${req.Estimated_Cost || '-'} ج.م</span></div>
                 <div class="req-row"><strong>الغرض:</strong> <span>${req.Justification || '-'}</span></div>
                 <div class="req-row"><strong>الحالة:</strong> <span>${status || '-'}</span></div>
-                ${withActions ? `<div class="req-actions">${buttons}</div>` : ''}
             `;
             return div;
-        }
-
-        /* ================= إجراءات الـ Workflow ================= */
-        function callWorkflowAction(requestId, actionType, extra) {
-            const actor = currentTrackUser || loggedInUser;
-            const payload = Object.assign({ action: "updateStatus", requestId: requestId, actionType: actionType, actorUsername: actor.name, actorRole: actor.role, actorDepartment: actor.department || "" }, extra || {});
-            const formData = new URLSearchParams(payload);
-            return fetch(SCRIPT_URL, { method: 'POST', body: formData }).then(r => r.json());
-        }
-
-        function promptSendToCentral(requestId) {
-            if (!confirm("هل تريد الموافقة وإرسال الطلب إلى رؤساء الإدارة المركزية؟")) return;
-            callWorkflowAction(requestId, "gm_approve").then(res => {
-                if (res.status === "success") { showSuccess("تم بنجاح", "تمت الموافقة والإرسال."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function promptSendToChairman(requestId) {
-            if (!confirm("هل تريد الموافقة وإرسال الطلب إلى رئيس مجلس الإدارة؟")) return;
-            callWorkflowAction(requestId, "central_approve").then(res => {
-                if (res.status === "success") { showSuccess("تم بنجاح", "تمت الموافقة والإرسال."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function chairmanApproveDirect(requestId) {
-            if (!confirm("هل تريد الموافقة النهائية بالأمر المباشر؟")) return;
-            callWorkflowAction(requestId, "chairman_direct_approve").then(res => {
-                if (res.status === "success") { showSuccess("تم بنجاح", "تمت الموافقة النهائية."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function chairmanTransfer(requestId) {
-            const choice = prompt("اختر الجهة:\n1 → إدارة الميزانية\n2 → إدارة التخطيط والمتابعة");
-            if (choice === null) return;
-            let targetDept = "";
-            const c = choice.trim();
-            if (c === "1" || c.indexOf("الميزانية") !== -1) targetDept = "إدارة الميزانية";
-            else if (c === "2" || c.indexOf("التخطيط") !== -1) targetDept = "إدارة التخطيط والمتابعة";
-            else { showCustomAlert("خطأ", "اختيار غير صحيح."); return; }
-            callWorkflowAction(requestId, "chairman_transfer", { targetDept }).then(res => {
-                if (res.status === "success") { showSuccess("تم بنجاح", "تم التحويل إلى " + targetDept); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function deptReplyToChairman(requestId) {
-            const note = prompt("أدخل ملاحظات الإدارة (اختياري):", "") || "";
-            callWorkflowAction(requestId, "dept_reply", { deptNote: note }).then(res => {
-                if (res.status === "success") { showSuccess("تم بنجاح", "تم إرسال رد الإدارة."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function promptDeptReject(requestId) {
-            const reason = prompt("يرجى إدخال سبب الرفض:");
-            if (reason && reason.trim() !== "") callWorkflowAction(requestId, "dept_reject", { rejectReason: reason.trim() }).then(res => {
-                if (res.status === "success") { showSuccess("تم", "تم الرفض."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function chairmanFinalApprove(requestId) {
-            if (!confirm("هل تريد الموافقة النهائية بعد رد الإدارة؟")) return;
-            callWorkflowAction(requestId, "chairman_final_approve").then(res => {
-                if (res.status === "success") { showSuccess("تم بنجاح", "تمت الموافقة النهائية."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function promptReject(requestId) {
-            const reason = prompt("يرجى إدخال سبب الرفض:");
-            if (reason && reason.trim() !== "") callWorkflowAction(requestId, "reject", { rejectReason: reason.trim() }).then(res => {
-                if (res.status === "success") { showSuccess("تم", "تم الرفض."); refreshTrack(); } else showCustomAlert("خطأ", res.message);
-            });
-        }
-        function refreshTrack() {
-            if (currentTrackUser) loadTrackRequestsForUser();
-            if (loggedInUser && loggedInUser.name && document.getElementById('dashboard').style.display !== 'none') loadReviewRequests();
         }
 
         /* ================= الطباعة ================= */
