@@ -119,7 +119,7 @@
         }
     </style>
 </head>
-<body onload="loadDepartments()">
+<body onload="loadDepartments(); loadUsersDropdown();">
 
     <header>
         <div class="logo-area">
@@ -260,8 +260,16 @@
             <div class="form-box">
                 <div id="loginBox">
                     <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">تسجيل دخول المسؤولين</h2>
-                    <div class="form-group"><label>اسم المستخدم:</label><input type="text" id="username" placeholder="اسم المستخدم"></div>
-                    <div class="form-group"><label>كلمة المرور:</label><input type="password" id="password" placeholder="كلمة المرور"></div>
+                    <div class="form-group">
+                        <label>اسم المستخدم:</label>
+                        <select id="username" required>
+                            <option value="">-- اختر اسم المستخدم --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>كلمة المرور:</label>
+                        <input type="password" id="password" required placeholder="أدخل كلمة المرور...">
+                    </div>
                     <button class="main-btn" onclick="handleLogin()">دخول</button>
                 </div>
                 <div id="dashboard" style="display: none;">
@@ -294,7 +302,7 @@
 
     </div>
 
-    <!-- قالب التقرير الرسمي الموحد للطباعة والـ PDF (محدث بنفس منطق الملف المجمع) -->
+    <!-- قالب التقرير الرسمي الموحد للطباعة والـ PDF -->
     <div id="printableArea">
         <div style="width: 210mm; min-height: 297mm; background: white; color: #000; padding: 20mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box;">
             
@@ -374,7 +382,7 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzmxgw5iPifQNoj95sSRGoHjawkw47UfKPWw7xGqWVL9d7ylcUP-GE-G9_CrVK54nP1Ag/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyhorHjNrh4Xng6IjYAp8a2xt0a7EqZaFvsfV1943jm3SKrkmc_uFthlUkgLU7zYPtEug/exec";
         let lastCreatedReqId = "REQ-000000";
 
         function loadDepartments() {
@@ -392,6 +400,23 @@
                     });
                 }
             }).catch(err => console.log("خطأ في تحميل الإدارات"));
+        }
+
+        function loadUsersDropdown() {
+            fetch(SCRIPT_URL + "?action=getUsersList")
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === "success" && Array.isArray(data.data)) {
+                    let select = document.getElementById('username');
+                    select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
+                    data.data.forEach(user => {
+                        let opt = document.createElement('option');
+                        opt.value = user;
+                        opt.textContent = user;
+                        select.appendChild(opt);
+                    });
+                }
+            }).catch(err => console.log("خطأ في تحميل قائمة المستخدمين"));
         }
 
         function updateManagerTitle() {
@@ -513,7 +538,6 @@
             });
         });
 
-        // دالة تعبئة بيانات الطباعة والـ PDF بنمط موحد ومطابق للخادم
         function fillPrintData() {
             document.getElementById('printReqId').innerText = lastCreatedReqId;
             document.getElementById('printDate').innerText = new Date().toLocaleDateString('ar-EG');
@@ -535,7 +559,6 @@
             document.getElementById('printManagerSign').innerText = document.getElementById('managerName').value;
         }
 
-        // دالة طباعة التقرير وتصديره كـ PDF
         function printReport() {
             fillPrintData();
             window.print();
