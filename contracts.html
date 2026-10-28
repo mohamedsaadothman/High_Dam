@@ -7,9 +7,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
-    
-    <!-- مكتبة تحويل HTML إلى PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
@@ -95,7 +92,7 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
 
-        /* تنسيقات الطباعة بالعرض */
+        /* تنسيقات الطباعة */
         #printableArea { display: none; }
 
         @media print {
@@ -113,7 +110,7 @@
                 margin: 0;
                 font-family: 'Cairo', sans-serif;
             }
-            @page { size: A4 landscape; margin: 10mm; }
+            @page { size: A4 landscape; margin: 10mm; } /* ورق بالعرض */
         }
     </style>
 </head>
@@ -244,9 +241,9 @@
                 <div id="successBox">
                     <i class="fas fa-check-circle"></i>
                     <h3>تم تقديم الطلب بنجاح</h3>
-                    <p>تم إرسال الطلب ومعالجته في الشيت بنجاح وإرسال نسخة PDF للإيميل.</p>
+                    <p>تم إرسال الطلب ومعالجته في الشيت بنجاح.</p>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <button class="print-btn" onclick="printReport()"><i class="fas fa-print"></i> طباعة الطلب / حفظ PDF</button>
+                        <button class="print-btn" onclick="printReport()"><i class="fas fa-print"></i> حفظ الطلب كـ PDF</button>
                         <button class="back-btn" onclick="resetCreateForm()" style="background: #2563eb; justify-content: center; padding: 10px;"><i class="fas fa-plus"></i> تقديم طلب جديد</button>
                     </div>
                 </div>
@@ -292,9 +289,8 @@
 
     </div>
 
-    <!-- قالب التقرير الرسمي المخصص للطباعة والـ PDF (بالعرض) -->
+    <!-- قالب التقرير الرسمي المخصص للطباعة والـ PDF -->
     <div id="printableArea">
-        <!-- تم ضبط العرض والارتفاع ليتناسب مع A4 أفقي -->
         <div style="position: relative; width: 297mm; height: 210mm; background: white; padding: 15mm; overflow: hidden; font-family: 'Cairo', sans-serif;">
             
             <!-- العلامة المائية -->
@@ -310,7 +306,6 @@
                     <div style="border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
                         <div style="text-align: right; width: 60%;">
                             <h3 style="font-size: 16px; font-weight: 900; margin: 0 0 3px 0;">الهيئة العامة للسد العالي وخزان أسوان</h3>
-                            <!-- الإدارة المقدمة للطلب تظهر هنا -->
                             <span style="font-size: 12px; color: #333; font-weight: bold;" id="printParentDept">إدارة التعاقدات والمشتريات</span>
                         </div>
                         <div style="text-align: left; font-size: 11px; width: 40%;">
@@ -499,9 +494,7 @@
             }).then(() => {
                 fillPrintData(); 
                 
-                // استدعاء دالة توليد الـ PDF وإرساله
-                sendPdfToAdmin();
-
+                // لا يتم استدعاء الـ PDF التلقائي هنا لتجنب المشاكل
                 document.getElementById('requestFormContainer').style.display = 'none';
                 document.getElementById('successBox').style.display = 'block';
             }).catch(() => {
@@ -531,56 +524,10 @@
             document.getElementById('printManagerSign').innerText = document.getElementById('managerName').value;
         }
 
+        // دالة الطباعة المباشرة (الأكثر أماناً وستخرج الـ PDF بشكل مثالي)
         function printReport() {
             fillPrintData();
             window.print();
-        }
-
-        // توليد الـ PDF بالعرض وإرساله للخادم
-        function sendPdfToAdmin() {
-            const element = document.getElementById('printableArea');
-            
-            // جعل العنصر مرئياً مؤقتاً في مكان بعيد لكي تتمكن مكتبة html2pdf من قراءته (حل مشكلة الملف الفارغ)
-            element.style.display = 'block';
-            element.style.position = 'absolute';
-            element.style.left = '-9999px';
-            element.style.top = '0';
-
-            const opt = {
-                margin:       0,
-                filename:     `طلب_شراء_${lastCreatedReqId}.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, letterRendering: true },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' } // تم ضبطها إلى landscape
-            };
-
-            // توليد الـ PDF
-            html2pdf().set(opt).from(element).outputPdf('datauristring').then(function(pdfBase64) {
-                // إخفاء العنصر مرة أخرى بعد الانتهاء
-                element.style.display = 'none';
-                element.style.position = 'static';
-                
-                const pdfData = {
-                    action: "sendPdfEmail",
-                    reqId: lastCreatedReqId,
-                    pdfBase64: pdfBase64
-                };
-
-                fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(pdfData)
-                }).then(() => {
-                    console.log("تم إرسال ملف الـ PDF بنجاح للخادم.");
-                }).catch(err => {
-                    console.error("فشل إرسال ملف الـ PDF:", err);
-                });
-            }).catch(err => {
-                console.error("فشل توليد الـ PDF:", err);
-                element.style.display = 'none';
-                element.style.position = 'static';
-            });
         }
 
         function handleLogin() {
