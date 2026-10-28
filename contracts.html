@@ -328,7 +328,7 @@
         </div>
     </div>
 
-    <!-- منطقة الطباعة الرسمية والمضبوطة بخطوط عريضة (Bold) لتناسب صفحة A4 واحدة تماماً -->
+    <!-- منطقة الطباعة الرسمية -->
     <div id="printableArea">
         <div style="width: 210mm; height: 275mm; background: white; color: #000; padding: 6mm 10mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700;">
             
@@ -407,6 +407,21 @@
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
         let currentTrackUser = null;
+
+        // استعادة الجلسة إذا تم تحديث الصفحة
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedUser = localStorage.getItem('reviewUser');
+            if (savedUser) {
+                loggedInUser = JSON.parse(savedUser);
+                // إذا كان المستخدم في صفحة المراجعة
+                if (document.getElementById('reviewView').classList.contains('active')) {
+                    document.getElementById('loginBox').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+                    document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + " (" + loggedInUser.role + ")";
+                    loadReviewRequests();
+                }
+            }
+        });
 
         /* ================= CustomSelect ================= */
         class CustomSelect {
@@ -630,6 +645,9 @@
             .then(data => {
                 if (data.status === "success") {
                     loggedInUser = data;
+                    // حفظ بيانات الدخول في المتصفح لضمان عدم فقدانها
+                    localStorage.setItem('reviewUser', JSON.stringify(data)); 
+                    
                     document.getElementById('loginBox').style.display = 'none';
                     document.getElementById('dashboard').style.display = 'block';
                     document.getElementById('welcomeTitle').innerText = "مرحباً: " + data.name + " (" + data.role + ")";
@@ -642,14 +660,27 @@
         }
 
         function loadReviewRequests() {
-            const formData = new URLSearchParams({ action: "getRequests", username: loggedInUser.name, role: loggedInUser.role, department: loggedInUser.department || "" });
+            // إرسال البيانات بالشكل الذي يتوقعه الباك إند الجديد
+            const formData = new URLSearchParams({ 
+                action: "getRequests", 
+                username: loggedInUser.role, // نرسل الدور في خانة username
+                role: loggedInUser.role, 
+                department: loggedInUser.department || "" 
+            });
+            
             fetch(SCRIPT_URL, { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
                 const container = document.getElementById('requestsList');
                 container.innerHTML = "";
-                if (!data || data.length === 0) { container.innerHTML = '<p class="empty-state">لا توجد طلبات معلقة بحاجة لمراجعتك.</p>'; return; }
+                if (!data || data.length === 0) { 
+                    container.innerHTML = '<p class="empty-state">لا توجد طلبات معلقة بحاجة لمراجعتك.</p>'; 
+                    return; 
+                }
                 data.forEach(req => container.appendChild(buildRequestCard(req, true)));
+            })
+            .catch(() => {
+                document.getElementById('requestsList').innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
             });
         }
 
@@ -804,7 +835,7 @@
             return div;
         }
 
-        /* ================= الطباعة الرسمية المضبوطة ================= */
+        /* ================= الطباعة الرسمية ================= */
         function printReport() {
             document.getElementById('printReqId').textContent = lastCreatedReqId;
             document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
