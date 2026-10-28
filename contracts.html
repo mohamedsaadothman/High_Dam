@@ -95,7 +95,7 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
 
-        #printableArea { display: none; }
+        #printableArea { display: none; position: relative; overflow: hidden; }
 
         @media print {
             body * { visibility: hidden; }
@@ -110,6 +110,7 @@
                 color: black !important;
                 padding: 15px;
                 font-family: 'Cairo', sans-serif;
+                z-index: 99999;
             }
             @page { size: A4; margin: 10mm; }
         }
@@ -174,7 +175,8 @@
 
                         <div class="form-group">
                             <label>3- اسم مقدم الطلب:</label>
-                            <input type="text" id="applicantName" readonly placeholder="يُجلب تلقائياً...">
+                            <input type="text" id="applicantName" readonly placeholder="يُجلب تلقائياً..." style="background:#1e293b; color:#94a3b8;">
+                            <div id="loadingName" style="display:none; font-size:12px; color:#fbbf24; margin-top:5px;"><i class="fas fa-spinner fa-spin"></i> جاري جلب الاسم...</div>
                         </div>
 
                         <div class="form-group">
@@ -290,66 +292,72 @@
     </div>
 
     <!-- قالب التقرير الرسمي المخصص للطباعة والـ PDF -->
-    <div id="printableArea">
-        <div style="border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h3 style="font-size: 15px; font-weight: 900; margin: 0;">الهيئة العامة للسد العالي وخزان أسوان</h3>
-                <span style="font-size: 10px; color: #555;">إدارة التعاقدات والمشتريات</span>
-            </div>
-            <div style="text-align: left; font-size: 10px;">
-                <div>مسلسل الطلب: <span id="printReqId">REQ-000000</span></div>
-                <div>تاريخ التسجيل: <span id="printDate">28-10-2026</span></div>
-            </div>
-        </div>
-
-        <div style="text-align: center; margin: 15px 0;">
-            <h2 style="font-size: 16px; font-weight: 900; text-decoration: underline; margin: 0;">طلب شراء واحتياجات رسمي</h2>
-        </div>
-
-        <div style="font-size: 12px; line-height: 2; margin-bottom: 15px;">
-            <div style="font-weight: bold;" id="printManagerTitle">المحاسب / مدير عام إدارة ---</div>
-            <div>تحية طيبة وبعد,,,</div>
-            <div style="text-align: justify; margin-top: 8px;">
-                أرجو التكرم بالموافقة على تدبير واحتياج الآتي: 
-                (<span id="printItem" style="font-weight: bold;">---</span>) 
-                بكمية / وحدة: (<span id="printQty" style="font-weight: bold;">---</span>) 
-                بتكلفة تقديرية إجمالية تقدر بـ: (<span id="printCost" style="font-weight: bold;">---</span>) جنيه مصري، 
-                وذلك نظراً لـ: <span id="printJustification" style="font-weight: bold;">---</span>.
-            </div>
-            <div style="margin-top: 10px;">وتفضلو بقبول فائق الاحترام والتقدير,,,</div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; margin-top: 25px; font-size: 11px;">
-            <div>
-                <div>مقدمه لسيادتكم:</div>
-                <div style="font-weight: bold; font-size: 12px; margin-top: 3px;" id="printApplicantRole">---</div>
-                <div style="font-weight: bold; font-size: 12px;" id="printApplicantName">---</div>
-                <div>الرقم القومي: <span id="printNationalId">---</span></div>
-                <div>الإدارة: <span id="printDept">---</span></div>
-            </div>
-            <div style="text-align: left;">
-                <div>يعتمد المدير المسؤول:</div>
-                <div style="font-weight: bold; font-size: 12px; margin-top: 5px;" id="printManagerSign">---</div>
-            </div>
-        </div>
-
-        <!-- مربع حالة الطلب والاعتمادات -->
-        <div style="margin-top: 25px; border: 1px solid #000; padding: 10px; border-radius: 6px; text-align: center;">
-            <h4 style="font-size: 12px; font-weight: 900; margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h4>
-            <div style="font-size: 10px; display: flex; flex-direction: column; gap: 4px; text-align: right; padding: 0 10px;">
-                <div>1. المدير العام: <span id="printStatusGM" style="font-weight: bold; color: #d97706;">قيد الانتظار</span></div>
-                <div>2. رئيس الإدارة المركزية: <span id="printStatusCentral" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
-                <div>3. إدارة التخطيط والمتابعة: <span id="printStatusPlanning" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
-                <div>4. إدارة الميزانية: <span id="printStatusBudget" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
-                <div>5. سلطة مختصة (رئيس مجلس الإدارة): <span id="printStatusChairman" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
-            </div>
-        </div>
+    <div id="printableArea" style="background: white; color: black; padding: 20px; font-family: 'Cairo', sans-serif; position: relative; min-height: 800px;">
         
-        <!-- تم إزالة العلامة المائية من هنا -->
+        <!-- العلامة المائية (قيد الانتظار) -->
+        <div style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; color: rgba(200, 200, 200, 0.25); font-weight: 900; z-index: 0; pointer-events: none; white-space: nowrap;">
+            قيد الانتظار
+        </div>
+
+        <!-- محتوى التقرير (مع رفع الـ z-index ليظهر فوق العلامة المائية) -->
+        <div style="position: relative; z-index: 1;">
+            <div style="border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h3 style="font-size: 15px; font-weight: 900; margin: 0;">الهيئة العامة للسد العالي وخزان أسوان</h3>
+                    <span style="font-size: 10px; color: #555;">إدارة التعاقدات والمشتريات</span>
+                </div>
+                <div style="text-align: left; font-size: 10px;">
+                    <div>مسلسل الطلب: <span id="printReqId">REQ-000000</span></div>
+                    <div>تاريخ التسجيل: <span id="printDate">28-10-2026</span></div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 15px 0;">
+                <h2 style="font-size: 16px; font-weight: 900; text-decoration: underline; margin: 0;">طلب شراء واحتياجات رسمي</h2>
+            </div>
+
+            <div style="font-size: 12px; line-height: 2; margin-bottom: 15px;">
+                <div style="font-weight: bold;" id="printManagerTitle">المحاسب / مدير عام إدارة ---</div>
+                <div>تحية طيبة وبعد,,,</div>
+                <div style="text-align: justify; margin-top: 8px;">
+                    أرجو التكرم بالموافقة على تدبير واحتياج الآتي: 
+                    (<span id="printItem" style="font-weight: bold;">---</span>) 
+                    بكمية / وحدة: (<span id="printQty" style="font-weight: bold;">---</span>) 
+                    بتكلفة تقديرية إجمالية تقدر بـ: (<span id="printCost" style="font-weight: bold;">---</span>) جنيه مصري، 
+                    وذلك نظراً لـ: <span id="printJustification" style="font-weight: bold;">---</span>.
+                </div>
+                <div style="margin-top: 10px;">وتفضلو بقبول فائق الاحترام والتقدير,,,</div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 25px; font-size: 11px;">
+                <div>
+                    <div>مقدمه لسيادتكم:</div>
+                    <div style="font-weight: bold; font-size: 12px; margin-top: 3px;" id="printApplicantRole">---</div>
+                    <div style="font-weight: bold; font-size: 12px;" id="printApplicantName">---</div>
+                    <div>الرقم القومي: <span id="printNationalId">---</span></div>
+                    <div>الإدارة: <span id="printDept">---</span></div>
+                </div>
+                <div style="text-align: left;">
+                    <div>يعتمد المدير المسؤول:</div>
+                    <div style="font-weight: bold; font-size: 12px; margin-top: 5px;" id="printManagerSign">---</div>
+                </div>
+            </div>
+
+            <!-- مربع حالة الطلب والاعتمادات -->
+            <div style="margin-top: 25px; border: 1px solid #000; padding: 10px; border-radius: 6px; text-align: center;">
+                <h4 style="font-size: 12px; font-weight: 900; margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h4>
+                <div style="font-size: 10px; display: flex; flex-direction: column; gap: 4px; text-align: right; padding: 0 10px;">
+                    <div>1. المدير العام: <span id="printStatusGM" style="font-weight: bold; color: #d97706;">قيد الانتظار</span></div>
+                    <div>2. رئيس الإدارة المركزية: <span id="printStatusCentral" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
+                    <div>3. إدارة التخطيط والمتابعة: <span id="printStatusPlanning" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
+                    <div>4. إدارة الميزانية: <span id="printStatusBudget" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
+                    <div>5. سلطة مختصة (رئيس مجلس الإدارة): <span id="printStatusChairman" style="font-weight: bold; color: #64748b;">قيد الانتظار</span></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // تم تحديث الرابط هنا بناءً على طلبك
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjr1RXcJO82O55HjXsUbYbzDl5ejuztfZt4vRM3B8KB1N1DmL42LISp1qGPCfevDQ/exec";
         let lastCreatedReqId = "REQ-000000";
 
@@ -380,20 +388,28 @@
             }
         }
 
+        // تحسين سرعة جلب بيانات الموظف
         function fetchEmployeeData() {
             let nationalId = document.getElementById('applicantNationalId').value;
             let password = document.getElementById('userPassword').value;
+            let nameInput = document.getElementById('applicantName');
+            let loadingDiv = document.getElementById('loadingName');
             
             if(nationalId.length === 14 && password) {
+                nameInput.value = ""; // مسح الاسم القديم
+                loadingDiv.style.display = 'block'; // إظهار مؤشر التحميل
+
                 fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
                 .then(res => res.json())
                 .then(data => {
+                    loadingDiv.style.display = 'none';
                     if(data.status === "success") {
-                        document.getElementById('applicantName').value = data.employeeName;
+                        nameInput.value = data.employeeName;
                     } else {
                         showCustomAlert("تنبيه", data.message);
                     }
                 }).catch(() => {
+                    loadingDiv.style.display = 'none';
                     showCustomAlert("خطأ", "تعذر الاتصال بالخادم لجلب بيانات الموظف.");
                 });
             }
@@ -428,6 +444,7 @@
             document.getElementById('submitBtn').innerText = "إرسال الطلب";
             document.getElementById('submitBtn').disabled = false;
             document.getElementById('managerTitle').value = "";
+            document.getElementById('applicantName').value = "";
         }
 
         document.getElementById('requestForm').addEventListener('submit', function(e) {
@@ -460,9 +477,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             }).then(() => {
-                // تعبئة بيانات الطباعة أولاً
                 fillPrintData(); 
-                // إرسال الـ PDF
                 sendPdfToAdmin(); 
 
                 document.getElementById('requestFormContainer').style.display = 'none';
@@ -494,22 +509,30 @@
             window.print();
         }
 
-        // توليد الـ PDF وإرساله للخادم
+        // توليد الـ PDF وإرساله للخادم (تم إصلاحه ليعمل بشكل صحيح)
         function sendPdfToAdmin() {
             const element = document.getElementById('printableArea');
             
-            // إعدادات تحويل الـ HTML إلى PDF
+            // جعل العنصر مرئياً مؤقتاً (خارج الشاشة) لكي تتمكن مكتبة html2pdf من قراءته
+            element.style.display = 'block';
+            element.style.position = 'absolute';
+            element.style.left = '-9999px';
+            element.style.top = '0';
+            element.style.width = '210mm'; // عرض A4
+
             const opt = {
                 margin:       10,
                 filename:     `طلب_شراء_${lastCreatedReqId}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true },
+                html2canvas:  { scale: 2, useCORS: true, logging: false },
                 jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
 
-            // توليد الـ PDF
             html2pdf().set(opt).from(element).outputPdf('datauristring').then(function(pdfBase64) {
-                // إرسال الـ PDF كـ Base64 إلى Google Apps Script
+                // إخفاء العنصر مرة أخرى بعد الانتهاء
+                element.style.display = 'none';
+                element.style.position = 'static';
+                
                 const pdfData = {
                     action: "sendPdfEmail",
                     reqId: lastCreatedReqId,
@@ -526,6 +549,10 @@
                 }).catch(err => {
                     console.error("فشل إرسال ملف الـ PDF:", err);
                 });
+            }).catch(err => {
+                console.error("فشل توليد الـ PDF:", err);
+                element.style.display = 'none';
+                element.style.position = 'static';
             });
         }
 
