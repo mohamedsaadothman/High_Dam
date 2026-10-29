@@ -534,7 +534,7 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzLOrT2Vqbt3fUrSY9gVXiznTowedlsM3PmhnmDoJF3_SWdNU0R2R4LY3Q6Cs6-Lk6A8A/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyGPBV3AjGX31ONoymKCYJtIkegbq-SpWcsVKVMN3Lrh-hLo-IDGLjpB--7Nh8g1LnYrA/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
@@ -825,9 +825,9 @@
                 availableDepts = [];
                 const allData = pendingData.concat(archiveData);
                 allData.forEach(r => {
-                    // ✅ الاعتماد على العمود G (Parent_Department) وحذف كلمة "مدير" من البداية
-                    let d = (r.Parent_Department || "").toString().trim();
-                    d = d.replace(/^مدير\s+/, ''); // حذف كلمة "مدير" إذا كانت في البداية
+                    // ✅ الاعتماد على العمود F (Role) وحذف كلمة "مدير" من البداية
+                    let d = (r.Role || "").toString().trim();
+                    d = d.replace(/^مدير\s+/, ''); 
                     
                     if (d && availableDepts.indexOf(d) === -1) availableDepts.push(d);
                 });
@@ -874,9 +874,9 @@
                     }
                 }
                 
-                // ✅ الفلترة بناءً على العمود G (Parent_Department) مع تجاهل كلمة "مدير"
+                // ✅ الفلترة بالتطبيع (إزالة كلمة مدير من الطلب نفسه للمطابقة)
                 if (deptFilter) {
-                    let rowDept = (r.Parent_Department || "").toString().trim().replace(/^مدير\s+/, '');
+                    let rowDept = (r.Role || "").toString().trim().replace(/^مدير\s+/, '');
                     if (rowDept !== deptFilter) return false;
                 }
                 
@@ -922,7 +922,7 @@
             renderFilteredRequests();
         }
 
-        // ✅ دالة تصدير الإكسيل (CSV)
+        // ✅ دالة تصدير الإكسيل (تم تحسينها للهواتف)
         function exportToExcel() {
             if (!activeRequestsData || activeRequestsData.length === 0) {
                 return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها في العرض الحالي.");
@@ -932,7 +932,7 @@
             const sortedData = [...activeRequestsData].sort((a, b) => new Date(a.Timestamp || 0) - new Date(b.Timestamp || 0));
             
             let csvContent = "\uFEFF"; // BOM لضمان قراءة اللغة العربية
-            csvContent += "رقم الطلب,تاريخ الإنشاء,اسم مقدم الطلب,الوظيفة/الإدارة,الإدارة التابعة لها,الصنف,الكمية,التكلفة,المرحلة الحالية,الحالة\r\n";
+            csvContent += "رقم الطلب,تاريخ الإنشاء,اسم مقدم الطلب,الوظيفة,الإدارة,الصنف,الكمية,التكلفة,المرحلة الحالية,الحالة\r\n";
             
             sortedData.forEach(row => {
                 const ts = row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-';
@@ -951,12 +951,39 @@
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
+            
+            // إنشاء رابط وهمي ونقره برمجياً
             const link = document.createElement("a");
             link.setAttribute("href", url);
             link.setAttribute("download", `تقرير_الطلبات_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.csv`);
+            link.style.display = 'none';
             document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
+            
+            // إظهار رابط بديل للمستخدم في حالة حظر التحميل التلقائي على الهاتف
+            const oldLink = document.getElementById('manualDownloadLink');
+            if (oldLink) oldLink.remove();
+            
+            const manualLink = document.createElement('a');
+            manualLink.id = 'manualDownloadLink';
+            manualLink.href = url;
+            manualLink.download = `تقرير_الطلبات.csv`;
+            manualLink.textContent = '⚠️ إذا لم يبدأ التحميل تلقائياً، اضغط هنا لتحميل الملف';
+            manualLink.style.display = 'block';
+            manualLink.style.marginTop = '10px';
+            manualLink.style.color = '#fbbf24';
+            manualLink.style.fontWeight = 'bold';
+            manualLink.style.textAlign = 'center';
+            manualLink.style.textDecoration = 'underline';
+            
+            const exportBtn = document.querySelector('.export-btn');
+            exportBtn.parentNode.insertBefore(manualLink, exportBtn.nextSibling);
+            
+            setTimeout(() => { 
+                if (document.getElementById('manualDownloadLink')) {
+                    document.getElementById('manualDownloadLink').remove(); 
+                }
+            }, 15000); // يختفي الرابط بعد 15 ثانية
         }
 
         function processAction(requestId, actionType, extraData = {}) {
