@@ -308,6 +308,14 @@
                 <div class="action-card" onclick="switchView('orderView')"><i class="fas fa-file-invoice-dollar"></i><h3>3- إنشاء أمر توريد</h3></div>
                 <div class="action-card" onclick="switchView('trackView')"><i class="fas fa-tasks"></i><h3>4- متابعة الطلب</h3></div>
             </div>
+            
+            <!-- ✅ زر النسر الجمهوري المستقل -->
+            <div style="margin-top: 20px; max-width: 600px; width: 100%;">
+                <button class="eagle-btn" onclick="checkAndOpenEagleReport()">
+                    <i class="fas fa-crow"></i>
+                    <span>🦅 متابعة السلطة المختصة لكافة الأعمال</span>
+                </button>
+            </div>
         </div>
 
         <!-- إنشاء طلب -->
@@ -394,13 +402,6 @@
                         <h2 id="welcomeTitle" style="color:#fbbf24; margin:0; font-size: 16px;">لوحة مراجعة الطلبات</h2>
                         <button class="back-btn" onclick="logoutReviewUser()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
                     </div>
-
-                    <!-- ✅ زر نسر جمهوري لمتابعة السلطة المختصة -->
-                    <button class="eagle-btn" onclick="openEagleReport()">
-                        <i class="fas fa-crow"></i>
-                        <span>🦅 متابعة السلطة المختصة لكافة الأعمال</span>
-                    </button>
-
                     <div id="requestsList">جاري التحميل...</div>
                 </div>
             </div>
@@ -446,7 +447,7 @@
 
         <!-- ✅ صفحة متابعة السلطة المختصة -->
         <div id="eagleView" class="section-view">
-            <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('reviewView')"><i class="fas fa-arrow-right"></i> القائمة</button>
+            <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
             <div class="form-box" style="max-width: 1200px;">
                 <div style="text-align:center; margin-bottom: 20px;">
                     <h2 style="color:#fbbf24; font-weight:900; font-size:22px;">🦅 متابعة السلطة المختصة لكافة الأعمال</h2>
@@ -623,7 +624,7 @@
 
     <script>
         // ✅ تم استبدال الرابط بالرابط الجديد
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxSHrVNur203aRt0Qab9ZEyZfOPANxxWcbFWGphSQYFKxLxpYbMmwAbgrampG4ETS3PCw/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwWgrAKJlHF_amVwERK5BVB8neZg7T9vZa-_wX20K2LjApS9P7DAx13gUzhjwCUGvW4OQ/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
@@ -885,7 +886,13 @@
         }
 
         function loadReviewRequests() {
-            const formData = new URLSearchParams({ action: "getRequests", username: loggedInUser.role, role: loggedInUser.role });
+            const formData = new URLSearchParams({ 
+                action: "getRequests", 
+                username: loggedInUser.role, 
+                role: loggedInUser.role,
+                department: loggedInUser.department || "",
+                central_boss: loggedInUser.central_boss || ""
+            });
             fetch(SCRIPT_URL, { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
@@ -955,7 +962,6 @@
             setTimeout(() => document.getElementById('rejectReasonInput').focus(), 100);
         }
 
-        /* ✅ مودال التحويل التفاعلي */
         function promptTransfer(requestId) {
             const existing = document.getElementById("transferModal");
             if (existing) existing.remove();
@@ -1225,6 +1231,19 @@
         }
 
         /* ================== متابعة السلطة المختصة (النسر) ================== */
+        function checkAndOpenEagleReport() {
+            if (!loggedInUser.role) {
+                showCustomAlert("تنبيه", "يجب تسجيل الدخول أولاً. سيتم توجيهك لصفحة المراجعة.");
+                switchView('reviewView');
+                return;
+            }
+            if (loggedInUser.role.indexOf("رئيس مجلس") === -1) {
+                showCustomAlert("غير مصرح", "عذراً، هذه المتابعة مخصصة لسيادة رئيس مجلس الإدارة (السلطة المختصة) فقط.");
+                return;
+            }
+            openEagleReport();
+        }
+
         function openEagleReport() {
             switchView('eagleView');
             fetchAllRequestsForEagle();
