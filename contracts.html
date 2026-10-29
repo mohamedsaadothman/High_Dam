@@ -72,13 +72,40 @@
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         
         #printableArea { display: none; }
-        
+
+        /* ✅ العلامة المائية - تحسين الوضوح */
+        #printWatermark {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 95px;
+            font-weight: 900;
+            z-index: 0;
+            pointer-events: none;
+            text-align: center;
+            width: 110%;
+            opacity: 0.28;
+            color: #b45309;
+            letter-spacing: 6px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            font-family: 'Cairo', sans-serif;
+        }
+
         @media print {
             body * { visibility: hidden; }
             #printableArea, #printableArea * { visibility: visible; }
             #printableArea {
-                display: block !important; position: absolute; top: 0; right: 0; width: 100%;
-                background: white !important; color: black !important; padding: 0; margin: 0; font-family: 'Cairo', sans-serif; font-weight: 700;
+                display: block !important;
+                position: absolute; top: 0; right: 0; width: 100%;
+                background: white !important; color: black !important;
+                padding: 0; margin: 0;
+                font-family: 'Cairo', sans-serif; font-weight: 700;
+            }
+            #printableArea * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
             @page { size: A4 portrait; margin: 0mm; }
         }
@@ -128,6 +155,18 @@
         .badge-ok { background: rgba(25,135,84,0.2); color: #4ade80; }
         .badge-reject { background: rgba(220,53,69,0.2); color: #f87171; }
         .badge-info { background: rgba(13,110,253,0.2); color: #60a5fa; }
+
+        /* ✅ قسم سبب الرفض في كارت الطلب */
+        .reject-block {
+            background: rgba(220,53,69,0.08);
+            border: 1px solid #dc3545;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            color: #fecaca;
+        }
+        .reject-block strong { color: #fca5a5; display: block; margin-bottom: 4px; font-size: 12px; }
+        .reject-block span { color: #fff; font-weight: 700; font-size: 13px; }
     </style>
 </head>
 <body onload="loadDepartments(); loadReviewUsersList();">
@@ -290,7 +329,7 @@
     <div id="printableArea">
         <div style="width: 210mm; height: 275mm; background: white; color: #000; padding: 10mm 12mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700;">
             
-            <div id="printWatermark" style="position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 70px; font-weight: 900; z-index: 0; pointer-events: none; text-align: center; width: 100%; opacity: 0.15; color: #b45309;">قيد الانتظار</div>
+            <div id="printWatermark">قيد الانتظار</div>
 
             <div style="border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1;">
                 <div>
@@ -331,6 +370,12 @@
                 </tbody>
             </table>
 
+            <!-- ✅ قسم سبب الرفض -->
+            <div id="printRejectBox" style="display:none; border:2px solid #dc3545; background:#fff5f5; padding:8px 10px; border-radius:4px; margin:8px 0; position:relative; z-index:1; font-weight:900; color:#7f1d1d;">
+                <div style="font-size:11px; margin-bottom:3px;">⛔ سبب الرفض:</div>
+                <div id="printRejectReason" style="font-size:11.5px; font-weight:700;"></div>
+            </div>
+
             <div style="font-size: 11.5px; margin-bottom: 10px; font-weight: 900; position: relative; z-index: 1;">وتفضلوا بقبول فائق الاحترام والتقدير,,,</div>
             
             <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; font-weight: 700; position: relative; z-index: 1;">
@@ -359,7 +404,7 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxQ0g8doW3tp08-pUasuaMI18QDKXiAmcN1ja6d4jxP8W8i8VdbzuWsuuweN997DtkD3g/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyDwS_d31fwoIKiqR_ezNxsvM0fvmDStxniYHF9p-VfUwkXdYfzkQUPfTDi5yi6q3qMww/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
@@ -659,13 +704,43 @@
             .catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
         }
 
+        /* ✅ مودال رفض احترافي بدلاً من prompt() */
         function promptReject(requestId, actionName = "reject") {
-            const reason = prompt("يرجى إدخال سبب الرفض:");
-            if (reason !== null && reason.trim() !== "") {
-                processAction(requestId, actionName, { rejectReason: reason.trim() });
-            } else if (reason !== null) {
-                showCustomAlert("تنبيه", "يجب كتابة سبب الرفض لإتمام العملية.");
-            }
+            const existing = document.getElementById("rejectModal");
+            if (existing) existing.remove();
+
+            const overlay = document.createElement("div");
+            overlay.id = "rejectModal";
+            overlay.className = "custom-modal-overlay";
+            overlay.innerHTML = `
+              <div class="custom-modal-box" style="max-width:500px;">
+                <div class="custom-modal-header">
+                  <i class="fas fa-times-circle" style="color:#dc3545;"></i>
+                  <h3 style="color:#b91c1c;">سبب الرفض</h3>
+                </div>
+                <div class="custom-modal-body" style="text-align:right;">
+                  <textarea id="rejectReasonInput" placeholder="اكتب سبب الرفض بوضوح (سيظهر على الطلب المطبوع والبريد)..."
+                    style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff;"></textarea>
+                  <small style="color:#64748b; font-size:11px; display:block; margin-top:6px;">⚠ سبب الرفض مطلوب ولن يتم تنفيذ الإجراء بدونه.</small>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button id="rejectCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+                  <button id="rejectConfirm" class="custom-modal-btn" style="background:#dc3545;">تأكيد الرفض</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+
+            document.getElementById('rejectCancel').onclick = () => overlay.remove();
+            document.getElementById('rejectConfirm').onclick = () => {
+                const reason = document.getElementById('rejectReasonInput').value.trim();
+                if (!reason) {
+                    showCustomAlert("تنبيه", "يجب كتابة سبب الرفض لإتمام العملية.");
+                    return;
+                }
+                overlay.remove();
+                processAction(requestId, actionName, { rejectReason: reason });
+            };
+            setTimeout(() => document.getElementById('rejectReasonInput').focus(), 100);
         }
 
         function promptTransfer(requestId) {
@@ -773,6 +848,13 @@
             const centralText = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
             const chairmanText = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
 
+            /* ✅ قسم سبب الرفض في الكارت */
+            const rejectBlock = req.Reject_Reason ? `
+                <div class="reject-block">
+                    <strong><i class="fas fa-times-circle"></i> سبب الرفض:</strong>
+                    <span>${req.Reject_Reason}</span>
+                </div>` : '';
+
             div.innerHTML = `
                 <div class="req-title"><span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span><span class="badge ${badgeClass}">${stage || '-'}</span></div>
                 <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.Applicant_Name || '-'} (${req.Role || '-'})</span></div>
@@ -782,6 +864,8 @@
                 <div class="req-row"><strong>التكلفة:</strong> <span>${req.Estimated_Cost || '-'} ج.م</span></div>
                 <div class="req-row"><strong>الغرض:</strong> <span>${req.Justification || '-'}</span></div>
                 <div class="req-row"><strong>الحالة العامة:</strong> <span>${status || '-'}</span></div>
+                
+                ${rejectBlock}
                 
                 <div class="dates-box">
                     <div>1. المدير العام: <span style="color: ${req.Gm_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${gmText}</span></div>
@@ -823,11 +907,20 @@
             document.getElementById('printCentralDate').textContent = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
             document.getElementById('printChairmanDate').textContent = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
 
+            /* ✅ سبب الرفض في PDF */
+            const rejectBox = document.getElementById('printRejectBox');
+            if (req.Reject_Reason) {
+                rejectBox.style.display = "block";
+                document.getElementById('printRejectReason').textContent = req.Reject_Reason;
+            } else {
+                rejectBox.style.display = "none";
+            }
+
             const watermarkEl = document.getElementById('printWatermark');
             const stage = (req.Current_Stage || "").toString();
             const status = (req.Status || "").toString();
 
-            if (stage.indexOf("معتمد") !== -1 || status.indexOf("معتمد") !== -1) {
+            if (stage.indexOf("معتمد") !== -1 || status.indexOf("معتمد") !== -1 || status.indexOf("موافق") !== -1) {
                 watermarkEl.textContent = "معتمـد رسميـاً";
                 watermarkEl.style.color = "#198754";
             } else if (stage.indexOf("مرفوض") !== -1 || status.indexOf("مرفوض") !== -1) {
@@ -860,6 +953,9 @@
             document.getElementById('printGmDate').textContent = "قيد الانتظار";
             document.getElementById('printCentralDate').textContent = "قيد الانتظار";
             document.getElementById('printChairmanDate').textContent = "قيد الانتظار";
+
+            /* ✅ إخفاء قسم الرفض في طلب جديد */
+            document.getElementById('printRejectBox').style.display = "none";
 
             const watermarkEl = document.getElementById('printWatermark');
             watermarkEl.textContent = "قيـد الانتظـار";
