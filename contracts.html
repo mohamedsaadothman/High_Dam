@@ -7,6 +7,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
+    
+    <!-- ✅ مكتبة SheetJS لتصدير الإكسيل الحقيقي بدون نوافذ منبثقة -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
@@ -1004,71 +1007,41 @@
             renderFilteredRequests();
         }
 
-        // ✅ دالة تصدير الإكسيل (محسنة لتعمل على جميع الهواتف والمتصفحات)
+        // ✅ دالة تصدير الإكسيل باستخدام مكتبة SheetJS (تعمل على كل الأجهزة بدون نوافذ منبثقة)
         function exportToExcel() {
             if (!activeRequestsData || activeRequestsData.length === 0) {
                 return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها في العرض الحالي.");
             }
             
-            // ترتيب تصاعدي حسب التاريخ
-            const sortedData = [...activeRequestsData].sort((a, b) => new Date(a.Timestamp || 0) - new Date(b.Timestamp || 0));
-            
-            let csvContent = "\uFEFF"; // BOM لضمان قراءة اللغة العربية
-            csvContent += "رقم الطلب,تاريخ الإنشاء,اسم مقدم الطلب,الوظيفة,الإدارة,الصنف,الكمية,التكلفة,المرحلة الحالية,الحالة\r\n";
-            
-            sortedData.forEach(row => {
-                const ts = row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-';
-                const reqId = (row.Request_ID || '').replace(/,/g, ' ');
-                const applicant = (row.Applicant_Name || '').replace(/,/g, ' ');
-                const role = (row.Role || '').replace(/,/g, ' ');
-                const dept = (row.Parent_Department || '').replace(/,/g, ' ');
-                const item = (row.Item_Description || '').replace(/,/g, ' ');
-                const qty = (row.Quantity || '').replace(/,/g, ' ');
-                const cost = (row.Estimated_Cost || '').replace(/,/g, ' ');
-                const stage = (row.Current_Stage || '').replace(/,/g, ' ');
-                const status = (row.Status || '').replace(/,/g, ' ');
+            try {
+                // ترتيب تصاعدي حسب التاريخ
+                const sortedData = [...activeRequestsData].sort((a, b) => new Date(a.Timestamp || 0) - new Date(b.Timestamp || 0));
                 
-                csvContent += `${reqId},${ts},${applicant},${role},${dept},${item},${qty},${cost},${stage},${status}\r\n`;
-            });
+                // تحويل البيانات إلى مصفوفة من الكائنات
+                const excelData = sortedData.map(row => ({
+                    "رقم الطلب": row.Request_ID || '',
+                    "تاريخ الإنشاء": row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-',
+                    "اسم مقدم الطلب": row.Applicant_Name || '',
+                    "الوظيفة": row.Role || '',
+                    "الإدارة": row.Parent_Department || '',
+                    "الصنف": row.Item_Description || '',
+                    "الكمية": row.Quantity || '',
+                    "التكلفة": row.Estimated_Cost || '',
+                    "المرحلة الحالية": row.Current_Stage || '',
+                    "الحالة": row.Status || ''
+                }));
 
-            // ✅ الحل المضمون 100%: فتح نافذة جديدة بها صفحة HTML تحتوي على زر تحميل
-            const newWindow = window.open('', '_blank');
-            if (!newWindow) {
-                return showCustomAlert("خطأ", "المتصفح منع فتح النافذة الجديدة. يرجى السماح بالنوافذ المنبثقة لهذا الموقع.");
+                // إنشاء ملف إكسيل
+                const ws = XLSX.utils.json_to_sheet(excelData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "الطلبات");
+                
+                // تصدير الملف وتنزيله
+                XLSX.writeFile(wb, `تقرير_الطلبات_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.xlsx`);
+            } catch (err) {
+                console.error(err);
+                showCustomAlert("خطأ", "تعذر إنشاء ملف الإكسيل. يرجى المحاولة مرة أخرى.");
             }
-
-            const htmlContent = `
-                <!DOCTYPE html>
-                <html dir="rtl">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>تحميل ملف الإكسيل</title>
-                    <style>
-                        body { font-family: 'Cairo', sans-serif; text-align: center; padding: 50px; background: #f8fafc; }
-                        .btn { background: #107c41; color: white; padding: 15px 40px; font-size: 20px; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.3s; }
-                        .btn:hover { background: #0e6b38; }
-                        h2 { color: #1e293b; margin-bottom: 30px; }
-                    </style>
-                </head>
-                <body>
-                    <h2>تم تجهيز ملف الإكسيل بنجاح</h2>
-                    <a id="downloadLink" class="btn" download="تقرير_الطلبات_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.csv">اضغط هنا للتحميل</a>
-                    <script>
-                        // إنشاء الملف وتحويله إلى رابط
-                        const csvContent = ${JSON.stringify(csvContent)};
-                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const link = document.getElementById('downloadLink');
-                        link.href = url;
-                        // محاولة بدء التحميل تلقائياً بعد ثانية
-                        setTimeout(() => { link.click(); }, 500);
-                    <\/script>
-                </body>
-                </html>
-            `;
-            
-            newWindow.document.write(htmlContent);
-            newWindow.document.close();
         }
 
         function processAction(requestId, actionType, extraData = {}) {
