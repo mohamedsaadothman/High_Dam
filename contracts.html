@@ -73,7 +73,6 @@
         
         #printableArea { display: none; }
 
-        /* ✅ العلامة المائية - في منتصف الصفحة، فوق العناصر، غير قابلة للحجب */
         #printWatermark {
             position: absolute;
             top: 55%;
@@ -157,7 +156,6 @@
         .badge-reject { background: rgba(220,53,69,0.2); color: #f87171; }
         .badge-info { background: rgba(13,110,253,0.2); color: #60a5fa; }
 
-        /* ✅ قسم سبب الرفض في كارت الطلب */
         .reject-block {
             background: rgba(220,53,69,0.08);
             border: 1px solid #dc3545;
@@ -168,6 +166,33 @@
         }
         .reject-block strong { color: #fca5a5; display: block; margin-bottom: 4px; font-size: 12px; }
         .reject-block span { color: #fff; font-weight: 700; font-size: 13px; }
+
+        /* ✅ خيارات التحويل/إعادة الإرسال */
+        .transfer-option {
+            display: flex; align-items: center; gap: 10px; padding: 12px; 
+            border: 2px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px;
+            cursor: pointer; transition: 0.2s; background: #f8fafc;
+        }
+        .transfer-option:hover { border-color: #0d6efd; background: #eff6ff; }
+        .transfer-option input[type="checkbox"] { 
+            width: 20px; height: 20px; cursor: pointer; accent-color: #0d6efd; 
+        }
+        .transfer-option span { font-weight: 700; color: #1e293b; font-size: 14px; }
+        .transfer-option input:checked + span { color: #0d6efd; }
+
+        /* ✅ حالة كل إدارة */
+        .dept-state-box {
+            background: rgba(13,110,253,0.08); border: 1px dashed #0d6efd;
+            border-radius: 8px; padding: 10px; margin: 10px 0; font-size: 12px;
+        }
+        .dept-state-box strong { color: #60a5fa; display: block; margin-bottom: 6px; }
+        .dept-state-item { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 4px 0; color: #e2e8f0;
+        }
+        .dept-state-approved { color: #4ade80; font-weight: 700; }
+        .dept-state-rejected { color: #f87171; font-weight: 700; }
+        .dept-state-pending { color: #fbbf24; font-weight: 700; }
     </style>
 </head>
 <body onload="loadDepartments(); loadReviewUsersList();">
@@ -326,7 +351,7 @@
         </div>
     </div>
 
-    <!-- منطقة الطباعة الرسمية / تحميل PDF مع العلامة المائية -->
+    <!-- منطقة الطباعة -->
     <div id="printableArea">
         <div style="width: 210mm; height: 297mm; max-height: 297mm; background: white; color: #000; padding: 12mm 14mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700;">
             
@@ -371,7 +396,6 @@
                 </tbody>
             </table>
 
-            <!-- ✅ قسم سبب الرفض -->
             <div id="printRejectBox" style="display:none; border:2px solid #dc3545; background:#fff5f5; padding:8px 10px; border-radius:4px; margin:8px 0; position:relative; z-index:2; font-weight:900; color:#7f1d1d;">
                 <div style="font-size:11px; margin-bottom:3px;">⛔ سبب الرفض:</div>
                 <div id="printRejectReason" style="font-size:11.5px; font-weight:700;"></div>
@@ -705,8 +729,8 @@
             .catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
         }
 
-        /* ✅ مودال رفض احترافي بدلاً من prompt() */
-        function promptReject(requestId, actionName = "reject") {
+        /* ✅ مودال رفض احترافي بدعم اسم الإدارة */
+        function promptReject(requestId, actionName = "reject", deptName = "") {
             const existing = document.getElementById("rejectModal");
             if (existing) existing.remove();
 
@@ -717,7 +741,7 @@
               <div class="custom-modal-box" style="max-width:500px;">
                 <div class="custom-modal-header">
                   <i class="fas fa-times-circle" style="color:#dc3545;"></i>
-                  <h3 style="color:#b91c1c;">سبب الرفض</h3>
+                  <h3 style="color:#b91c1c;">سبب الرفض ${deptName ? '— ' + deptName : ''}</h3>
                 </div>
                 <div class="custom-modal-body" style="text-align:right;">
                   <textarea id="rejectReasonInput" placeholder="اكتب سبب الرفض بوضوح (سيظهر على الطلب المطبوع والبريد)..."
@@ -739,18 +763,106 @@
                     return;
                 }
                 overlay.remove();
-                processAction(requestId, actionName, { rejectReason: reason });
+                const extra = { rejectReason: reason };
+                if (deptName) extra.deptName = deptName;
+                processAction(requestId, actionName, extra);
             };
             setTimeout(() => document.getElementById('rejectReasonInput').focus(), 100);
         }
 
+        /* ✅ مودال تحويل تفاعلي بـ checkboxes */
         function promptTransfer(requestId) {
-            const dept = prompt("اختر الجهة المحول إليها (اكتب: إدارة الميزانية أو إدارة التخطيط والمتابعة):");
-            if (dept && (dept.includes("الميزانية") || dept.includes("التخطيط"))) {
-                processAction(requestId, "chairman_transfer", { targetDept: dept.trim() });
-            } else if (dept) {
-                showCustomAlert("خطأ", "اسم الإدارة غير صحيح. يرجى الاختيار بين إدارة الميزانية أو إدارة التخطيط والمتابعة.");
-            }
+            const existing = document.getElementById("transferModal");
+            if (existing) existing.remove();
+
+            const overlay = document.createElement("div");
+            overlay.id = "transferModal";
+            overlay.className = "custom-modal-overlay";
+            overlay.innerHTML = `
+              <div class="custom-modal-box" style="max-width:520px;">
+                <div class="custom-modal-header">
+                  <i class="fas fa-exchange-alt" style="color:#0d6efd;"></i>
+                  <h3 style="color:#1a365d;">تحويل الطلب إلى الإدارات</h3>
+                </div>
+                <div class="custom-modal-body" style="text-align:right;">
+                  <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة أو الإدارتين المطلوب منهما الرد:</p>
+                  <label class="transfer-option">
+                    <input type="checkbox" id="chkBudget" value="إدارة الميزانية">
+                    <span>إدارة الميزانية</span>
+                  </label>
+                  <label class="transfer-option">
+                    <input type="checkbox" id="chkPlanning" value="إدارة التخطيط والمتابعة">
+                    <span>إدارة التخطيط والمتابعة</span>
+                  </label>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+                  <button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد التحويل</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+
+            document.getElementById('transferCancel').onclick = () => overlay.remove();
+            document.getElementById('transferConfirm').onclick = () => {
+                const selected = [];
+                if (document.getElementById('chkBudget').checked) selected.push("إدارة الميزانية");
+                if (document.getElementById('chkPlanning').checked) selected.push("إدارة التخطيط والمتابعة");
+                if (selected.length === 0) {
+                    showCustomAlert("تنبيه", "يجب اختيار إدارة واحدة على الأقل.");
+                    return;
+                }
+                overlay.remove();
+                processAction(requestId, "chairman_transfer", { targetDepts: selected.join(",") });
+            };
+        }
+
+        /* ✅ مودال إعادة الإرسال / طلب تعديل */
+        function promptResend(requestId, actionType) {
+            const isRevision = actionType === 'chairman_request_revision';
+            const existing = document.getElementById("resendModal");
+            if (existing) existing.remove();
+
+            const overlay = document.createElement("div");
+            overlay.id = "resendModal";
+            overlay.className = "custom-modal-overlay";
+            overlay.innerHTML = `
+              <div class="custom-modal-box" style="max-width:520px;">
+                <div class="custom-modal-header">
+                  <i class="fas ${isRevision ? 'fa-edit' : 'fa-redo'}" style="color:#6f42c1;"></i>
+                  <h3 style="color:#1a365d;">${isRevision ? 'طلب تعديل الرد' : 'إعادة إرسال الطلب'}</h3>
+                </div>
+                <div class="custom-modal-body" style="text-align:right;">
+                  <p style="margin-bottom:12px; font-size:13px; color:#475569;">
+                    ${isRevision ? 'اختر الإدارة المطلوب منها تعديل الرد:' : 'اختر الإدارة المطلوب إعادة الإرسال إليها:'}
+                  </p>
+                  <label class="transfer-option">
+                    <input type="checkbox" id="chkBudgetR" value="إدارة الميزانية">
+                    <span>إدارة الميزانية</span>
+                  </label>
+                  <label class="transfer-option">
+                    <input type="checkbox" id="chkPlanningR" value="إدارة التخطيط والمتابعة">
+                    <span>إدارة التخطيط والمتابعة</span>
+                  </label>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button id="resendCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+                  <button id="resendConfirm" class="custom-modal-btn" style="background:#6f42c1;">تأكيد</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+
+            document.getElementById('resendCancel').onclick = () => overlay.remove();
+            document.getElementById('resendConfirm').onclick = () => {
+                const selected = [];
+                if (document.getElementById('chkBudgetR').checked) selected.push("إدارة الميزانية");
+                if (document.getElementById('chkPlanningR').checked) selected.push("إدارة التخطيط والمتابعة");
+                if (selected.length === 0) {
+                    showCustomAlert("تنبيه", "يجب اختيار إدارة واحدة على الأقل.");
+                    return;
+                }
+                overlay.remove();
+                processAction(requestId, actionType, { resendDepts: selected.join(",") });
+            };
         }
 
         function trackLogin() {
@@ -809,6 +921,28 @@
             .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
         }
 
+        function buildDeptStateBox(transferStateJson) {
+            let state = {};
+            try { state = JSON.parse(transferStateJson || "{}"); } catch(_) { return ""; }
+            const keys = Object.keys(state);
+            if (keys.length === 0) return "";
+            
+            let html = '<div class="dept-state-box"><strong><i class="fas fa-sitemap"></i> حالة ردود الإدارات:</strong>';
+            keys.forEach(function(k) {
+                const s = state[k];
+                let cls = "dept-state-pending", label = "قيد الانتظار";
+                if (s.decision === "approved") { cls = "dept-state-approved"; label = "✅ موافقة"; }
+                else if (s.decision === "rejected") { cls = "dept-state-rejected"; label = "❌ رفض"; }
+                
+                html += `<div class="dept-state-item">
+                    <span>${k}</span>
+                    <span class="${cls}">${label}${s.reason && s.decision === 'rejected' ? ' — ' + s.reason : ''}</span>
+                </div>`;
+            });
+            html += '</div>';
+            return html;
+        }
+
         function buildRequestCard(req, withActions) {
             const div = document.createElement('div'); div.className = 'request-card';
             const stage = (req.Current_Stage || "").toString();
@@ -831,16 +965,48 @@
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>
                     </div>`;
-                } else if (stage === "مراجعة رئيس مجلس الإدارة" || stage.indexOf("بانتظار قرار رئيس مجلس") === 0) {
+                } 
+                // ✅ الإدارات (الميزانية/التخطيط) - أزرار موافقة/رفض
+                else if (stage.indexOf("بانتظار رد") === 0) {
+                    const myDept = loggedInUser.role.indexOf("الميزانية") !== -1 ? "إدارة الميزانية" 
+                                 : loggedInUser.role.indexOf("التخطيط") !== -1 ? "إدارة التخطيط والمتابعة" : "";
+                    
+                    if (myDept) {
+                        let state = {};
+                        try { state = JSON.parse(req.Transfer_State || "{}"); } catch(_) {}
+                        const myState = state[myDept];
+                        if (myState && myState.decision === "pending") {
+                            buttonsHtml = `<div class="req-actions">
+                                <button class="main-btn" style="background:#198754;" 
+                                    onclick="processAction('${req.Request_ID}', 'dept_reply', { deptName: '${myDept}' })">
+                                    <i class="fas fa-check"></i> الموافقة على الطلب
+                                </button>
+                                <button class="main-btn" style="background:#dc3545;" 
+                                    onclick="promptReject('${req.Request_ID}', 'dept_reject', '${myDept}')">
+                                    <i class="fas fa-times"></i> رفض مع ذكر السبب
+                                </button>
+                            </div>`;
+                        } else {
+                            buttonsHtml = `<div class="req-actions">
+                                <p style="text-align:center; color:#4ade80; font-weight:700; padding:10px; background:rgba(25,135,84,0.1); border-radius:8px;">
+                                    <i class="fas fa-check-circle"></i> لقد تم الرد على هذا الطلب بالفعل
+                                </p>
+                            </div>`;
+                        }
+                    }
+                }
+                // ✅ رئيس مجلس الإدارة - جميع الخيارات
+                else if (stage === "مراجعة رئيس مجلس الإدارة" || stage.indexOf("بانتظار قرار رئيس مجلس") === 0) {
+                    const canFinalApprove = stage.indexOf("بانتظار قرار رئيس مجلس") === 0;
+                    const canResend = canFinalApprove || stage.indexOf("بانتظار رد") === 0;
+                    
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> 1. الموافقة بالأمر المباشر</button>
-                        <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> 2. التحويل (الميزانية / التخطيط)</button>
-                        <button class="main-btn" style="background:#ffc107; color:#000;" onclick="processAction('${req.Request_ID}', 'chairman_final_approve')"><i class="fas fa-check-double"></i> 3. الموافقة بعد رد الإدارتين</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> 4. الرفض مع ذكر السبب</button>
-                    </div>`;
-                } else if (stage.indexOf("بانتظار رد") === 0) {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#0d6efd;" onclick="processAction('${req.Request_ID}', 'dept_reply')"><i class="fas fa-reply"></i> تسجيل وصول الرد (إرسال لرئيس مجلس الإدارة)</button>
+                        <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> 2. التحويل (الميزانية/التخطيط)</button>
+                        ${canResend ? `<button class="main-btn" style="background:#ffc107; color:#000;" onclick="promptResend('${req.Request_ID}', 'chairman_resend')"><i class="fas fa-redo"></i> 3. إعادة إرسال لإدارة لم ترد</button>` : ''}
+                        ${canFinalApprove ? `<button class="main-btn" style="background:#6f42c1;" onclick="promptResend('${req.Request_ID}', 'chairman_request_revision')"><i class="fas fa-edit"></i> 4. طلب تعديل الرد من إدارة</button>` : ''}
+                        ${canFinalApprove ? `<button class="main-btn" style="background:#ffc107; color:#000;" onclick="processAction('${req.Request_ID}', 'chairman_final_approve')"><i class="fas fa-check-double"></i> 5. الموافقة النهائية بعد الردود</button>` : ''}
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> الرفض مع ذكر السبب</button>
                     </div>`;
                 }
             }
@@ -855,6 +1021,8 @@
                     <span>${req.Reject_Reason}</span>
                 </div>` : '';
 
+            const deptStateBox = buildDeptStateBox(req.Transfer_State);
+
             div.innerHTML = `
                 <div class="req-title"><span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span><span class="badge ${badgeClass}">${stage || '-'}</span></div>
                 <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.Applicant_Name || '-'} (${req.Role || '-'})</span></div>
@@ -866,6 +1034,7 @@
                 <div class="req-row"><strong>الحالة العامة:</strong> <span>${status || '-'}</span></div>
                 
                 ${rejectBlock}
+                ${deptStateBox}
                 
                 <div class="dates-box">
                     <div>1. المدير العام: <span style="color: ${req.Gm_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${gmText}</span></div>
