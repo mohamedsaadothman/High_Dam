@@ -72,7 +72,6 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         
-        /* منطقة الطباعة المخفية */
         #printableArea { display: none; }
 
         .print-watermark {
@@ -95,7 +94,6 @@
             font-family: 'Cairo', sans-serif;
         }
 
-        /* ✅ هيكل الطباعة الصارم باستخدام الجداول */
         @media print {
             body * { visibility: hidden; }
             #printableArea, #printableArea * { visibility: visible; }
@@ -481,7 +479,22 @@
                         <h2 id="contractWelcomeTitle" style="color:#fbbf24; margin:0; font-size: 16px;">إدارة أوامر التوريد</h2>
                         <button class="back-btn" onclick="logoutContract()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
                     </div>
-                    <div id="approvedRequestsList"><p class="loading-state">جاري تحميل الطلبات المعتمدة...</p></div>
+
+                    <!-- تبويبات العقود -->
+                    <div class="tabs-container">
+                        <div class="tabs-left">
+                            <button class="tab-btn active" id="tabContractPending" onclick="switchContractTab('pending')">
+                                <i class="fas fa-inbox"></i> <span id="lblContractPending">طلبات جديدة</span>
+                                <span class="tab-badge" id="contractPendingCount">0</span>
+                            </button>
+                            <button class="tab-btn" id="tabContractArchive" onclick="switchContractTab('archive')">
+                                <i class="fas fa-archive"></i> <span id="lblContractArchive">مكتملة / مرتجعة</span>
+                                <span class="tab-badge" id="contractArchiveCount">0</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="contractRequestsList"><p class="loading-state">جاري تحميل الطلبات...</p></div>
                 </div>
 
             </div>
@@ -633,13 +646,19 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDKLEg9nJ1ppUjZCmHa36fxbYD5H2u517yG2Eonu1j84iFRn1VNwjhE4_WSNsY_g0xMg/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjFYkZVgTY0P6_74cs6ybjsIPTYIVFHRHTl7PfD1VeSpHjBQMj5N8c5CiGgWOrecPSSQ/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
         let currentTrackUser = null;
         let currentContractUser = null;
-        let activeRequestsData = [];
+        
+        let activeRequestsData = []; // للطلبات العادية
+        let contractPendingData = [];
+        let contractArchiveData = [];
+        let currentContractTab = 'pending';
+        let activeContractData = []; // لطلبات العقود الحالية
+
         let currentTab = 'pending';
         let pendingData = [];
         let archiveData = [];
@@ -1446,7 +1465,7 @@
             
             if (poStatus === "approved") return { text: "تم إصدار أمر التوريد", color: "#198754" };
             if (poStatus === "rejected") return { text: "مرفوض من العقود", color: "#dc3545" };
-            if (poStatus === "pending") return { text: "معلق من العقود", color: "#b45309" };
+            if (poStatus === "pending") return { text: "مسودة غير معتمدة", color: "#b45309" };
 
             if (stage.indexOf("مرفوض من إدارة الميزانية") !== -1) return { text: "مرفوض من إدارة الميزانية", color: "#dc3545" };
             if (stage.indexOf("مرفوض من إدارة التخطيط") !== -1) return { text: "مرفوض من إدارة التخطيط", color: "#dc3545" };
@@ -1473,7 +1492,10 @@
         }
 
         function printSpecificRequestFromCard(reqId) {
-            const req = activeRequestsData.find(r => r.Request_ID === reqId);
+            // البحث في البيانات العادية أو بيانات العقود
+            let req = activeRequestsData.find(r => r.Request_ID === reqId);
+            if (!req) req = activeContractData.find(r => r.Request_ID === reqId);
+            
             if (!req) {
                 showCustomAlert("تنبيه", "بيانات الطلب غير متوفرة للطباعة.");
                 return;
@@ -1512,6 +1534,7 @@
 
             const wm = getWatermarkForPrint(req);
             const watermarkEl = document.getElementById('printWatermark');
+            watermarkEl.style.display = 'block';
             watermarkEl.textContent = wm.text;
             watermarkEl.style.color = wm.color;
             watermarkEl.style.opacity = "0.20";
@@ -1524,9 +1547,17 @@
         }
 
         function printPurchaseOrderFromCard(reqId) {
-            const req = activeRequestsData.find(r => r.Request_ID === reqId);
-            if (!req || req.PO_Status !== 'approved') {
-                showCustomAlert("تنبيه", "لا يوجد أمر توريد معتمد لهذا الطلب.");
+            // البحث في البيانات العادية أو بيانات العقود
+            let req = activeRequestsData.find(r => r.Request_ID === reqId);
+            if (!req) req = activeContractData.find(r => r.Request_ID === reqId);
+            
+            if (!req) {
+                showCustomAlert("تنبيه", "لم يتم العثور على بيانات الطلب. يرجى تحديث الصفحة.");
+                return;
+            }
+
+            if (req.PO_Status !== 'approved' || !req.PO_Details) {
+                showCustomAlert("تنبيه", "لا يوجد أمر توريد معتمد لهذا الطلب. يرجى إصداره أولاً.");
                 return;
             }
             
@@ -1558,10 +1589,10 @@
             // إخفاء مربع سبب الرفض (لأنه معتمد)
             document.getElementById('printRejectBox').style.display = "none";
 
-            // إخفاء العلامة المائية
+            // إخفاء العلامة المائية في النسخة النهائية المعتمدة
             document.getElementById('printWatermark').style.display = 'none';
             
-            // إظهار مربع الاعتمادات
+            // إظهار مربع الاعتمادات الأصلية
             document.getElementById('printAccreditationBox').style.display = 'block';
 
             // إظهار قسم العقود
@@ -1592,7 +1623,7 @@
         }
 
         function printReport() {
-            // هذه الدالة خاصة بطباعة الطلب لأول مرة بعد إنشائه
+            // طباعة الطلب لأول مرة بعد إنشائه
             document.getElementById('printReqId').textContent = lastCreatedReqId;
             document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
             document.getElementById('printParentDept').textContent = document.getElementById('parentDepartment').value ? "إدارة " + document.getElementById('parentDepartment').value : "إدارة التعاقدات والمشتريات";
@@ -1622,13 +1653,13 @@
             watermarkEl.style.color = "#b45309";
             watermarkEl.style.opacity = "0.20";
 
-            // إخفاء قسم العقود لأن الطلب جديد
             document.getElementById('contractPrintSection').style.display = 'none';
             document.getElementById('printAccreditationBox').style.display = 'block';
 
             window.print();
         }
 
+        /* ================== دوال إدارة العقود ================== */
         function handleContractLogin() {
             const username = document.getElementById('contractUsername').value.trim();
             const password = document.getElementById('contractPassword').value.trim();
@@ -1648,8 +1679,18 @@
                     currentContractUser = data;
                     document.getElementById('contractLoginBox').style.display = 'none';
                     document.getElementById('contractDashboard').style.display = 'block';
-                    document.getElementById('contractWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.name}`;
-                    loadApprovedRequestsForContract();
+                    document.getElementById('contractWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.name} (${data.contract_role})`;
+                    
+                    // تغيير مسميات التبويبات حسب الصلاحية
+                    if (data.contract_role === 'مدير') {
+                        document.getElementById('lblContractPending').textContent = 'مسودات بانتظار الاعتماد';
+                        document.getElementById('lblContractArchive').textContent = 'أوامر معتمدة / مرفوضة';
+                    } else {
+                        document.getElementById('lblContractPending').textContent = 'طلبات جديدة';
+                        document.getElementById('lblContractArchive').textContent = 'طلباتي المرتجعة';
+                    }
+
+                    loadContractRequests();
                 } else {
                     showCustomAlert("خطأ", data.message);
                 }
@@ -1669,37 +1710,66 @@
             document.getElementById('contractPassword').value = "";
         }
 
-        function loadApprovedRequestsForContract() {
-            const container = document.getElementById('approvedRequestsList');
+        function switchContractTab(tab) {
+            currentContractTab = tab;
+            document.getElementById('tabContractPending').classList.toggle('active', tab === 'pending');
+            document.getElementById('tabContractArchive').classList.toggle('active', tab === 'archive');
+            renderContractRequests();
+        }
+
+        function loadContractRequests() {
+            const container = document.getElementById('contractRequestsList');
             container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
-            const formData = new URLSearchParams({ action: "getApprovedReq" });
+            const formData = new URLSearchParams({ 
+                action: "getContractRequests", 
+                role: currentContractUser.contract_role,
+                username: currentContractUser.name
+            });
+            
             fetch(SCRIPT_URL, { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
-                container.innerHTML = "";
-                if (!Array.isArray(data) || data.length === 0) {
-                    container.innerHTML = '<p class="empty-state">لا توجد طلبات معتمدة نهائياً حالياً.</p>';
-                    return;
-                }
-                data.forEach(req => container.appendChild(buildContractRequestCard(req)));
+                contractPendingData = (data && data.pending) ? data.pending : [];
+                contractArchiveData = (data && data.archive) ? data.archive : [];
+                
+                document.getElementById('contractPendingCount').textContent = contractPendingData.length;
+                document.getElementById('contractArchiveCount').textContent = contractArchiveData.length;
+                
+                renderContractRequests();
             })
             .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
         }
 
-        function buildContractRequestCard(req) {
+        function renderContractRequests() {
+            const container = document.getElementById('contractRequestsList');
+            const data = currentContractTab === 'pending' ? contractPendingData : contractArchiveData;
+            
+            container.innerHTML = "";
+            if (data.length === 0) {
+                container.innerHTML = '<p class="empty-state">لا توجد طلبات في هذا القسم حالياً.</p>';
+                return;
+            }
+            activeContractData = data; // لتسهيل البحث عند الطباعة
+            data.forEach(req => container.appendChild(buildContractRequestCard(req, currentContractTab === 'pending')));
+        }
+
+        function buildContractRequestCard(req, withActions) {
             const div = document.createElement('div'); div.className = 'request-card';
             let poStatus = req.PO_Status || 'pending';
-            let statusColor = poStatus === 'approved' ? '#198754' : (poStatus === 'rejected' ? '#dc3545' : '#fbbf24');
-            let statusText = poStatus === 'approved' ? 'تم إصدار أمر التوريد' : (poStatus === 'rejected' ? 'مرفوض (مرتجع لرئيس المجلس)' : 'قيد المراجعة بالعقود');
+            let statusColor = '#fbbf24', statusText = 'قيد المراجعة بالعقود';
             
+            if (poStatus === 'approved') { statusColor = '#198754'; statusText = 'تم الاعتماد النهائي'; }
+            else if (poStatus === 'rejected') { statusColor = '#dc3545'; statusText = 'مرفوض / مرتجع'; }
+            else if (poStatus === 'pending') { statusColor = '#0d6efd'; statusText = 'مسودة قيد الاعتماد'; }
+
             let detailsHtml = "";
-            if (poStatus === 'approved' && req.PO_Details) {
+            if (req.PO_Details) {
                 try {
                     let d = JSON.parse(req.PO_Details);
                     detailsHtml = `
-                        <div class="dept-state-box" style="border-color:#198754; background:rgba(25,135,84,0.05);">
-                            <strong style="color:#198754;"><i class="fas fa-file-invoice-dollar"></i> تفاصيل أمر التوريد:</strong>
+                        <div class="dept-state-box" style="border-color:${statusColor}; background:${statusColor}15;">
+                            <strong style="color:${statusColor};"><i class="fas fa-file-invoice-dollar"></i> تفاصيل المسودة:</strong>
                             <div style="padding:4px 0;"><b>المورد:</b> ${d.supplier}</div>
                             <div style="padding:4px 0;"><b>الصنف:</b> ${d.item}</div>
                             <div style="padding:4px 0;"><b>الوحدة:</b> ${d.unitType} ${d.unitValue} × ${d.unitPrice} ج.م</div>
@@ -1708,11 +1778,39 @@
                         </div>
                     `;
                 } catch(_){}
-            } else if (poStatus === 'pending' && req.PO_Reason) {
-                detailsHtml = `<div class="reject-block" style="background:rgba(251,191,36,0.1); border-color:#fbbf24; color:#fbbf24;"><strong><i class="fas fa-pause-circle"></i> سبب التعليق:</strong><span>${req.PO_Reason}</span></div>`;
-            } else if (poStatus === 'rejected' && req.PO_Reason) {
-                detailsHtml = `<div class="reject-block"><strong><i class="fas fa-times-circle"></i> سبب الرفض:</strong><span>${req.PO_Reason}</span></div>`;
             }
+            
+            if (poStatus === 'rejected' && req.PO_Reason) {
+                detailsHtml = `<div class="reject-block"><strong><i class="fas fa-times-circle"></i> سبب الرفض / التعديل:</strong><span>${req.PO_Reason}</span></div>` + detailsHtml;
+            }
+
+            let actionsHtml = "";
+            
+            // أزرار الموظف (إصدار أو تعديل مسودة)
+            if (currentContractUser.contract_role === 'موظف' && poStatus !== 'approved' && withActions) {
+                actionsHtml = `
+                    <div class="req-actions" style="margin-top:15px;">
+                        <button class="main-btn" style="background:${poStatus === 'rejected' ? '#dc3545' : '#198754'};" 
+                            onclick="openPOModal('${req.Request_ID}', '${req.Item_Description}', '${req.Estimated_Cost}', ${JSON.stringify(req).replace(/"/g, '&quot;')})">
+                            <i class="fas fa-check"></i> ${poStatus === 'rejected' ? 'تعديل وإعادة إرسال' : 'موافقة وإصدار مسودة'}
+                        </button>
+                    </div>`;
+            } 
+            
+            // أزرار المدير (اعتماد أو رفض المسودة)
+            else if (currentContractUser.contract_role === 'مدير' && poStatus === 'pending' && withActions) {
+                actionsHtml = `
+                    <div class="req-actions" style="flex-direction: row; justify-content: space-between; margin-top: 15px;">
+                        <button class="main-btn" style="width:48%; background:#198754; font-size:12px;" onclick="processContractAction('${req.Request_ID}', 'approvePurchaseOrder')"><i class="fas fa-check-double"></i> اعتماد نهائي</button>
+                        <button class="main-btn" style="width:48%; background:#dc3545; font-size:12px;" onclick="promptContractReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض وإرجاع</button>
+                    </div>
+                `;
+            }
+
+            // زر الطباعة (متاح للجميع، لكن يظهر بعلامة مائية للمسودة)
+            let printBtn = `<button class="print-btn" style="margin-top:10px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`;
+
+            const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
 
             div.innerHTML = `
                 <div class="req-title">
@@ -1724,20 +1822,26 @@
                 <div class="req-row"><strong>الصنف المطلوب:</strong> <span>${req.Item_Description || '-'}</span></div>
                 <div class="req-row"><strong>الكمية:</strong> <span>${req.Quantity || '-'}</span></div>
                 <div class="req-row"><strong>التكلفة التقديرية:</strong> <span>${req.Estimated_Cost || '-'} ج.م</span></div>
+                <div class="req-row"><strong>مسؤول الإصدار:</strong> <span>${req.PO_Issued_By || '-'}</span></div>
                 
                 ${detailsHtml}
-
-                <div class="req-actions" style="flex-direction: row; justify-content: space-between; margin-top: 15px;">
-                    ${poStatus !== 'approved' ? `<button class="main-btn" style="width:31%; background:#198754; font-size:12px;" onclick="openPOModal('${req.Request_ID}', '${req.Item_Description}', '${req.Estimated_Cost}', activeRequestsData.find(r=>r.Request_ID==='${req.Request_ID}'))"><i class="fas fa-check"></i> موافقة وإصدار</button>` : `<button class="main-btn" style="width:31%; background:#0d6efd; font-size:12px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`}
-                    <button class="main-btn" style="width:31%; background:#fbbf24; color:#000; font-size:12px;" onclick="promptPOHold('${req.Request_ID}')"><i class="fas fa-pause"></i> تعليق</button>
-                    <button class="main-btn" style="width:31%; background:#dc3545; font-size:12px;" onclick="promptPOReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض</button>
-                </div>
+                ${printBtn}
+                ${actionsHtml}
             `;
             return div;
         }
 
         function openPOModal(requestId, defaultItem, defaultCost, reqObj) {
             window.currentReqForPO = reqObj;
+            
+            // استخراج البيانات القديمة لو كان الطلب مرتجعاً للتعديل
+            let oldData = { supplier: '', item: defaultItem, unitType: 'كمية', unitValue: 1, unitPrice: defaultCost, notes: '', tafqit: '' };
+            if (reqObj && reqObj.PO_Details) {
+                try {
+                    let parsed = JSON.parse(reqObj.PO_Details);
+                    if (parsed.item) oldData = parsed;
+                } catch(_) {}
+            }
 
             const existing = document.getElementById("poModal");
             if (existing) existing.remove();
@@ -1749,40 +1853,40 @@
               <div class="custom-modal-box" style="max-width: 600px; text-align: right;">
                 <div class="custom-modal-header" style="justify-content: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
                   <i class="fas fa-file-invoice-dollar" style="color:#198754;"></i>
-                  <h3 style="color:#1a365d;">إصدار أمر توريد جديد</h3>
+                  <h3 style="color:#1a365d;">إصدار / تعديل مسودة أمر توريد</h3>
                 </div>
                 <div class="custom-modal-body" style="background:transparent; padding:0; margin-top:15px; display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     
                     <div style="grid-column: span 2;">
                         <label>0. اسم المورد:</label>
-                        <input type="text" id="poSupplier" placeholder="اسم المورد..." style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                        <input type="text" id="poSupplier" value="${oldData.supplier || ''}" placeholder="اسم المورد..." style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
                     </div>
 
                     <div style="grid-column: span 2;">
                         <label>1. البيان (اسم الصنف):</label>
-                        <input type="text" id="poItem" value="${defaultItem || ''}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                        <input type="text" id="poItem" value="${oldData.item || ''}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
                     </div>
                     
                     <div>
                         <label>2. نوع الوحدة:</label>
                         <select id="poUnitType" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
-                            <option value="كمية">كمية</option>
-                            <option value="عدد">عدد</option>
-                            <option value="متر">متر</option>
-                            <option value="طن">طن</option>
-                            <option value="كيلو">كيلو</option>
-                            <option value="أخرى">أخرى</option>
+                            <option value="كمية" ${oldData.unitType === 'كمية' ? 'selected' : ''}>كمية</option>
+                            <option value="عدد" ${oldData.unitType === 'عدد' ? 'selected' : ''}>عدد</option>
+                            <option value="متر" ${oldData.unitType === 'متر' ? 'selected' : ''}>متر</option>
+                            <option value="طن" ${oldData.unitType === 'طن' ? 'selected' : ''}>طن</option>
+                            <option value="كيلو" ${oldData.unitType === 'كيلو' ? 'selected' : ''}>كيلو</option>
+                            <option value="أخرى" ${oldData.unitType === 'أخرى' ? 'selected' : ''}>أخرى</option>
                         </select>
                     </div>
                     
                     <div>
                         <label>3. قيمة الوحدة (العدد):</label>
-                        <input type="number" id="poUnitValue" value="1" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;" oninput="calcPOTotal()">
+                        <input type="number" id="poUnitValue" value="${oldData.unitValue || 1}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;" oninput="calcPOTotal()">
                     </div>
 
                     <div>
                         <label>4. سعر الوحدة (ج.م):</label>
-                        <input type="number" id="poUnitPrice" value="${defaultCost || 0}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;" oninput="calcPOTotal()">
+                        <input type="number" id="poUnitPrice" value="${oldData.unitPrice || 0}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;" oninput="calcPOTotal()">
                     </div>
 
                     <div>
@@ -1792,7 +1896,7 @@
 
                     <div style="grid-column: span 2;">
                         <label>6. ملاحظات:</label>
-                        <input type="text" id="poNotes" placeholder="أي ملاحظات إضافية..." style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                        <input type="text" id="poNotes" value="${oldData.notes || ''}" placeholder="أي ملاحظات إضافية..." style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
                     </div>
 
                     <div style="grid-column: span 2; background:#f0fdf4; border:1px solid #bbf7d0; padding:10px; border-radius:6px; margin-top:5px;">
@@ -1802,7 +1906,7 @@
                 </div>
                 <div style="display:flex; gap:8px; margin-top:20px;">
                   <button id="poCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-                  <button id="poConfirm" class="custom-modal-btn" style="background:#198754;">حفظ وإصدار أمر التوريد</button>
+                  <button id="poConfirm" class="custom-modal-btn" style="background:#198754;">حفظ وإرسال للمدير</button>
                 </div>
               </div>`;
             document.body.appendChild(overlay);
@@ -1816,7 +1920,7 @@
                 if(!supplier || !item || !total || total === "0") { showCustomAlert("تنبيه", "يرجى إكمال البيانات المطلوبة (اسم المورد، البيان، السعر)."); return; }
                 
                 const poData = {
-                    action: "savePurchaseOrder", requestId: requestId, poStatus: "approved",
+                    action: "savePurchaseOrder", requestId: requestId,
                     poSupplier: supplier,
                     poItem: item,
                     poUnitType: document.getElementById('poUnitType').value,
@@ -1839,20 +1943,43 @@
             document.getElementById('poTafqit').innerText = "فقط " + tafqit(total) + " جنيهاً مصرياً لا غير";
         }
 
-        function promptPOHold(requestId) {
-            const reason = prompt("يرجى كتابة سبب تعليق أمر التوريد (سيظهر للجميع):");
-            if (reason && reason.trim() !== "") {
-                const poData = { action: "savePurchaseOrder", requestId: requestId, poStatus: "pending", pendingReason: reason.trim(), issuedBy: currentContractUser.name };
-                submitPOAction(poData, null);
-            }
+        function promptContractReject(requestId) {
+            const existing = document.getElementById("rejectContractModal");
+            if (existing) existing.remove();
+
+            const overlay = document.createElement("div");
+            overlay.id = "rejectContractModal";
+            overlay.className = "custom-modal-overlay";
+            overlay.innerHTML = `
+              <div class="custom-modal-box" style="max-width:500px;">
+                <div class="custom-modal-header">
+                  <i class="fas fa-times-circle" style="color:#dc3545;"></i>
+                  <h3 style="color:#b91c1c;">رفض المسودة وإرجاعها</h3>
+                </div>
+                <div class="custom-modal-body" style="text-align:right;">
+                  <textarea id="contractRejectReasonInput" placeholder="اكتب سبب الرفض أو التعديل المطلوب بوضوح..."
+                    style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff;"></textarea>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button id="rejectContractCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+                  <button id="rejectContractConfirm" class="custom-modal-btn" style="background:#dc3545;">تأكيد الرفض</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+
+            document.getElementById('rejectContractCancel').onclick = () => overlay.remove();
+            document.getElementById('rejectContractConfirm').onclick = () => {
+                const reason = document.getElementById('contractRejectReasonInput').value.trim();
+                if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
+                overlay.remove();
+                const payload = { action: "rejectPurchaseOrder", requestId: requestId, rejectReason: reason };
+                submitPOAction(payload, null);
+            };
         }
 
-        function promptPOReject(requestId) {
-            const reason = prompt("يرجى كتابة سبب رفض أمر التوريد وإرجاعه لرئيس مجلس الإدارة:");
-            if (reason && reason.trim() !== "") {
-                const poData = { action: "savePurchaseOrder", requestId: requestId, poStatus: "rejected", rejectReason: reason.trim(), issuedBy: currentContractUser.name };
-                submitPOAction(poData, null);
-            }
+        function processContractAction(requestId, actionName) {
+            const payload = { action: actionName, requestId: requestId };
+            submitPOAction(payload, null);
         }
 
         function submitPOAction(poData, modalElement) {
@@ -1865,7 +1992,7 @@
                 if (res.status === "success") {
                     showSuccess("تم بنجاح", res.message || "تم تنفيذ الإجراء بنجاح.");
                     if (modalElement) modalElement.remove();
-                    loadApprovedRequestsForContract();
+                    loadContractRequests();
                 } else {
                     showCustomAlert("خطأ", res.message || "حدث خطأ أثناء التنفيذ.");
                 }
