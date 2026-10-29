@@ -7,8 +7,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
-    
-    <!-- ✅ مكتبة SheetJS لتصدير الإكسيل الحقيقي بدون نوافذ منبثقة -->
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -74,9 +72,9 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         
-        #printableArea { display: none; }
+        #printableArea, #printablePOArea { display: none; }
 
-        #printWatermark {
+        .print-watermark {
             position: absolute;
             top: 55%;
             left: 50%;
@@ -98,15 +96,15 @@
 
         @media print {
             body * { visibility: hidden; }
-            #printableArea, #printableArea * { visibility: visible; }
-            #printableArea {
+            #printableArea, #printableArea *, #printablePOArea, #printablePOArea * { visibility: visible; }
+            #printableArea, #printablePOArea {
                 display: block !important;
                 position: absolute; top: 0; right: 0; width: 100%;
                 background: white !important; color: black !important;
                 padding: 0; margin: 0;
                 font-family: 'Cairo', sans-serif; font-weight: 700;
             }
-            #printableArea * {
+            #printableArea *, #printablePOArea * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
@@ -209,7 +207,6 @@
             display: inline-flex; justify-content: center;
         }
         
-        /* ✅ زر تصدير الإكسيل */
         .export-btn {
             background: #107c41; color: #fff; border: none; padding: 8px 16px;
             border-radius: 8px; font-family: 'Cairo'; font-size: 13px; font-weight: 700;
@@ -217,7 +214,6 @@
         }
         .export-btn:hover { background: #0e6b38; }
 
-        /* ✅ الفلترة الأفقية */
         .filter-bar {
             background: rgba(15, 23, 42, 0.7); border: 1px solid #334155;
             border-radius: 12px; padding: 15px; margin-bottom: 20px;
@@ -232,7 +228,6 @@
         }
         .filter-bar input:focus, .filter-bar select:focus { border-color: #fbbf24; outline: none; }
         
-        /* ✅ تحويل لون أيقونة التقويم للأبيض */
         .filter-bar input[type="date"]::-webkit-calendar-picker-indicator {
             filter: invert(1); cursor: pointer; opacity: 0.8;
         }
@@ -246,34 +241,18 @@
         }
         .filter-btn-reset:hover { background: #475569; }
 
-        /* ✅ قائمة الاقتراحات للبحث */
         .autocomplete-suggestions {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: #0f172a;
-            border: 1px solid #c59b27;
-            border-radius: 6px;
-            margin-top: 4px;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 1000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            display: none;
+            position: absolute; top: 100%; left: 0; right: 0; background: #0f172a;
+            border: 1px solid #c59b27; border-radius: 6px; margin-top: 4px;
+            max-height: 200px; overflow-y: auto; z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none;
         }
         .autocomplete-suggestion-item {
-            padding: 10px;
-            cursor: pointer;
-            font-size: 12px;
-            color: #cbd5e1;
-            border-bottom: 1px solid #1e293b;
+            padding: 10px; cursor: pointer; font-size: 12px;
+            color: #cbd5e1; border-bottom: 1px solid #1e293b;
         }
         .autocomplete-suggestion-item:last-child { border-bottom: none; }
-        .autocomplete-suggestion-item:hover {
-            background: rgba(251,191,36,0.15);
-            color: #fbbf24;
-        }
+        .autocomplete-suggestion-item:hover { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
         @media (max-width: 600px) {
             .filter-bar .filter-group { flex: 1 1 45%; }
@@ -283,6 +262,9 @@
             .tabs-left { justify-content: space-between; }
             .export-btn { width: 100%; justify-content: center; margin-bottom: 10px; }
         }
+        
+        .po-input-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .po-full { grid-column: span 2; }
     </style>
 </head>
 <body onload="loadDepartments(); loadReviewUsersList();">
@@ -299,6 +281,7 @@
     </header>
 
     <div class="container">
+        <!-- الرئيسية -->
         <div id="homeView" class="section-view active">
             <div class="page-title">
                 <h2>إدارة التعاقدات والمشتريات</h2>
@@ -312,6 +295,7 @@
             </div>
         </div>
 
+        <!-- إنشاء طلب -->
         <div id="createView" class="section-view">
             <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
             <div class="form-box">
@@ -370,6 +354,7 @@
             </div>
         </div>
 
+        <!-- مراجعة الطلبات -->
         <div id="reviewView" class="section-view">
             <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
             <div class="form-box" style="max-width: 900px;">
@@ -436,7 +421,6 @@
                                 <option value="transferred">محول</option>
                             </select>
                         </div>
-                        <!-- ✅ تعديل البحث ليكون به قائمة اقتراحات -->
                         <div class="filter-group search-group">
                             <label><i class="fas fa-search"></i> بحث بالاسم أو رقم الطلب</label>
                             <input type="text" id="filterSearch" placeholder="اسم الموظف أو REQ..." autocomplete="off">
@@ -454,6 +438,7 @@
             </div>
         </div>
 
+        <!-- متابعة الطلب -->
         <div id="trackView" class="section-view">
             <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
             <div class="form-box">
@@ -477,24 +462,35 @@
             </div>
         </div>
 
+        <!-- أمر التوريد -->
         <div id="orderView" class="section-view">
             <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
-            <div class="form-box">
-                <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">إنشاء أمر توريد</h2>
-                <form id="orderForm">
-                    <div class="form-group"><label>رقم الطلب المعتمد:</label><input type="text" id="reqId" required placeholder="أدخل رقم الطلب"></div>
-                    <div class="form-group"><label>اسم المورد:</label><input type="text" id="supplierName" required placeholder="اسم المورد"></div>
-                    <div class="form-group"><label>قيمة أمر التوريد:</label><input type="number" id="orderValue" required placeholder="0.00"></div>
-                    <button type="submit" class="main-btn"><i class="fas fa-save"></i> حفظ أمر التوريد</button>
-                </form>
+            <div class="form-box" style="max-width: 900px;">
+                
+                <div id="contractLoginBox">
+                    <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">تسجيل دخول إدارة العقود والمشتريات</h2>
+                    <div class="form-group"><label>اسم المستخدم:</label><input type="text" id="contractUsername" placeholder="اسم المستخدم"></div>
+                    <div class="form-group"><label>كلمة المرور:</label><input type="password" id="contractPassword" placeholder="كلمة المرور"></div>
+                    <button class="main-btn" id="contractLoginBtn" onclick="handleContractLogin()">دخول</button>
+                </div>
+
+                <div id="contractDashboard" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #334155; padding-bottom: 10px;">
+                        <h2 id="contractWelcomeTitle" style="color:#fbbf24; margin:0; font-size: 16px;">إدارة أوامر التوريد</h2>
+                        <button class="back-btn" onclick="logoutContract()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
+                    </div>
+                    <div id="approvedRequestsList"><p class="loading-state">جاري تحميل الطلبات المعتمدة...</p></div>
+                </div>
+
             </div>
         </div>
     </div>
 
+    <!-- منطقة الطباعة للطلب الأصلي -->
     <div id="printableArea">
         <div style="width: 210mm; height: 297mm; max-height: 297mm; background: white; color: #000; padding: 12mm 14mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700;">
             
-            <div id="printWatermark">قيـد الانتظـار</div>
+            <div id="printWatermark" class="print-watermark">قيـد الانتظـار</div>
 
             <div style="border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 2;">
                 <div>
@@ -536,7 +532,7 @@
             </table>
 
             <div id="printRejectBox" style="display:none; border:2px solid #dc3545; background:#fff5f5; padding:8px 10px; border-radius:4px; margin:8px 0; position:relative; z-index:2; font-weight:900; color:#7f1d1d;">
-                <div style="font-size:11px; margin-bottom:3px;">⛔ سبب الرفض:</div>
+                <div style="font-size:11px; margin-bottom:3px;">⛔ سبب الرفض / التعليق:</div>
                 <div id="printRejectReason" style="font-size:11.5px; font-weight:700;"></div>
             </div>
 
@@ -550,9 +546,10 @@
                     <div style="font-weight: 700;">الرقم القومي: <span id="printNationalId" style="font-weight: 700;">---</span></div>
                     <div style="font-weight: 700;">رقم الهاتف: <span id="printPhone" style="font-weight: 700;">---</span></div>
                 </div>
-                <div style="text-align: left; width: 48%; border-top: 1px solid #333; padding-top: 6px;">
-                    <div style="font-weight: 900; margin-bottom: 3px;">يعتمد المدير المسؤول:</div>
-                    <div style="font-weight: 900; margin-top: 12px;" id="printManagerSign">---</div>
+                <div style="text-align: center; width: 48%; border-top: 1px solid #333; padding-top: 6px;">
+                    <div style="font-weight: 900; margin-bottom: 3px;">يعتمد</div>
+                    <div style="font-weight: 900;" id="printManagerSignTitle">مدير عام الإدارة</div>
+                    <div style="font-weight: 900; margin-top: 12px;" id="printManagerSignName">---</div>
                 </div>
             </div>
 
@@ -567,12 +564,79 @@
         </div>
     </div>
 
+    <!-- منطقة الطباعة لأمر التوريد -->
+    <div id="printablePOArea">
+        <div style="width: 210mm; height: 297mm; max-height: 297mm; background: white; color: #000; padding: 12mm 14mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700;">
+            
+            <div id="poPrintWatermark" class="print-watermark" style="color: #198754;">تم إصدار أمر التوريد</div>
+
+            <div style="border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 2;">
+                <div>
+                    <h3 style="font-size: 12px; font-weight: 900; margin: 0 0 2px 0;">وزارة الموارد المائية والري</h3>
+                    <h3 style="font-size: 14px; font-weight: 900; margin: 0 0 2px 0;">الهيئة العامة للسد العالي وخزان أسوان</h3>
+                    <span style="font-size: 11px; font-weight: 900;">إدارة التعاقدات والمشتريات</span>
+                </div>
+                <div style="text-align: left; font-size: 11px; border: 1px solid #333; padding: 4px 8px; border-radius: 4px; font-weight: 700;">
+                    <div>رقم أمر التوريد: <span id="poPrintNumber" style="font-weight: 900;">PO-000000</span></div>
+                    <div>التاريخ: <span id="poPrintDate" style="font-weight: 900;">--/--/----</span></div>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin: 10px 0 12px 0; position: relative; z-index: 2;"><h2 style="font-size: 16px; font-weight: 900; text-decoration: underline;">أمر توريد</h2></div>
+            
+            <div style="font-size: 11.5px; line-height: 1.8; margin-bottom: 10px; font-weight: 700; position: relative; z-index: 2; text-align: justify;">
+                بناءً على موافقة السلطة المختصة (رئيس مجلس الإدارة) بجلسته المنعقدة بتاريخ <span id="poPrintChairmanDate"></span>، وبناءً على اعتماد إدارة العقود والمشتريات، تم الاتفاق مع المورد / <span id="poPrintSupplier" style="font-weight:900; font-size:12.5px;"></span> على توريد الأصناف الموضحة بالجدول التالي وفقاً للأسعار والشروط المتفق عليها:
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px; font-weight: 700; position: relative; z-index: 2;">
+                <thead>
+                    <tr style="background: #f8fafc; border-top: 2px solid #000; border-bottom: 2px solid #000; font-weight: 900; text-align: center;">
+                        <th style="border: 1px solid #333; padding: 6px 8px;">م</th>
+                        <th style="border: 1px solid #333; padding: 6px 8px; text-align: right;">البيان</th>
+                        <th style="border: 1px solid #333; padding: 6px 8px;">الوحدة</th>
+                        <th style="border: 1px solid #333; padding: 6px 8px;">الكمية</th>
+                        <th style="border: 1px solid #333; padding: 6px 8px;">سعر الوحدة</th>
+                        <th style="border: 1px solid #333; padding: 6px 8px;">الإجمالي</th>
+                        <th style="border: 1px solid #333; padding: 6px 8px; text-align: right;">ملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody id="poPrintTableBody">
+                    <!-- سيتم ملؤها بالجافاسكريبت -->
+                </tbody>
+            </table>
+
+            <div style="border: 1px solid #198754; background: #f0fdf4; padding: 10px; border-radius: 6px; margin-bottom: 15px; position: relative; z-index: 2;">
+                <span style="font-weight: 900; color: #166534;">التفقيط:</span> 
+                <span id="poPrintTafqit" style="font-weight: 900; color: #166534; font-size: 12px;"></span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 30px; font-size: 11px; font-weight: 700; position: relative; z-index: 2;">
+                <div style="text-align: center; width: 30%;">
+                    <div style="font-weight: 900; margin-bottom: 3px;">إعداد</div>
+                    <div>موظف العقود</div>
+                    <div style="font-weight: 900; margin-top: 15px;" id="poPrintIssuedBy">---</div>
+                </div>
+                <div style="text-align: center; width: 30%;">
+                    <div style="font-weight: 900; margin-bottom: 3px;">مراجعة</div>
+                    <div>مدير إدارة العقود</div>
+                    <div style="font-weight: 900; margin-top: 15px;">---</div>
+                </div>
+                <div style="text-align: center; width: 30%;">
+                    <div style="font-weight: 900; margin-bottom: 3px;">يعتمد</div>
+                    <div style="font-weight: 900;" id="poPrintManagerTitle">مدير عام الإدارة</div>
+                    <div style="font-weight: 900; margin-top: 15px;" id="poPrintManagerName">---</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzLOrT2Vqbt3fUrSY9gVXiznTowedlsM3PmhnmDoJF3_SWdNU0R2R4LY3Q6Cs6-Lk6A8A/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwDKLEg9nJ1ppUjZCmHa36fxbYD5H2u517yG2Eonu1j84iFRn1VNwjhE4_WSNsY_g0xMg/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
         let currentTrackUser = null;
+        let currentContractUser = null;
         let activeRequestsData = [];
         let currentTab = 'pending';
         let pendingData = [];
@@ -595,55 +659,53 @@
                 if (el) el.addEventListener('input', renderFilteredRequests);
             });
 
-            // ✅ مستمع حدث البحث مع الاقتراحات
             const searchInput = document.getElementById('filterSearch');
             const suggestionsBox = document.getElementById('searchSuggestions');
             
-            searchInput.addEventListener('input', function() {
-                const query = this.value.trim().toLowerCase();
-                suggestionsBox.innerHTML = '';
-                
-                if (query.length > 0) {
-                    // البحث في الطلبات المتاحة (المعلقة والأرشيف)
-                    const allData = pendingData.concat(archiveData);
-                    const matchedNames = new Set();
+            if(searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const query = this.value.trim().toLowerCase();
+                    suggestionsBox.innerHTML = '';
                     
-                    allData.forEach(r => {
-                        // ✅ الاعتماد على العمود الثالث C (Applicant_Name)
-                        const name = (r.Applicant_Name || "").toString().trim();
-                        if (name.toLowerCase().includes(query)) {
-                            matchedNames.add(name);
-                        }
-                    });
-
-                    if (matchedNames.size > 0) {
-                        matchedNames.forEach(name => {
-                            const div = document.createElement('div');
-                            div.className = 'autocomplete-suggestion-item';
-                            div.textContent = name;
-                            div.onclick = function() {
-                                searchInput.value = name;
-                                suggestionsBox.style.display = 'none';
-                                renderFilteredRequests();
-                            };
-                            suggestionsBox.appendChild(div);
+                    if (query.length > 0) {
+                        const allData = pendingData.concat(archiveData);
+                        const matchedNames = new Set();
+                        
+                        allData.forEach(r => {
+                            const name = (r.Applicant_Name || "").toString().trim();
+                            if (name.toLowerCase().includes(query)) {
+                                matchedNames.add(name);
+                            }
                         });
-                        suggestionsBox.style.display = 'block';
+
+                        if (matchedNames.size > 0) {
+                            matchedNames.forEach(name => {
+                                const div = document.createElement('div');
+                                div.className = 'autocomplete-suggestion-item';
+                                div.textContent = name;
+                                div.onclick = function() {
+                                    searchInput.value = name;
+                                    suggestionsBox.style.display = 'none';
+                                    renderFilteredRequests();
+                                };
+                                suggestionsBox.appendChild(div);
+                            });
+                            suggestionsBox.style.display = 'block';
+                        } else {
+                            suggestionsBox.style.display = 'none';
+                        }
                     } else {
                         suggestionsBox.style.display = 'none';
                     }
-                } else {
-                    suggestionsBox.style.display = 'none';
-                }
-                renderFilteredRequests();
-            });
+                    renderFilteredRequests();
+                });
 
-            // إخفاء القائمة عند النقر خارجها
-            document.addEventListener('click', function(e) {
-                if (e.target !== searchInput && !suggestionsBox.contains(e.target)) {
-                    suggestionsBox.style.display = 'none';
-                }
-            });
+                document.addEventListener('click', function(e) {
+                    if (e.target !== searchInput && !suggestionsBox.contains(e.target)) {
+                        suggestionsBox.style.display = 'none';
+                    }
+                });
+            }
         });
 
         class CustomSelect {
@@ -909,10 +971,8 @@
                 availableDepts = [];
                 const allData = pendingData.concat(archiveData);
                 allData.forEach(r => {
-                    // ✅ الاعتماد على العمود F (Role) وحذف كلمة "مدير" من البداية
                     let d = (r.Role || "").toString().trim();
                     d = d.replace(/^مدير\s+/, ''); 
-                    
                     if (d && availableDepts.indexOf(d) === -1) availableDepts.push(d);
                 });
                 availableDepts.sort();
@@ -958,7 +1018,6 @@
                     }
                 }
                 
-                // ✅ الفلترة بالتطبيع (إزالة كلمة مدير من الطلب نفسه للمطابقة)
                 if (deptFilter) {
                     let rowDept = (r.Role || "").toString().trim().replace(/^مدير\s+/, '');
                     if (rowDept !== deptFilter) return false;
@@ -1007,17 +1066,14 @@
             renderFilteredRequests();
         }
 
-        // ✅ دالة تصدير الإكسيل باستخدام مكتبة SheetJS (تعمل على كل الأجهزة بدون نوافذ منبثقة)
         function exportToExcel() {
             if (!activeRequestsData || activeRequestsData.length === 0) {
                 return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها في العرض الحالي.");
             }
             
             try {
-                // ترتيب تصاعدي حسب التاريخ
                 const sortedData = [...activeRequestsData].sort((a, b) => new Date(a.Timestamp || 0) - new Date(b.Timestamp || 0));
                 
-                // تحويل البيانات إلى مصفوفة من الكائنات
                 const excelData = sortedData.map(row => ({
                     "رقم الطلب": row.Request_ID || '',
                     "تاريخ الإنشاء": row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-',
@@ -1031,12 +1087,10 @@
                     "الحالة": row.Status || ''
                 }));
 
-                // إنشاء ملف إكسيل
                 const ws = XLSX.utils.json_to_sheet(excelData);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "الطلبات");
                 
-                // تصدير الملف وتنزيله
                 XLSX.writeFile(wb, `تقرير_الطلبات_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.xlsx`);
             } catch (err) {
                 console.error(err);
@@ -1265,15 +1319,22 @@
             const div = document.createElement('div'); div.className = 'request-card';
             const stage = (req.Current_Stage || "").toString();
             const status = (req.Status || "").toString();
+            const poStatus = (req.PO_Status || "").toString();
             
             let badgeClass = 'badge-wait';
-            if (stage.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
-            else if (stage.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
-            else if (stage.indexOf("بانتظار رد") === 0 || stage.indexOf("بانتظار قرار") === 0) badgeClass = 'badge-info';
+            if (stage.indexOf("معتمد") !== -1 || poStatus === "approved") badgeClass = 'badge-ok';
+            else if (stage.indexOf("مرفوض") !== -1 || poStatus === "rejected") badgeClass = 'badge-reject';
+            else if (stage.indexOf("بانتظار رد") === 0 || stage.indexOf("بانتظار قرار") === 0 || poStatus === "pending") badgeClass = 'badge-info';
 
             let buttonsHtml = "";
             if (withActions) {
-                if (stage === "مراجعة المدير العام") {
+                if (poStatus === "rejected") {
+                     buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> إعادة تحويل (الميزانية/التخطيط)</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_final_approve')"><i class="fas fa-check-double"></i> اعتماد قرار العقود (نهائي)</button>
+                     </div>`;
+                }
+                else if (stage === "مراجعة المدير العام") {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'gm_reject')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>
@@ -1365,8 +1426,9 @@
                     <div>3. السلطة المختصة (رئيس مجلس الإدارة): <span style="color: ${req.Chairman_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${chairmanText}</span></div>
                 </div>
 
-                <div style="margin-top: 10px;">
-                    <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> تحميل / طباعة الطلب (PDF)</button>
+                <div style="margin-top: 10px; display:flex; gap:8px;">
+                    <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة الطلب</button>
+                    ${poStatus === 'approved' ? `<button class="print-btn" style="margin-top:0; background:#198754;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-file-invoice-dollar"></i> طباعة أمر التوريد</button>` : ''}
                 </div>
                 ${buttonsHtml}
             `;
@@ -1378,39 +1440,32 @@
             const status = (req.Status || "").toString();
             const gmDec = (req.GM_Decision || "").toString();
             const cenDec = (req.Central_Decision || "").toString();
+            const poStatus = (req.PO_Status || "").toString();
             
-            if (stage.indexOf("مرفوض من إدارة الميزانية") !== -1) 
-                return { text: "مرفوض من إدارة الميزانية", color: "#dc3545" };
-            if (stage.indexOf("مرفوض من إدارة التخطيط") !== -1) 
-                return { text: "مرفوض من إدارة التخطيط", color: "#dc3545" };
-            if (gmDec === "rejected" || stage.indexOf("مرفوض - مراجعة المدير العام") !== -1) 
-                return { text: "مرفوض من المدير العام", color: "#dc3545" };
-            if (cenDec === "rejected" || stage.indexOf("مرفوض - مراجعة رئيس الإدارة المركزية") !== -1) 
-                return { text: "مرفوض من الإدارة المركزية", color: "#dc3545" };
-            if (stage.indexOf("مرفوض") !== -1) 
-                return { text: "مرفوض", color: "#dc3545" };
+            if (poStatus === "approved") return { text: "تم إصدار أمر التوريد", color: "#198754" };
+            if (poStatus === "rejected") return { text: "مرفوض من العقود", color: "#dc3545" };
+            if (poStatus === "pending") return { text: "معلق من العقود", color: "#b45309" };
+
+            if (stage.indexOf("مرفوض من إدارة الميزانية") !== -1) return { text: "مرفوض من إدارة الميزانية", color: "#dc3545" };
+            if (stage.indexOf("مرفوض من إدارة التخطيط") !== -1) return { text: "مرفوض من إدارة التخطيط", color: "#dc3545" };
+            if (gmDec === "rejected" || stage.indexOf("مرفوض - مراجعة المدير العام") !== -1) return { text: "مرفوض من المدير العام", color: "#dc3545" };
+            if (cenDec === "rejected" || stage.indexOf("مرفوض - مراجعة رئيس الإدارة المركزية") !== -1) return { text: "مرفوض من الإدارة المركزية", color: "#dc3545" };
+            if (stage.indexOf("مرفوض") !== -1) return { text: "مرفوض", color: "#dc3545" };
             
-            if (stage.indexOf("معتمد نهائياً") !== -1 || status.indexOf("معتمد نهائياً") !== -1) 
-                return { text: "معتمد نهائياً", color: "#198754" };
+            if (stage.indexOf("معتمد نهائياً") !== -1 || status.indexOf("معتمد نهائياً") !== -1) return { text: "معتمد نهائياً", color: "#198754" };
             
-            if (gmDec === "approved" && cenDec === "approved" && stage === "مراجعة رئيس مجلس الإدارة") 
-                return { text: "معتمد من الإدارة المركزية", color: "#198754" };
-            if (gmDec === "approved" && stage === "مراجعة رئيس الإدارة المركزية") 
-                return { text: "معتمد من المدير العام", color: "#198754" };
+            if (gmDec === "approved" && cenDec === "approved" && stage === "مراجعة رئيس مجلس الإدارة") return { text: "معتمد من الإدارة المركزية", color: "#198754" };
+            if (gmDec === "approved" && stage === "مراجعة رئيس الإدارة المركزية") return { text: "معتمد من المدير العام", color: "#198754" };
             
             if (stage.indexOf("بانتظار رد") === 0) {
                 var pendingText = stage.replace("بانتظار رد ", "").trim();
                 return { text: "بانتظار رد " + pendingText, color: "#0d6efd" };
             }
-            if (stage.indexOf("بانتظار قرار رئيس مجلس") === 0) 
-                return { text: "بانتظار قرار رئيس مجلس الإدارة", color: "#b45309" };
+            if (stage.indexOf("بانتظار قرار رئيس مجلس") === 0) return { text: "بانتظار قرار رئيس مجلس الإدارة", color: "#b45309" };
             
-            if (stage === "مراجعة المدير العام") 
-                return { text: "قيد الانتظار - المدير العام", color: "#b45309" };
-            if (stage === "مراجعة رئيس الإدارة المركزية") 
-                return { text: "قيد الانتظار - الإدارة المركزية", color: "#b45309" };
-            if (stage === "مراجعة رئيس مجلس الإدارة") 
-                return { text: "قيد الانتظار - رئيس مجلس الإدارة", color: "#b45309" };
+            if (stage === "مراجعة المدير العام") return { text: "قيد الانتظار - المدير العام", color: "#b45309" };
+            if (stage === "مراجعة رئيس الإدارة المركزية") return { text: "قيد الانتظار - الإدارة المركزية", color: "#b45309" };
+            if (stage === "مراجعة رئيس مجلس الإدارة") return { text: "قيد الانتظار - رئيس مجلس الإدارة", color: "#b45309" };
             
             return { text: "قيد الانتظار", color: "#b45309" };
         }
@@ -1435,16 +1490,18 @@
             document.getElementById('printApplicantRole').textContent = req.Role || "---";
             document.getElementById('printNationalId').textContent = req.National_ID || "---";
             document.getElementById('printPhone').textContent = req.Phone || "---";
-            document.getElementById('printManagerSign').textContent = req.Parent_Department ? "مدير عام " + req.Parent_Department : "---";
+            
+            document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (req.Parent_Department || "الإدارة");
+            document.getElementById('printManagerSignName').textContent = req.Mgr_Name || req.Manager_Name || "---";
 
             document.getElementById('printGmDate').textContent = req.Gm_Date ? ("تمت الموافقة (" + req.Gm_Date + ")") : "قيد الانتظار";
             document.getElementById('printCentralDate').textContent = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
             document.getElementById('printChairmanDate').textContent = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
 
             const rejectBox = document.getElementById('printRejectBox');
-            const isPendingChairman = (req.Current_Stage || "").toString().indexOf("بانتظار قرار رئيس مجلس") === 0 || (req.Current_Stage || "").toString().indexOf("تعديل مطلوب") !== -1;
+            const isPending = (req.Current_Stage || "").toString().indexOf("بانتظار قرار رئيس مجلس") === 0 || (req.Current_Stage || "").toString().indexOf("تعديل مطلوب") !== -1;
             
-            if (req.Reject_Reason && !isPendingChairman) {
+            if (req.Reject_Reason && !isPending) {
                 rejectBox.style.display = "block";
                 document.getElementById('printRejectReason').textContent = req.Reject_Reason;
             } else {
@@ -1457,6 +1514,47 @@
             watermarkEl.style.color = wm.color;
             watermarkEl.style.opacity = "0.28";
 
+            document.getElementById('printableArea').style.display = 'block';
+            document.getElementById('printablePOArea').style.display = 'none';
+            window.print();
+        }
+
+        function printPurchaseOrderFromCard(reqId) {
+            const req = activeRequestsData.find(r => r.Request_ID === reqId);
+            if (!req || req.PO_Status !== 'approved') {
+                showCustomAlert("تنبيه", "لا يوجد أمر توريد معتمد لهذا الطلب.");
+                return;
+            }
+            
+            let details = {};
+            try { details = JSON.parse(req.PO_Details || "{}"); } catch(_) {}
+
+            document.getElementById('poPrintNumber').textContent = "PO-" + req.Request_ID.replace('REQ-', '');
+            document.getElementById('poPrintDate').textContent = req.PO_Date ? new Date(req.PO_Date).toLocaleDateString('ar-EG') : new Date().toLocaleDateString('ar-EG');
+            document.getElementById('poPrintChairmanDate').textContent = req.Chairman_Date || "---";
+            
+            document.getElementById('poPrintSupplier').textContent = details.supplier || "---";
+            document.getElementById('poPrintIssuedBy').textContent = req.PO_Issued_By || "---";
+            
+            document.getElementById('poPrintManagerTitle').textContent = "مدير عام " + (req.Parent_Department || "الإدارة");
+            document.getElementById('poPrintManagerName').textContent = req.Mgr_Name || req.Manager_Name || "---";
+
+            let tableHtml = `
+                <tr>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">1</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px;">${details.item || req.Item_Description}</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${details.unitType || '-'}</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${details.unitValue || '-'}</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${details.unitPrice || '-'} ج.م</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center; font-weight:900;">${details.totalCost || '-'} ج.م</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px;">${details.notes || '-'}</td>
+                </tr>
+            `;
+            document.getElementById('poPrintTableBody').innerHTML = tableHtml;
+            document.getElementById('poPrintTafqit').textContent = details.tafqit || "---";
+
+            document.getElementById('printableArea').style.display = 'none';
+            document.getElementById('printablePOArea').style.display = 'block';
             window.print();
         }
 
@@ -1474,7 +1572,9 @@
             document.getElementById('printApplicantRole').textContent = document.getElementById('applicantRole').value || "---";
             document.getElementById('printNationalId').textContent = document.getElementById('applicantNationalId').value || "---";
             document.getElementById('printPhone').textContent = document.getElementById('applicantPhone').value || "---";
-            document.getElementById('printManagerSign').textContent = document.getElementById('managerName').value || "---";
+            
+            document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (document.getElementById('parentDepartment').value || "الإدارة");
+            document.getElementById('printManagerSignName').textContent = document.getElementById('managerName').value || "---";
 
             document.getElementById('printGmDate').textContent = "قيد الانتظار";
             document.getElementById('printCentralDate').textContent = "قيد الانتظار";
@@ -1487,12 +1587,318 @@
             watermarkEl.style.color = "#b45309";
             watermarkEl.style.opacity = "0.28";
 
+            document.getElementById('printableArea').style.display = 'block';
+            document.getElementById('printablePOArea').style.display = 'none';
             window.print();
         }
 
-        document.getElementById('orderForm').addEventListener('submit', function(e) {
+        /* ================== أوامر التوريد والعقود ================== */
+        function handleContractLogin() {
+            const username = document.getElementById('contractUsername').value.trim();
+            const password = document.getElementById('contractPassword').value.trim();
+            if (!username || !password) return showCustomAlert("تنبيه", "يرجى إدخال اسم المستخدم وكلمة المرور.");
+
+            const btn = document.getElementById('contractLoginBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+
+            const formData = new URLSearchParams({ action: "loginContract", username, password });
+            fetch(SCRIPT_URL, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = 'دخول';
+                if (data.status === "success") {
+                    currentContractUser = data;
+                    document.getElementById('contractLoginBox').style.display = 'none';
+                    document.getElementById('contractDashboard').style.display = 'block';
+                    document.getElementById('contractWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.name}`;
+                    loadApprovedRequestsForContract();
+                } else {
+                    showCustomAlert("خطأ", data.message);
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.innerHTML = 'دخول';
+                showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
+            });
+        }
+
+        function logoutContract() {
+            currentContractUser = null;
+            document.getElementById('contractLoginBox').style.display = 'block';
+            document.getElementById('contractDashboard').style.display = 'none';
+            document.getElementById('contractUsername').value = "";
+            document.getElementById('contractPassword').value = "";
+        }
+
+        function loadApprovedRequestsForContract() {
+            const container = document.getElementById('approvedRequestsList');
+            container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
+
+            const formData = new URLSearchParams({ action: "getApprovedReq" });
+            fetch(SCRIPT_URL, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                container.innerHTML = "";
+                if (!Array.isArray(data) || data.length === 0) {
+                    container.innerHTML = '<p class="empty-state">لا توجد طلبات معتمدة نهائياً حالياً.</p>';
+                    return;
+                }
+                data.forEach(req => container.appendChild(buildContractRequestCard(req)));
+            })
+            .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
+        }
+
+        function buildContractRequestCard(req) {
+            const div = document.createElement('div'); div.className = 'request-card';
+            let poStatus = req.PO_Status || 'pending';
+            let statusColor = poStatus === 'approved' ? '#198754' : (poStatus === 'rejected' ? '#dc3545' : '#fbbf24');
+            let statusText = poStatus === 'approved' ? 'تم إصدار أمر التوريد' : (poStatus === 'rejected' ? 'مرفوض (مرتجع لرئيس المجلس)' : 'قيد المراجعة بالعقود');
+            
+            let detailsHtml = "";
+            if (poStatus === 'approved' && req.PO_Details) {
+                try {
+                    let d = JSON.parse(req.PO_Details);
+                    detailsHtml = `
+                        <div class="dept-state-box" style="border-color:#198754; background:rgba(25,135,84,0.05);">
+                            <strong style="color:#198754;"><i class="fas fa-file-invoice-dollar"></i> تفاصيل أمر التوريد:</strong>
+                            <div style="padding:4px 0;"><b>المورد:</b> ${d.supplier}</div>
+                            <div style="padding:4px 0;"><b>الصنف:</b> ${d.item}</div>
+                            <div style="padding:4px 0;"><b>الوحدة:</b> ${d.unitType} ${d.unitValue} × ${d.unitPrice} ج.م</div>
+                            <div style="padding:4px 0;"><b>الإجمالي:</b> ${d.totalCost} ج.م</div>
+                            <div style="padding:4px 0;"><b>التفقيط:</b> ${d.tafqit}</div>
+                        </div>
+                    `;
+                } catch(_){}
+            } else if (poStatus === 'pending' && req.PO_Reason) {
+                detailsHtml = `<div class="reject-block" style="background:rgba(251,191,36,0.1); border-color:#fbbf24; color:#fbbf24;"><strong><i class="fas fa-pause-circle"></i> سبب التعليق:</strong><span>${req.PO_Reason}</span></div>`;
+            } else if (poStatus === 'rejected' && req.PO_Reason) {
+                detailsHtml = `<div class="reject-block"><strong><i class="fas fa-times-circle"></i> سبب الرفض:</strong><span>${req.PO_Reason}</span></div>`;
+            }
+
+            div.innerHTML = `
+                <div class="req-title">
+                    <span><i class="fas fa-file-signature"></i> ${req.Request_ID}</span>
+                    <span class="badge" style="background:${statusColor}20; color:${statusColor}; border:1px solid ${statusColor}">${statusText}</span>
+                </div>
+                <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.Applicant_Name || '-'}</span></div>
+                <div class="req-row"><strong>الإدارة:</strong> <span>${req.Parent_Department || '-'}</span></div>
+                <div class="req-row"><strong>الصنف المطلوب:</strong> <span>${req.Item_Description || '-'}</span></div>
+                <div class="req-row"><strong>الكمية:</strong> <span>${req.Quantity || '-'}</span></div>
+                <div class="req-row"><strong>التكلفة التقديرية:</strong> <span>${req.Estimated_Cost || '-'} ج.م</span></div>
+                
+                ${detailsHtml}
+
+                <div class="req-actions" style="flex-direction: row; justify-content: space-between; margin-top: 15px;">
+                    ${poStatus !== 'approved' ? `<button class="main-btn" style="width:31%; background:#198754; font-size:12px;" onclick="openPOModal('${req.Request_ID}', '${req.Item_Description}', '${req.Estimated_Cost}', activeRequestsData.find(r=>r.Request_ID==='${req.Request_ID}'))"><i class="fas fa-check"></i> موافقة وإصدار</button>` : `<button class="main-btn" style="width:31%; background:#0d6efd; font-size:12px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`}
+                    <button class="main-btn" style="width:31%; background:#fbbf24; color:#000; font-size:12px;" onclick="promptPOHold('${req.Request_ID}')"><i class="fas fa-pause"></i> تعليق</button>
+                    <button class="main-btn" style="width:31%; background:#dc3545; font-size:12px;" onclick="promptPOReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض</button>
+                </div>
+            `;
+            return div;
+        }
+
+        function openPOModal(requestId, defaultItem, defaultCost, reqObj) {
+            // نستخدم reqObj للطباعة لاحقاً بعد الحفظ مباشرة
+            window.currentReqForPO = reqObj;
+
+            const existing = document.getElementById("poModal");
+            if (existing) existing.remove();
+
+            const overlay = document.createElement("div");
+            overlay.id = "poModal";
+            overlay.className = "custom-modal-overlay";
+            overlay.innerHTML = `
+              <div class="custom-modal-box" style="max-width: 600px; text-align: right;">
+                <div class="custom-modal-header" style="justify-content: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+                  <i class="fas fa-file-invoice-dollar" style="color:#198754;"></i>
+                  <h3 style="color:#1a365d;">إصدار أمر توريد جديد</h3>
+                </div>
+                <div class="custom-modal-body" style="background:transparent; padding:0; margin-top:15px; display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    
+                    <div style="grid-column: span 2;">
+                        <label>0. اسم المورد:</label>
+                        <input type="text" id="poSupplier" placeholder="اسم المورد..." style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                    </div>
+
+                    <div style="grid-column: span 2;">
+                        <label>1. البيان (اسم الصنف):</label>
+                        <input type="text" id="poItem" value="${defaultItem || ''}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                    </div>
+                    
+                    <div>
+                        <label>2. نوع الوحدة:</label>
+                        <select id="poUnitType" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                            <option value="كمية">كمية</option>
+                            <option value="عدد">عدد</option>
+                            <option value="متر">متر</option>
+                            <option value="طن">طن</option>
+                            <option value="كيلو">كيلو</option>
+                            <option value="أخرى">أخرى</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label>3. قيمة الوحدة (العدد):</label>
+                        <input type="number" id="poUnitValue" value="1" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;" oninput="calcPOTotal()">
+                    </div>
+
+                    <div>
+                        <label>4. سعر الوحدة (ج.م):</label>
+                        <input type="number" id="poUnitPrice" value="${defaultCost || 0}" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;" oninput="calcPOTotal()">
+                    </div>
+
+                    <div>
+                        <label>5. إجمالي القيمة (ج.م):</label>
+                        <input type="text" id="poTotalCost" readonly style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; background:#f8fafc; font-weight:bold;">
+                    </div>
+
+                    <div style="grid-column: span 2;">
+                        <label>6. ملاحظات:</label>
+                        <input type="text" id="poNotes" placeholder="أي ملاحظات إضافية..." style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px;">
+                    </div>
+
+                    <div style="grid-column: span 2; background:#f0fdf4; border:1px solid #bbf7d0; padding:10px; border-radius:6px; margin-top:5px;">
+                        <label style="color:#166534; font-weight:bold; margin-bottom:5px;">7. التفقيط بالعملة المصرية:</label>
+                        <div id="poTafqit" style="color:#166534; font-size:13px; font-weight:bold;">فقط صفر جنيه مصري لا غير</div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:20px;">
+                  <button id="poCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+                  <button id="poConfirm" class="custom-modal-btn" style="background:#198754;">حفظ وإصدار أمر التوريد</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+            calcPOTotal(); 
+
+            document.getElementById('poCancel').onclick = () => overlay.remove();
+            document.getElementById('poConfirm').onclick = () => {
+                const supplier = document.getElementById('poSupplier').value.trim();
+                const item = document.getElementById('poItem').value.trim();
+                const total = document.getElementById('poTotalCost').value;
+                if(!supplier || !item || !total || total === "0") { showCustomAlert("تنبيه", "يرجى إكمال البيانات المطلوبة (اسم المورد، البيان، السعر)."); return; }
+                
+                const poData = {
+                    action: "savePurchaseOrder", requestId: requestId, poStatus: "approved",
+                    poSupplier: supplier,
+                    poItem: item,
+                    poUnitType: document.getElementById('poUnitType').value,
+                    poUnitValue: document.getElementById('poUnitValue').value,
+                    poUnitPrice: document.getElementById('poUnitPrice').value,
+                    poTotalCost: total,
+                    poNotes: document.getElementById('poNotes').value,
+                    poTafqit: document.getElementById('poTafqit').innerText,
+                    issuedBy: currentContractUser ? currentContractUser.name : "موظف العقود"
+                };
+                submitPOAction(poData, overlay);
+            };
+        }
+
+        function calcPOTotal() {
+            const val = parseFloat(document.getElementById('poUnitValue').value) || 0;
+            const price = parseFloat(document.getElementById('poUnitPrice').value) || 0;
+            const total = val * price;
+            document.getElementById('poTotalCost').value = total.toFixed(2);
+            document.getElementById('poTafqit').innerText = "فقط " + tafqit(total) + " جنيهاً مصرياً لا غير";
+        }
+
+        function promptPOHold(requestId) {
+            const reason = prompt("يرجى كتابة سبب تعليق أمر التوريد (سيظهر للجميع):");
+            if (reason && reason.trim() !== "") {
+                const poData = { action: "savePurchaseOrder", requestId: requestId, poStatus: "pending", pendingReason: reason.trim(), issuedBy: currentContractUser.name };
+                submitPOAction(poData, null);
+            }
+        }
+
+        function promptPOReject(requestId) {
+            const reason = prompt("يرجى كتابة سبب رفض أمر التوريد وإرجاعه لرئيس مجلس الإدارة:");
+            if (reason && reason.trim() !== "") {
+                const poData = { action: "savePurchaseOrder", requestId: requestId, poStatus: "rejected", rejectReason: reason.trim(), issuedBy: currentContractUser.name };
+                submitPOAction(poData, null);
+            }
+        }
+
+        function submitPOAction(poData, modalElement) {
+            const formData = new URLSearchParams();
+            for (const key in poData) formData.append(key, poData[key]);
+
+            fetch(SCRIPT_URL, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    showSuccess("تم بنجاح", res.message || "تم تنفيذ الإجراء بنجاح.");
+                    if (modalElement) modalElement.remove();
+                    loadApprovedRequestsForContract();
+                } else {
+                    showCustomAlert("خطأ", res.message || "حدث خطأ أثناء التنفيذ.");
+                }
+            })
+            .catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+        }
+
+        function tafqit(number) {
+            if (number === 0) return "صفر";
+            const str = parseFloat(number).toFixed(2);
+            const parts = str.split('.');
+            let integerPart = parseInt(parts[0]);
+            let decimalPart = parseInt(parts[1]);
+            
+            const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
+            const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
+            const hundreds = ['', 'مائة', 'مئتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة'];
+
+            function convertGroup(num) {
+                let res = "";
+                let h = Math.floor(num / 100);
+                let t = Math.floor((num % 100) / 10);
+                let o = num % 10;
+                
+                if (h > 0) res += hundreds[h] + " و";
+                if (t > 0 || o > 0) {
+                    if (t === 1) res += ones[10 + o];
+                    else if (o > 0) {
+                        if (t > 1) res += ones[o] + " و" + tens[t];
+                        else res += ones[o];
+                    } else if (t > 1) res += tens[t];
+                }
+                return res.replace(/ و$/, "");
+            }
+
+            function convertInteger(num) {
+                if (num === 0) return "";
+                let parts = [];
+                let millions = Math.floor(num / 1000000);
+                let thousands = Math.floor((num % 1000000) / 1000);
+                let remainder = num % 1000;
+
+                if (millions > 0) {
+                    if (millions === 1) parts.push("مليون");
+                    else if (millions === 2) parts.push("مليونان");
+                    else if (millions >= 3 && millions <= 10) parts.push(convertGroup(millions) + " ملايين");
+                    else parts.push(convertGroup(millions) + " مليون");
+                }
+                if (thousands > 0) {
+                    if (thousands === 1) parts.push("ألف");
+                    else if (thousands === 2) parts.push("ألفان");
+                    else if (thousands >= 3 && thousands <= 10) parts.push(convertGroup(thousands) + " آلاف");
+                    else parts.push(convertGroup(thousands) + " ألف");
+                }
+                if (remainder > 0) parts.push(convertGroup(remainder));
+                return parts.join(" و");
+            }
+
+            let result = convertInteger(integerPart);
+            if (decimalPart > 0) {
+                result += " جنيهاً و" + convertGroup(decimalPart) + " قرشاً";
+            }
+            return result;
+        }
+
+        document.getElementById('orderForm')?.addEventListener('submit', function(e) {
             e.preventDefault();
-            showCustomAlert("تنبيه", "سيتم تفعيل حفظ أمر التوريد قريباً.");
+            showCustomAlert("تنبيه", "تم إلغاء هذا النموذج واستبداله بواجهة العقود.");
         });
     </script>
 </body>
