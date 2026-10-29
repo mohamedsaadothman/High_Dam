@@ -220,7 +220,7 @@
             border-radius: 12px; padding: 15px; margin-bottom: 20px;
             display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
         }
-        .filter-bar .filter-group { flex: 1 1 130px; display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar .filter-group { flex: 1 1 130px; display: flex; flex-direction: column; gap: 4px; position: relative; }
         .filter-bar .filter-group.search-group { flex: 2 1 200px; }
         .filter-bar label { font-size: 11px; color: #94a3b8; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
         .filter-bar input, .filter-bar select {
@@ -242,6 +242,35 @@
             cursor: pointer; width: 100%; transition: 0.2s;
         }
         .filter-btn-reset:hover { background: #475569; }
+
+        /* ✅ قائمة الاقتراحات للبحث */
+        .autocomplete-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #0f172a;
+            border: 1px solid #c59b27;
+            border-radius: 6px;
+            margin-top: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            display: none;
+        }
+        .autocomplete-suggestion-item {
+            padding: 10px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #cbd5e1;
+            border-bottom: 1px solid #1e293b;
+        }
+        .autocomplete-suggestion-item:last-child { border-bottom: none; }
+        .autocomplete-suggestion-item:hover {
+            background: rgba(251,191,36,0.15);
+            color: #fbbf24;
+        }
 
         @media (max-width: 600px) {
             .filter-bar .filter-group { flex: 1 1 45%; }
@@ -404,9 +433,11 @@
                                 <option value="transferred">محول</option>
                             </select>
                         </div>
+                        <!-- ✅ تعديل البحث ليكون به قائمة اقتراحات -->
                         <div class="filter-group search-group">
-                            <label><i class="fas fa-search"></i> بحث</label>
-                            <input type="text" id="filterSearch" placeholder="رقم الطلب أو اسم الموظف...">
+                            <label><i class="fas fa-search"></i> بحث بالاسم أو رقم الطلب</label>
+                            <input type="text" id="filterSearch" placeholder="اسم الموظف أو REQ..." autocomplete="off">
+                            <div id="searchSuggestions" class="autocomplete-suggestions"></div>
                         </div>
                         <div class="filter-actions">
                             <button class="filter-btn-reset" onclick="resetFilters()">
@@ -556,9 +587,59 @@
                     loadReviewRequests();
                 }
             }
-            ['filterDateFrom', 'filterDateTo', 'filterDept', 'filterStatus', 'filterSearch'].forEach(function(id) {
+            ['filterDateFrom', 'filterDateTo', 'filterDept', 'filterStatus'].forEach(function(id) {
                 const el = document.getElementById(id);
                 if (el) el.addEventListener('input', renderFilteredRequests);
+            });
+
+            // ✅ مستمع حدث البحث مع الاقتراحات
+            const searchInput = document.getElementById('filterSearch');
+            const suggestionsBox = document.getElementById('searchSuggestions');
+            
+            searchInput.addEventListener('input', function() {
+                const query = this.value.trim().toLowerCase();
+                suggestionsBox.innerHTML = '';
+                
+                if (query.length > 0) {
+                    // البحث في الطلبات المتاحة (المعلقة والأرشيف)
+                    const allData = pendingData.concat(archiveData);
+                    const matchedNames = new Set();
+                    
+                    allData.forEach(r => {
+                        // ✅ الاعتماد على العمود الثالث C (Applicant_Name)
+                        const name = (r.Applicant_Name || "").toString().trim();
+                        if (name.toLowerCase().includes(query)) {
+                            matchedNames.add(name);
+                        }
+                    });
+
+                    if (matchedNames.size > 0) {
+                        matchedNames.forEach(name => {
+                            const div = document.createElement('div');
+                            div.className = 'autocomplete-suggestion-item';
+                            div.textContent = name;
+                            div.onclick = function() {
+                                searchInput.value = name;
+                                suggestionsBox.style.display = 'none';
+                                renderFilteredRequests();
+                            };
+                            suggestionsBox.appendChild(div);
+                        });
+                        suggestionsBox.style.display = 'block';
+                    } else {
+                        suggestionsBox.style.display = 'none';
+                    }
+                } else {
+                    suggestionsBox.style.display = 'none';
+                }
+                renderFilteredRequests();
+            });
+
+            // إخفاء القائمة عند النقر خارجها
+            document.addEventListener('click', function(e) {
+                if (e.target !== searchInput && !suggestionsBox.contains(e.target)) {
+                    suggestionsBox.style.display = 'none';
+                }
             });
         });
 
@@ -919,6 +1000,7 @@
             document.getElementById('filterDept').value = "";
             document.getElementById('filterStatus').value = "";
             document.getElementById('filterSearch').value = "";
+            document.getElementById('searchSuggestions').style.display = 'none';
             renderFilteredRequests();
         }
 
