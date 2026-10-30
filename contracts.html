@@ -674,18 +674,18 @@
     </div>
 
     <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxXCsLLKqRDzSVGK2ndtNfUewqI6raGzy2iETti8ML-qO0v7GBa7zn7a2yAhn8_kZD5nw/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw956SdmTt6u6Ev7NhP16Env-RTts9tV9bJEsh8TFqE_YyzwVcKuStOm0jgJXBNxoCTgg/exec";
 
         let lastCreatedReqId = "REQ-000000";
         let loggedInUser = {};
         let currentTrackUser = null;
         let currentContractUser = null;
         
-        let activeRequestsData = []; 
+        let activeRequestsData = []; // للطلبات العادية
         let contractPendingData = [];
         let contractArchiveData = [];
         let currentContractTab = 'pending';
-        let activeContractData = []; 
+        let activeContractData = []; // لطلبات العقود الحالية
 
         let currentTab = 'pending';
         let pendingData = [];
@@ -1625,7 +1625,7 @@
                 container.innerHTML = '<p class="empty-state">لا توجد طلبات في هذا القسم حالياً.</p>';
                 return;
             }
-            activeContractData = data; 
+            activeContractData = data; // لتسهيل البحث عند الطباعة
             data.forEach(req => container.appendChild(buildContractRequestCard(req, currentContractTab === 'pending')));
         }
 
@@ -1661,6 +1661,7 @@
 
             let actionsHtml = "";
             
+            // أزرار الموظف (إصدار أو تعديل مسودة)
             if (currentContractUser.contract_role === 'موظف' && poStatus !== 'approved' && withActions) {
                 actionsHtml = `
                     <div class="req-actions" style="margin-top:15px;">
@@ -1670,6 +1671,8 @@
                         </button>
                     </div>`;
             } 
+            
+            // أزرار المدير (اعتماد أو رفض المسودة)
             else if (currentContractUser.contract_role === 'مدير' && poStatus === 'pending' && withActions) {
                 actionsHtml = `
                     <div class="req-actions" style="flex-direction: row; justify-content: space-between; margin-top: 15px;">
@@ -1679,6 +1682,7 @@
                 `;
             }
 
+            // زر الطباعة (متاح للجميع، لكن يظهر بعلامة مائية للمسودة)
             let printBtn = `<button class="print-btn" style="margin-top:10px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`;
 
             const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
@@ -1732,6 +1736,7 @@
             overlay.id = "poModal";
             overlay.className = "custom-modal-overlay";
             
+            // ✅ استخدام الوضع الليلي (Dark Mode) هنا
             overlay.innerHTML = `
               <div class="custom-modal-box" style="max-width: 900px; text-align: right; background: #1e293b; color: #fff; border: 1px solid #c59b27;">
                 <div class="custom-modal-header" style="justify-content: flex-start; border-bottom: 1px solid #475569; padding-bottom: 10px;">
@@ -1745,6 +1750,7 @@
                         <input type="text" id="poSupplier" value="${supplier}" placeholder="اسم المورد..." style="width:100%; padding:10px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff;">
                     </div>
 
+                    <!-- جدول الأصناف -->
                     <table class="items-table" id="poItemsTable">
                         <thead>
                             <tr>
@@ -1759,6 +1765,8 @@
                             <!-- سيتم ملؤها بالجافاسكريبت -->
                         </tbody>
                     </table>
+                    
+                    <!-- تم إزالة زر إضافة صنف هنا -->
 
                     <div style="margin-bottom:15px;">
                         <label style="color:#cbd5e1;">ملاحظات عامة (تظهر أسفل الجدول):</label>
@@ -2111,6 +2119,7 @@
 
             document.getElementById('printRejectBox').style.display = "none";
             
+            // إخفاء العلامة المائية في النسخة النهائية المعتمدة فقط
             if (req.PO_Status === 'approved') {
                 document.getElementById('printWatermark').style.display = 'none';
             } else {
@@ -2123,6 +2132,7 @@
             document.getElementById('printAccreditationBox').style.display = 'block';
             document.getElementById('contractPrintSection').style.display = 'block';
 
+            // تعبئة جدول الطلب الأصلي أولاً
             let reqItemsHtml = '';
             try {
                 let reqItems = JSON.parse(req.Items_List || "[]");
@@ -2138,7 +2148,8 @@
             document.getElementById('printRequestItemsBody').innerHTML = reqItemsHtml;
             document.getElementById('printRequestTotalCost').textContent = (req.Total_Cost || "0") + " ج.م";
 
-            document.getElementById('printPODateHeader').textContent = req.PO_Date ? new Date(req.PO_Date).toLocaleString('ar-EG') : "---";
+            // تعبئة بيانات أمر التوريد
+            document.getElementById('printPODateHeader').textContent = req.PO_Date ? new Date(req.PO_Date).toLocaleDateString('ar-EG') : "---";
             document.getElementById('printPOChairmanDate').textContent = req.Chairman_Date || "---";
             document.getElementById('printPOSupplier').textContent = details.supplier || "---";
             document.getElementById('printPOIssuedBy').textContent = req.PO_Issued_By || "---";
@@ -2192,6 +2203,7 @@
             watermarkEl.style.color = "#b45309";
             watermarkEl.style.opacity = "0.20";
 
+            // تجميع البيانات من الجدول
             let itemsHtml = '';
             let total = 0;
             document.querySelectorAll('#itemsTableBody tr').forEach(tr => {
@@ -2221,6 +2233,7 @@
             showCustomAlert("تنبيه", "تم إلغاء هذا النموذج واستبداله بواجهة العقود.");
         });
         
+        // إضافة صف افتراضي عند التحميل
         document.addEventListener('DOMContentLoaded', () => {
             addItemRow();
         });
