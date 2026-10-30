@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>الدعم الفني</title>
+    <title>نظام المحادثات الداخلية</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -31,7 +31,7 @@
         .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; flex-wrap: wrap; }
         .input-area input, .input-area select { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; }
         .input-area input { flex: 1; }
-        .input-area select { width: 200px; display: none; }
+        .input-area select { width: 220px; }
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; }
         @media (max-width: 768px) { .chat-wrapper { top: 75px; left: 10px; right: 10px; bottom: 10px; } .input-area select { width: 100%; margin-bottom: 5px; } }
     </style>
@@ -62,7 +62,7 @@
     <div id="loginScreen">
         <div class="login-box">
             <h2>تسجيل الدخول</h2>
-            <input type="text" id="loginName" placeholder="الاسم">
+            <input type="text" id="loginCode" placeholder="كود المستخدم (الرقم)">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
             <button onclick="login()">دخول</button>
         </div>
@@ -70,12 +70,14 @@
     <div id="chatScreen">
         <div class="chat-wrapper">
             <div class="chat-header-title">
-                <span id="chatHeaderTitle">غرفة الدعم</span>
+                <span id="chatHeaderTitle">غرفة المحادثات</span>
                 <button class="notify-btn" id="enableNotifyBtn" onclick="enablePushNotifications()">تفعيل الإشعارات</button>
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
-                <select id="adminUserSelect" style="display: none;"><option value="">اختر موظف للرد عليه...</option></select>
+                <select id="targetUserSelect" onchange="loadChatRoom()">
+                    <option value="">اختر زميلاً للمراسلة...</option>
+                </select>
                 <input type="text" id="msgInput" placeholder="اكتب رسالتك هنا..." onkeypress="handleEnter(event)">
                 <button class="send-btn" onclick="sendMessage()">إرسال</button>
             </div>
@@ -101,10 +103,10 @@
         let myId = localStorage.getItem('chat_user_id') || "user_" + Math.floor(Math.random() * 100000);
         localStorage.setItem('chat_user_id', myId);
         let currentUserName = "";
-        let isAdmin = false;
-        const adminName = "محمد سعد عثمان أحمد"; 
+        let allUsersList = [];
         
-        const scriptUrl = "https://script.google.com/macros/s/AKfycbzquxwL776E9ydmqwX-39l7saSXgcUvzkGOZ1vW__vOvk1hSaPyKzHyxYfwSRtG_nTLdg/exec";
+        // ⚠️ ضع رابط جوجل سكريبت الجديد هنا
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbwLDbmenviYN3mkbyImdI8rCF6VKQVqucCdZgyloV9fdqzBtKVZzdOC10fQM5cPdWKYKw/exec";
 
         function normalizeText(text) {
             if (!text) return "";
@@ -133,84 +135,37 @@
         }
 
         window.login = async function() {
-            const nameInput = document.getElementById('loginName').value;
+            const codeInput = document.getElementById('loginCode').value;
             const passInput = document.getElementById('loginPassword').value;
-            if (!nameInput || !passInput) { alert("الرجاء إدخال البيانات"); return; }
+            if (!codeInput || !passInput) { alert("الرجاء إدخال البيانات"); return; }
 
             try {
                 document.querySelector('#loginScreen button').innerText = "جاري التحقق...";
                 const response = await fetch(scriptUrl);
-                const users = await response.json();
-                const user = users.find(u => normalizeText(u.name) === normalizeText(nameInput) && normalizeText(u.password) === normalizeText(passInput));
+                allUsersList = await response.json();
+                
+                const user = allUsersList.find(u => normalizeText(u.code) === normalizeText(codeInput) && normalizeText(u.password) === normalizeText(passInput));
 
                 if (user) {
-                    currentUserName = nameInput.trim(); 
+                    currentUserName = user.name.trim(); 
                     localStorage.setItem('chat_user_name', currentUserName);
                     
                     OneSignalDeferred.push(async function(OneSignal) {
                         await OneSignal.login(currentUserName);
                     });
 
-                    if (normalizeText(currentUserName) === normalizeText(adminName)) {
-                        isAdmin = true;
-                        document.getElementById('chatHeaderTitle').innerText = "لوحة التحكم (أدمن)";
-                        document.getElementById('adminUserSelect').style.display = 'block'; 
-                    } else {
-                        isAdmin = false;
-                        document.getElementById('chatHeaderTitle').innerText = "غرفة الدعم - " + currentUserName;
-                    }
-
+                    document.getElementById('chatHeaderTitle').innerText = "مرحباً: " + currentUserName;
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('chatScreen').style.display = 'block';
                     document.getElementById('enableNotifyBtn').style.display = 'block';
 
-                    if (isAdmin) {
-                        onValue(ref(db, 'private_chats'), (snapshot) => {
-                            messagesDiv.innerHTML = ''; 
-                            const allChats = snapshot.val();
-                            const select = document.getElementById('adminUserSelect');
-                            select.innerHTML = '<option value="">اختر موظف للرد عليه...</option>';
-                            if (allChats) {
-                                let allMessages = [];
-                                for (let userRoom in allChats) {
-                                    select.innerHTML += `<option value="${userRoom}">${userRoom}</option>`;
-                                    for (let msgId in allChats[userRoom]) {
-                                        let msg = allChats[userRoom][msgId];
-                                        msg.senderRoom = userRoom;
-                                        allMessages.push(msg);
-                                    }
-                                }
-                                allMessages.sort((a, b) => a.timestamp - b.timestamp);
-                                allMessages.forEach(msg => {
-                                    const msgDiv = document.createElement('div');
-                                    msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
-                                    msgDiv.innerHTML = `<span class="name">${msg.userId === myId ? 'أنت' : msg.name} (${msg.senderRoom})</span><span class="text">${msg.text}</span>`;
-                                    messagesDiv.appendChild(msgDiv);
-                                });
-                                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                            }
-                        });
-                    } else {
-                        onValue(ref(db, 'private_chats/' + normalizeText(currentUserName)), (snapshot) => {
-                            messagesDiv.innerHTML = '';
-                            const msgs = snapshot.val();
-                            if(msgs){
-                                let sorted = Object.values(msgs).sort((a,b)=>a.timestamp - b.timestamp);
-                                sorted.forEach(msg => {
-                                    const msgDiv = document.createElement('div');
-                                    msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
-                                    msgDiv.innerHTML = `<span class="name">${msg.name}</span><span class="text">${msg.text}</span>`;
-                                    messagesDiv.appendChild(msgDiv);
-                                });
-                                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                            }
-                        });
-                    }
-
-                    const emailData = new URLSearchParams();
-                    emailData.append('action', 'loginNotification');
-                    emailData.append('name', currentUserName);
-                    fetch(scriptUrl, { method: 'POST', body: emailData, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+                    const select = document.getElementById('targetUserSelect');
+                    select.innerHTML = '<option value="">اختر زميلاً للمراسلة...</option>';
+                    allUsersList.forEach(u => {
+                        if (u.name && normalizeText(u.name) !== normalizeText(currentUserName)) {
+                            select.innerHTML += `<option value="${u.name}">${u.name}</option>`;
+                        }
+                    });
 
                 } else {
                     alert("بيانات الدخول غير صحيحة");
@@ -222,19 +177,49 @@
             }
         }
 
+        function getChatRoomId(user1, user2) {
+            let sorted = [normalizeText(user1), normalizeText(user2)].sort();
+            return sorted[0] + "_" + sorted[1];
+        }
+
+        window.loadChatRoom = function() {
+            const targetUser = document.getElementById('targetUserSelect').value;
+            if (!targetUser) return;
+
+            let roomId = getChatRoomId(currentUserName, targetUser);
+
+            onValue(ref(db, 'chats/' + roomId), (snapshot) => {
+                messagesDiv.innerHTML = '';
+                const msgs = snapshot.val();
+                if (msgs) {
+                    let sorted = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
+                    sorted.forEach(msg => {
+                        const msgDiv = document.createElement('div');
+                        msgDiv.className = msg.userId === myId ? 'message mine' : 'message';
+                        msgDiv.innerHTML = `<span class="name">${msg.name}</span><span class="text">${msg.text}</span>`;
+                        messagesDiv.appendChild(msgDiv);
+                    });
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            });
+        };
+
         window.sendMessage = function() {
             const text = document.getElementById('msgInput').value.trim();
+            const targetUser = document.getElementById('targetUserSelect').value;
             if (!text) return;
+            if (!targetUser) { alert("الرجاء اختيار الزميل المراد مراسلته أولاً من القائمة"); return; }
 
-            if (isAdmin) {
-                const targetRoom = document.getElementById('adminUserSelect').value;
-                if (!targetRoom) { alert("اختر الموظف أولاً"); return; }
-                push(ref(db, 'private_chats/' + targetRoom), { name: "الدعم الفني", text: text, userId: myId, timestamp: serverTimestamp() });
-                sendNotificationToUser(targetRoom, "رد جديد من الدعم: " + text);
-            } else {
-                push(ref(db, 'private_chats/' + normalizeText(currentUserName)), { name: currentUserName, text: text, userId: myId, timestamp: serverTimestamp() });
-                sendNotificationToUser(adminName, "رسالة من " + currentUserName + ": " + text);
-            }
+            let roomId = getChatRoomId(currentUserName, targetUser);
+
+            push(ref(db, 'chats/' + roomId), { 
+                name: currentUserName, 
+                text: text, 
+                userId: myId, 
+                timestamp: serverTimestamp() 
+            });
+
+            sendNotificationToUser(targetUser, "رسالة جديدة من " + currentUserName + ": " + text);
             document.getElementById('msgInput').value = '';
         };
 
