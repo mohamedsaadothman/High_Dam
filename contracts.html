@@ -837,8 +837,9 @@
             titlePrefix: document.getElementById('managerTitle').value,
             managerName: document.getElementById('managerName').value,
             itemsList: JSON.stringify(items),
-            totalCost: totalCost
-        };
+    totalCost: totalCost,
+    printableHtml: generatePrintableHtmlForBackend() // ✅ إرسال الشكل للباك اند
+};
 
         const formData = new URLSearchParams();
         for (const key in data) formData.append(key, data[key]);
@@ -1031,8 +1032,19 @@
         }
     }
 
-    function processAction(requestId, actionType, extraData = {}) {
-        const payload = { action: "updateStatus", requestId: requestId, actionType: actionType, username: loggedInUser.name, role: loggedInUser.role, ...extraData };
+   function processAction(requestId, actionType, extraData = {}) {
+    // ✅ توليد شكل الطباعة وإرساله مع الطلب
+    const printableHtml = generatePrintableHtmlForBackend(); 
+    
+    const payload = { 
+        action: "updateStatus", 
+        requestId: requestId, 
+        actionType: actionType, 
+        username: loggedInUser.name, 
+        role: loggedInUser.role, 
+        printableHtml: printableHtml,
+        ...extraData 
+    };
         const formData = new URLSearchParams(payload);
         fetch(SCRIPT_URL, { method: 'POST', body: formData })
         .then(res => res.json())
@@ -2050,7 +2062,42 @@ function getWatermarkForPrint(req) {
             document.getElementById('printPOTableBody').innerHTML = poItemsHtml;
             window.print();
         }
+function generatePrintableHtmlForBackend() {
+    // نسخ منطقة الطباعة كاملة
+    const printable = document.getElementById('printableArea').cloneNode(true);
+    
+    // إزالة العلامة المائية عشان تتبعت كخلفية سليمة للـ PDF
+    const watermark = printable.querySelector('#printWatermark');
+    if (watermark) {
+        watermark.style.display = 'block'; // تأكد إنها ظاهرة
+    }
 
+    // إرجاع HTML كامل مع التنسيقات المضمنة
+    return `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            @page { size: A4; margin: 0; }
+            body { 
+                font-family: 'Cairo', Arial, sans-serif; 
+                margin: 0; 
+                padding: 0; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+            }
+            #printableArea { display: block !important; width: 100%; }
+            #printWatermark { opacity: 0.15 !important; }
+            table { page-break-inside: avoid; }
+        </style>
+    </head>
+    <body>
+        ${printable.innerHTML}
+    </body>
+    </html>
+    `;
+}
         function printReport() {
             document.getElementById('printRequestSection').style.display = 'block';
             document.getElementById('contractPrintSection').style.display = 'none';
