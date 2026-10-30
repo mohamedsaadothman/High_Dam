@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
-<head> 
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>الدعم الفني - بوابة الخدمات الرقمية</title> 
+    <title>الدعم الفني - بوابة الخدمات الرقمية</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -64,6 +64,13 @@
         .chat-header-title {
             background: #0f172a; color: #fbbf24; padding: 12px; text-align: center; 
             font-weight: 700; border-bottom: 2px solid #c59b27; font-size: 16px;
+            display: flex; justify-content: space-between; align-items: center; padding: 12px 15px;
+        }
+        
+        /* تنسيق زرار تفعيل الإشعارات */
+        .notify-btn {
+            background: #198754; color: white; border: none; padding: 5px 10px; 
+            border-radius: 5px; font-size: 11px; cursor: pointer; display: none;
         }
 
         .messages { flex: 1; padding: 15px; overflow-y: auto; background: #0f172a; display: flex; flex-direction: column; gap: 10px; }
@@ -98,7 +105,6 @@
       OneSignalDeferred.push(function(OneSignal) {
         OneSignal.init({
           appId: "446d368f-2d83-40e5-be23-106bd4f75ca5", 
-          // تم تعديل المسارات لتتناسب مع مجلد الموقع
           serviceWorkerPath: "High_Dam/OneSignalSDKWorker.js",
           serviceWorkerParam: { scope: "/High_Dam/" },
           allowLocalhostAsSecureOrigin: true
@@ -109,7 +115,7 @@
 <body>
 
     <script>
-        // الحل الاحترافي: منع الدخول المباشر للصفحة بدون المرور على الصفحة الرئيسية
+        // منع الدخول المباشر للصفحة بدون المرور على الصفحة الرئيسية
         if (sessionStorage.getItem("visited_from_home") !== "true") {
             alert("عذراً، يجب الدخول من الصفحة الرئيسية أولاً.");
             window.location.href = "index.html";
@@ -141,7 +147,9 @@
     <div id="chatScreen">
         <div class="chat-wrapper">
             <div class="chat-header-title" id="chatHeaderTitle">
-                <i class="fas fa-headset"></i> غرفة الدعم الفني
+                <span><i class="fas fa-headset"></i> غرفة الدعم الفني</span>
+                <!-- زرار تفعيل الإشعارات -->
+                <button class="notify-btn" id="enableNotifyBtn" onclick="enablePushNotifications()">تفعيل الإشعارات</button>
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
@@ -206,6 +214,19 @@
             }
         }
 
+        // دالة تفعيل الإشعارات
+        window.enablePushNotifications = async function() {
+            OneSignalDeferred.push(async function(OneSignal) {
+                const permission = await OneSignal.Notifications.requestPermission();
+                if (permission) {
+                    alert("تم تفعيل الإشعارات بنجاح! ستصلك تنبيهات بالرسائل الجديدة.");
+                    document.getElementById('enableNotifyBtn').style.display = 'none'; // إخفاء الزر بعد التفعيل
+                } else {
+                    alert("لم يتم تفعيل الإشعارات. يمكنك المحاولة مرة أخرى.");
+                }
+            });
+        }
+
         window.login = async function() {
             const nameInput = document.getElementById('loginName').value;
             const passInput = document.getElementById('loginPassword').value;
@@ -233,20 +254,26 @@
                     
                     OneSignalDeferred.push(async function(OneSignal) {
                         await OneSignal.login(currentUserName);
-                        await OneSignal.Notifications.requestPermission();
                     });
 
                     if (normalizeText(currentUserName) === normalizeText(adminName)) {
                         isAdmin = true;
-                        document.getElementById('chatHeaderTitle').innerHTML = `<i class="fas fa-user-shield"></i> لوحة تحكم الدعم الفني (أدمن)`;
+                        document.getElementById('chatHeaderTitle').innerHTML = `<span><i class="fas fa-user-shield"></i> لوحة تحكم الدعم الفني (أدمن)</span><button class="notify-btn" id="enableNotifyBtn" onclick="enablePushNotifications()">تفعيل الإشعارات</button>`;
                         document.getElementById('adminUserSelect').style.display = 'block'; 
                     } else {
                         isAdmin = false;
-                        document.getElementById('chatHeaderTitle').innerHTML = `<i class="fas fa-headset"></i> غرفة الدعم الفني - ${currentUserName}`;
+                        document.getElementById('chatHeaderTitle').innerHTML = `<span><i class="fas fa-headset"></i> غرفة الدعم الفني - ${currentUserName}</span><button class="notify-btn" id="enableNotifyBtn" onclick="enablePushNotifications()">تفعيل الإشعارات</button>`;
                     }
 
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('chatScreen').style.display = 'block';
+
+                    // إظهار زر تفعيل الإشعارات فقط إذا لم يتم السماح به مسبقاً
+                    OneSignalDeferred.push(function(OneSignal) {
+                        if (OneSignal.Notifications.permission === 'default') {
+                            document.getElementById('enableNotifyBtn').style.display = 'block';
+                        }
+                    });
 
                     if (isAdmin) {
                         const allChatsRef = ref(db, 'private_chats');
