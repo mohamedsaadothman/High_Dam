@@ -62,7 +62,7 @@
     <div id="loginScreen">
         <div class="login-box">
             <h2>تسجيل الدخول</h2>
-            <input type="text" id="loginCode" placeholder="كود المستخدم / اسم المستخدم">
+            <input type="text" id="loginCode" placeholder="كود المستخدم (اسم المستخدم)">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
             <button onclick="login()">دخول</button>
         </div>
@@ -100,15 +100,16 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const messagesDiv = document.getElementById('messagesDiv');
+        
         let myId = localStorage.getItem('chat_user_id') || "user_" + Math.floor(Math.random() * 100000);
         localStorage.setItem('chat_user_id', myId);
         
-        let currentUserName = ""; // اسم الموظف (للعرض)
-        let currentUserCode = ""; // الكود (لـ OneSignal والشات)
+        let currentUserName = ""; // اسم الموظف (من العمود C)
+        let currentUserCode = ""; // اسم المستخدم/الكود (من العمود B)
         let allUsersList = [];
         
-        // ⚠️ تأكد إن ده رابط الـ Web App الصحيح
-        const scriptUrl = "https://script.google.com/macros/s/AKfycbzHWDmY-IIFp1dc2Ge-vFRz4RrKUNgNVsNJbv5sEIx_G9vwO7uVuXnAfDGFLaEju7Ew_g/exec";
+        // ⚠️ تأكد إن ده رابط الـ Web App الصحيح بعد آخر Deploy
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbyK-udg675vC6nkr85TBnV_161r9f7TMAn3m2kG9SrJ36RvFp8TGhbDVbsbNrgOlhaJjg/exec";
 
         function normalizeText(text) {
             if (!text) return "";
@@ -121,9 +122,9 @@
                     method: 'POST', 
                     body: JSON.stringify({
                         action: 'sendPush',
-                        targetName: targetUserCode, // بنبعت الكود مش الاسم
+                        targetName: targetUserCode, // بنبعت الكود عشان الإشعار يوصل
                         messageText: messageText,
-                        name: currentUserName
+                        name: currentUserName    // اسم المرسل للعرض
                     }),
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                 });
@@ -136,7 +137,8 @@
             OneSignalDeferred.push(async function(OneSignal) {
                 const permission = await OneSignal.Notifications.requestPermission();
                 if (permission) {
-                    await OneSignal.login(currentUserCode); // نسجل الكود
+                    // نسجل الكود في OneSignal
+                    await OneSignal.login(currentUserCode); 
                     document.getElementById('enableNotifyBtn').style.display = 'none';
                     alert("تم تفعيل الإشعارات بنجاح!");
                 }
@@ -151,6 +153,7 @@
             try {
                 document.querySelector('#loginScreen button').innerText = "جاري التحقق...";
                 
+                // إرسال البيانات للسيرفر (Apps Script)
                 const response = await fetch(scriptUrl, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -163,14 +166,15 @@
                 
                 const result = await response.json();
 
+                // لو السيرفر قال إن البيانات صح
                 if (result.status === 'success') {
                     currentUserName = result.empName; // الاسم من العمود C
-                    currentUserCode = codeInput; // الكود اللي دخل بيه
+                    currentUserCode = codeInput;      // الكود اللي دخل بيه
                     
                     localStorage.setItem('chat_user_name', currentUserName);
                     localStorage.setItem('chat_user_code', currentUserCode);
                     
-                    // تسجيل الدخول في OneSignal بالكود
+                    // تسجيل الدخول في OneSignal بالكود (مش الاسم)
                     OneSignalDeferred.push(async function(OneSignal) {
                         await OneSignal.login(currentUserCode);
                     });
@@ -180,14 +184,14 @@
                     document.getElementById('chatScreen').style.display = 'block';
                     document.getElementById('enableNotifyBtn').style.display = 'block';
 
-                    // جلب قائمة الزملاء
+                    // جلب قائمة الزملاء لعرضهم في القائمة المنسدلة
                     const usersResponse = await fetch(scriptUrl);
                     allUsersList = await usersResponse.json();
 
                     const select = document.getElementById('targetUserSelect');
                     select.innerHTML = '<option value="">اختر زميلاً للمراسلة...</option>';
                     allUsersList.forEach(u => {
-                        // بنعرض اسم الموظف، لكن القيمة (value) هي الكود عشان الإشعارات
+                        // بنعرض اسم الموظف، لكن القيمة المخزنة هي الكود
                         if (u.empName && u.username !== codeInput) {
                             select.innerHTML += `<option value="${u.username}">${u.empName}</option>`;
                         }
@@ -204,7 +208,7 @@
             }
         }
 
-        // دالة لتوليد ID للغرفة بيعتمد على الكود (عشان مفيش مشاكل همزات)
+        // دالة لتوليد رقم الغرفة بناءً على الأكواد (عشان ميبقاش فيه مشاكل في الأسماء)
         function getChatRoomId(code1, code2) {
             let sorted = [code1, code2].sort();
             return sorted[0] + "_" + sorted[1];
@@ -240,14 +244,15 @@
 
             let roomId = getChatRoomId(currentUserCode, targetUserCode);
 
+            // حفظ الرسالة في فايربيز
             push(ref(db, 'chats/' + roomId), { 
-                name: currentUserName, // بنسجل الاسم للعرض
+                name: currentUserName, // بنسجل الاسم عشان يظهر في الشات
                 text: text, 
                 userId: myId, 
                 timestamp: serverTimestamp() 
             });
 
-            // بنبعت الإشعار للكود
+            // إرسال الإشعار للكود
             sendNotificationToUser(targetUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
             document.getElementById('msgInput').value = '';
         };
