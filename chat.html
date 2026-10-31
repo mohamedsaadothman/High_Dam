@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- أيقونة الموقع -->
     <link rel="icon" type="image/png" href="hig.png">
 
     <style>
@@ -25,14 +26,24 @@
         
         #chatScreen { display: none; height: 100%; }
         .chat-wrapper { position: absolute; top: 85px; bottom: 15px; left: 15px; right: 15px; max-width: 900px; margin: 0 auto; background: #1e293b; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
-        .chat-header-title { background: #0f172a; color: #fbbf24; padding: 12px; text-align: center; font-weight: 700; border-bottom: 2px solid #c59b27; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header-title { background: #0f172a; color: #fbbf24; padding: 12px; text-align: center; font-weight: 700; border-bottom: 2px solid #c59b27; display: flex; justify-content: space-between; align-items: center; z-index: 10;}
         .notify-btn { background: #198754; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; display: block; transition: 0.2s; }
         .notify-btn:hover { background: #157347; }
         
-        .messages { flex: 1; padding: 15px; overflow-y: auto; background: #0f172a; display: flex; flex-direction: column; gap: 10px; }
-        .message { display: flex; flex-direction: column; max-width: 85%; position: relative; }
-        .message .name { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
-        .message .text { background: #1e293b; color: #fff; padding: 10px 15px; border-radius: 15px; font-size: 14px; word-wrap: break-word; }
+        /* تعديل منطقة الرسائل عشان تاخد الخلفية */
+        .messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; position: relative;
+            /* الخلفية الجديدة */
+            background-image: url('hig.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-blend-mode: overlay;
+            background-color: rgba(15, 23, 42, 0.85); /* طبقة شفافة عشان الكلام يبان */
+        }
+        
+        .message { display: flex; flex-direction: column; max-width: 85%; position: relative; z-index: 2; }
+        .message .name { font-size: 11px; color: #cbd5e1; margin-bottom: 4px; }
+        .message .text { background: #1e293b; color: #fff; padding: 10px 15px; border-radius: 15px; font-size: 14px; word-wrap: break-word; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         .message.mine { align-self: flex-end; }
         .message.mine .text { background: #c59b27; color: #0f172a; font-weight: 700; }
         
@@ -43,7 +54,7 @@
         .message .text img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
         .message .text a { color: #c59b27; text-decoration: underline; display: block; margin-top: 5px; }
 
-        .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; flex-wrap: wrap; align-items: center; }
+        .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; flex-wrap: wrap; align-items: center; z-index: 10; }
         .input-area input[type="text"] { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; flex: 1; }
         
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; }
@@ -57,6 +68,7 @@
         #suggestionsList li:hover { background: #c59b27; color: #0f172a; }
         #suggestionsList li:last-child { border-bottom: none; }
 
+        /* تصميم الرسائل التفاعلية (Toasts) - بدون صورة */
         #toast-container { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; align-items: center; }
         .toast { background: #1e293b; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; border-right: 4px solid #c59b27; opacity: 0; transform: translateY(-20px); transition: all 0.3s ease; min-width: 250px; justify-content: center; font-size: 14px; }
         .toast.show { opacity: 1; transform: translateY(0); }
@@ -146,14 +158,13 @@
         
         const scriptUrl = "https://script.google.com/macros/s/AKfycbxtNuk-gZSC0ARNQ0nkRVkP5lPn8J-IzZDAo-sbMcQgVlGD7pqKPdItOrSkgwpYtux7qA/exec";
 
-        // دالة تنظيف النص (عشان نتجاهل الهمزات والمسافات في البحث)
         function normalizeText(text) {
             if (!text) return "";
             return text.toString()
                 .replace(/[أإآ]/g, 'ا')
                 .replace(/ة/g, 'ه')
                 .replace(/ى/g, 'ي')
-                .replace(/\s+/g, ' ') // تحويل المسافات المتعددة لمسافة واحدة
+                .replace(/\s+/g, ' ')
                 .toLowerCase()
                 .trim();
         }
@@ -172,10 +183,9 @@
             }, 3500);
         }
 
-        // دالة البحث الذكي مع تجاهل الهمزات والمسافات
         window.searchEmployee = function() {
             const rawInput = document.getElementById('searchInput').value;
-            const input = normalizeText(rawInput); // تنظيف النص المكتوب
+            const input = normalizeText(rawInput);
             const suggestionsList = document.getElementById('suggestionsList');
             suggestionsList.innerHTML = '';
             
@@ -186,7 +196,6 @@
                 return;
             }
 
-            // فلترة الموظفين باستخدام دالة التنظيف
             const filteredUsers = allUsersList.filter(u => {
                 if(!u.empName || u.username === currentUserCode) return false;
                 const normalizedName = normalizeText(u.empName);
@@ -309,7 +318,7 @@
                         let date = new Date(msg.timestamp);
                         let msgTime = date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) + " - " + date.toLocaleDateString('ar-EG');
                         
-                        // زرار الحذف بيظهر لكل الرسائل (سواء اللي بعتها أو اللي جتلك)
+                        // زرار الحذف (متاح للطرفين عشان كل واحد يتحكم في اللي عنده)
                         let deleteBtn = `<i class="fa-solid fa-trash delete-btn" onclick="deleteMessage('${roomId}', '${msg.id}')" title="حذف الرسالة"></i>`;
 
                         let textContent = msg.text;
@@ -332,7 +341,7 @@
             });
         };
 
-        // دالة الحذف (مخصصة لكل طرف لوحده، ومتاحة لأي رسالة)
+        // دالة الحذف (بدون رسائل إشعار، بمجرد الموافقة تختفي من عندك بس)
         window.deleteMessage = async function(roomId, msgId) {
             if(confirm("هل أنت متأكد من حذف هذه الرسالة من عندك فقط؟ (لن يتم حذفها عند الطرف الآخر)")) {
                 const msgRef = ref(db, `chats/${roomId}/${msgId}`);
@@ -343,7 +352,7 @@
                         if(!deletedFor.includes(currentUserCode)) {
                             deletedFor.push(currentUserCode);
                             await update(msgRef, { deletedFor: deletedFor });
-                            showToast("تم إخفاء الرسالة من عندك", "success");
+                            // شلنا الـ showToast من هنا عشان مفيش رسالة تظهر
                         }
                     }
                 }, { onlyOnce: true });
