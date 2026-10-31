@@ -6,6 +6,10 @@
     <title>نظام المحادثات الداخلية</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- أيقونة الموقع (الشعار في التاب) -->
+    <link rel="icon" type="image/png" href="hig.png">
+
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
         body, html { width: 100%; height: 100%; background-color: #0f172a; overflow: hidden; }
@@ -23,7 +27,8 @@
         #chatScreen { display: none; height: 100%; }
         .chat-wrapper { position: absolute; top: 85px; bottom: 15px; left: 15px; right: 15px; max-width: 900px; margin: 0 auto; background: #1e293b; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
         .chat-header-title { background: #0f172a; color: #fbbf24; padding: 12px; text-align: center; font-weight: 700; border-bottom: 2px solid #c59b27; display: flex; justify-content: space-between; align-items: center; }
-        .notify-btn { background: #198754; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; display: block; }
+        .notify-btn { background: #198754; color: white; border: none; padding: 5px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; display: block; transition: 0.2s; }
+        .notify-btn:hover { background: #157347; }
         
         .messages { flex: 1; padding: 15px; overflow-y: auto; background: #0f172a; display: flex; flex-direction: column; gap: 10px; }
         .message { display: flex; flex-direction: column; max-width: 85%; position: relative; }
@@ -47,8 +52,13 @@
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; }
         .icon-btn { background: none; border: none; color: #c59b27; font-size: 18px; cursor: pointer; padding: 5px; }
 
-        /* شارة الرسائل غير المقروءة */
-        .unread-badge { background: #ef4444; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-right: 5px; display: inline-block; }
+        /* تصميم الرسائل التفاعلية (Toasts) */
+        #toast-container { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .toast { background: #1e293b; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; border-right: 4px solid #c59b27; opacity: 0; transform: translateY(-20px); transition: all 0.3s ease; min-width: 250px; justify-content: center; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+        .toast.success { border-right-color: #198754; }
+        .toast.error { border-right-color: #ef4444; }
 
         @media (max-width: 768px) { 
             .chat-wrapper { top: 75px; left: 10px; right: 10px; bottom: 10px; } 
@@ -62,7 +72,6 @@
       OneSignalDeferred.push(function(OneSignal) {
         OneSignal.init({
           appId: "446d368f-2d83-40e5-be23-106bd4f75ca5", 
-          // ✅ تم التعديل هنا ليدور في نفس الفولدر بدل الـ Root
           serviceWorkerPath: "High_Dam/OneSignalSDKWorker.js", 
           serviceWorkerParam: { scope: "/High_Dam/" },
           allowLocalhostAsSecureOrigin: true
@@ -71,6 +80,9 @@
     </script>
 </head>
 <body>
+    <!-- حاوية الرسائل التفاعلية -->
+    <div id="toast-container"></div>
+
     <header>
         <div class="logo-area"><h1>بوابة الخدمات الرقمية</h1></div>
         <a href="index.html" class="back-btn">الرئيسية</a>
@@ -125,7 +137,27 @@
         let currentUserCode = ""; 
         let allUsersList = [];
         
-        const scriptUrl = "https://script.google.com/macros/s/AKfycbzAHjBagjtFC2kGKzf8VktCGHoaErOCQPfAXETZwgRalWgxegA1XRTkxqkx80zgH9by1Q/exec";
+        // ✅ تم تحديث الرابط هنا
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbxtNuk-gZSC0ARNQ0nkRVkP5lPn8J-IzZDAo-sbMcQgVlGD7pqKPdItOrSkgwpYtux7qA/exec";
+
+        // دالة عرض الرسائل التفاعلية
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            // صورة الشعار دائرية
+            toast.innerHTML = `<img src="hig.png" alt="Logo"> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => { toast.classList.add('show'); }, 100);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
 
         async function sendNotificationToUser(targetUserCode, messageText) {
             try {
@@ -140,12 +172,16 @@
         }
 
         window.enablePushNotifications = async function() {
+            document.getElementById('enableNotifyBtn').innerText = "جاري التفعيل...";
             OneSignalDeferred.push(async function(OneSignal) {
                 const permission = await OneSignal.Notifications.requestPermission();
                 if (permission) {
                     await OneSignal.login(currentUserCode); 
                     document.getElementById('enableNotifyBtn').style.display = 'none';
-                    alert("تم تفعيل الإشعارات بنجاح!");
+                    showToast("تم تفعيل الإشعارات بنجاح!", "success");
+                } else {
+                    document.getElementById('enableNotifyBtn').innerText = "تفعيل الإشعارات";
+                    showToast("تم رفض الإشعارات.", "error");
                 }
             });
         }
@@ -153,7 +189,7 @@
         window.login = async function() {
             const codeInput = document.getElementById('loginCode').value.trim();
             const passInput = document.getElementById('loginPassword').value.trim();
-            if (!codeInput || !passInput) { alert("الرجاء إدخال البيانات"); return; }
+            if (!codeInput || !passInput) { showToast("الرجاء إدخال البيانات", "error"); return; }
 
             try {
                 document.querySelector('#loginScreen button').innerText = "جاري التحقق...";
@@ -186,13 +222,15 @@
                             select.innerHTML += `<option value="${u.username}" id="user_${u.username}">${u.empName}</option>`;
                         }
                     });
+                    
+                    showToast("تم تسجيل الدخول بنجاح", "success");
 
                 } else {
-                    alert(result.message || "بيانات الدخول غير صحيحة");
+                    showToast(result.message || "بيانات الدخول غير صحيحة", "error");
                     document.querySelector('#loginScreen button').innerText = "دخول";
                 }
             } catch (error) {
-                alert("خطأ في الاتصال بالسيرفر");
+                showToast("خطأ في الاتصال بالسيرفر", "error");
                 document.querySelector('#loginScreen button').innerText = "دخول";
             }
         }
@@ -264,7 +302,7 @@
             const text = document.getElementById('msgInput').value.trim();
             const targetUserCode = document.getElementById('targetUserSelect').value; 
             if (!text) return;
-            if (!targetUserCode) { alert("الرجاء اختيار الزميل أولاً"); return; }
+            if (!targetUserCode) { showToast("الرجاء اختيار الزميل أولاً", "error"); return; }
 
             let roomId = getChatRoomId(currentUserCode, targetUserCode);
             const newMsgRef = push(ref(db, 'chats/' + roomId));
@@ -285,7 +323,7 @@
         // دالة إرسال صورة أو ملف عن طريق الرابط
         window.sendFileOrImage = function() {
             const targetUserCode = document.getElementById('targetUserSelect').value; 
-            if (!targetUserCode) { alert("الرجاء اختيار الزميل أولاً"); return; }
+            if (!targetUserCode) { showToast("الرجاء اختيار الزميل أولاً", "error"); return; }
             
             const url = prompt("ضع رابط الصورة أو الملف هنا:");
             if (!url) return;
