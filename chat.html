@@ -7,7 +7,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- أيقونة الموقع (الشعار في التاب) -->
     <link rel="icon" type="image/png" href="hig.png">
 
     <style>
@@ -41,7 +40,6 @@
         .delete-btn { position: absolute; top: 5px; left: -25px; color: #ef4444; cursor: pointer; font-size: 14px; display: none; }
         .message:hover .delete-btn { display: block; }
 
-        /* تنسيقات الصور والملفات */
         .message .text img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
         .message .text a { color: #c59b27; text-decoration: underline; display: block; margin-top: 5px; }
 
@@ -51,7 +49,7 @@
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; }
         .icon-btn { background: none; border: none; color: #c59b27; font-size: 18px; cursor: pointer; padding: 5px; }
 
-        /* تنسيقات البحث الذكي (Autocomplete) */
+        /* تنسيقات البحث الذكي */
         .search-container { position: relative; width: 250px; }
         #searchInput { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; }
         #suggestionsList { position: absolute; bottom: 100%; left: 0; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; list-style: none; margin-bottom: 5px; box-shadow: 0 -4px 12px rgba(0,0,0,0.2); }
@@ -59,11 +57,9 @@
         #suggestionsList li:hover { background: #c59b27; color: #0f172a; }
         #suggestionsList li:last-child { border-bottom: none; }
 
-        /* تصميم الرسائل التفاعلية (Toasts) */
         #toast-container { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-        .toast { background: #1e293b; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; border-right: 4px solid #c59b27; opacity: 0; transform: translateY(-20px); transition: all 0.3s ease; min-width: 250px; justify-content: center; }
+        .toast { background: #1e293b; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; border-right: 4px solid #c59b27; opacity: 0; transform: translateY(-20px); transition: all 0.3s ease; min-width: 250px; justify-content: center; font-size: 14px; }
         .toast.show { opacity: 1; transform: translateY(0); }
-        .toast img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
         .toast.success { border-right-color: #198754; }
         .toast.error { border-right-color: #ef4444; }
 
@@ -111,13 +107,10 @@
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
-                
-                <!-- البحث الذكي الجديد -->
                 <div class="search-container">
                     <input type="text" id="searchInput" placeholder="ابحث عن زميل بالاسم..." oninput="searchEmployee()" autocomplete="off">
                     <ul id="suggestionsList"></ul>
                 </div>
-
                 <input type="text" id="msgInput" placeholder="اكتب رسالتك هنا..." onkeypress="handleEnter(event)">
                 <button class="icon-btn" onclick="sendFileOrImage()" title="إرفاق رابط صورة أو ملف"><i class="fa-solid fa-paperclip"></i></button>
                 <button class="send-btn" onclick="sendMessage()">إرسال</button>
@@ -148,17 +141,29 @@
         
         let currentUserName = ""; 
         let currentUserCode = ""; 
-        let selectedUserCode = ""; // الكود الخاص بالشخص اللي تم اختياره من البحث
+        let selectedUserCode = ""; 
         let allUsersList = [];
         
         const scriptUrl = "https://script.google.com/macros/s/AKfycbxtNuk-gZSC0ARNQ0nkRVkP5lPn8J-IzZDAo-sbMcQgVlGD7pqKPdItOrSkgwpYtux7qA/exec";
 
-        // دالة عرض الرسائل التفاعلية
+        // دالة تنظيف النص (عشان نتجاهل الهمزات والمسافات في البحث)
+        function normalizeText(text) {
+            if (!text) return "";
+            return text.toString()
+                .replace(/[أإآ]/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي')
+                .replace(/\s+/g, ' ') // تحويل المسافات المتعددة لمسافة واحدة
+                .toLowerCase()
+                .trim();
+        }
+
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            toast.innerHTML = `<img src="hig.png" alt="Logo"> <span>${message}</span>`;
+            let icon = type === 'success' ? '<i class="fa-solid fa-circle-check" style="color:#198754;"></i>' : '<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i>';
+            toast.innerHTML = `${icon} <span>${message}</span>`;
             container.appendChild(toast);
             setTimeout(() => { toast.classList.add('show'); }, 100);
             setTimeout(() => {
@@ -167,13 +172,13 @@
             }, 3500);
         }
 
-        // دالة البحث الذكي
+        // دالة البحث الذكي مع تجاهل الهمزات والمسافات
         window.searchEmployee = function() {
-            const input = document.getElementById('searchInput').value.trim().toLowerCase();
+            const rawInput = document.getElementById('searchInput').value;
+            const input = normalizeText(rawInput); // تنظيف النص المكتوب
             const suggestionsList = document.getElementById('suggestionsList');
             suggestionsList.innerHTML = '';
             
-            // تفريغ المتغير لو المستخدم مسح النص
             if(input === "") {
                 selectedUserCode = "";
                 suggestionsList.style.display = 'none';
@@ -181,21 +186,23 @@
                 return;
             }
 
-            // فلترة الموظفين بناءً على الحروف المكتوبة
-            const filteredUsers = allUsersList.filter(u => 
-                u.empName && u.empName.toLowerCase().includes(input) && u.username !== currentUserCode
-            );
+            // فلترة الموظفين باستخدام دالة التنظيف
+            const filteredUsers = allUsersList.filter(u => {
+                if(!u.empName || u.username === currentUserCode) return false;
+                const normalizedName = normalizeText(u.empName);
+                return normalizedName.includes(input);
+            });
 
             if (filteredUsers.length > 0) {
                 suggestionsList.style.display = 'block';
                 filteredUsers.forEach(user => {
                     const li = document.createElement('li');
-                    li.innerText = user.empName; // عرض الاسم فقط
+                    li.innerText = user.empName;
                     li.onclick = function() {
-                        document.getElementById('searchInput').value = user.empName; // حط الاسم في الخانة
-                        selectedUserCode = user.username; // احتفظ بالكود بتاعه
-                        suggestionsList.style.display = 'none'; // اقفل القائمة
-                        loadChatRoom(); // افتح الشات بتاعه
+                        document.getElementById('searchInput').value = user.empName;
+                        selectedUserCode = user.username;
+                        suggestionsList.style.display = 'none';
+                        loadChatRoom();
                     };
                     suggestionsList.appendChild(li);
                 });
@@ -204,7 +211,6 @@
             }
         };
 
-        // اقفل قائمة المقترحات لو المستخدم داس في أي مكان تاني
         document.addEventListener('click', function(e) {
             const searchContainer = document.querySelector('.search-container');
             if (!searchContainer.contains(e.target)) {
@@ -285,7 +291,7 @@
         }
 
         window.loadChatRoom = function() {
-            if (!selectedUserCode) return; // لو مفيش حد متحدد من البحث
+            if (!selectedUserCode) return;
 
             let roomId = getChatRoomId(currentUserCode, selectedUserCode);
 
@@ -302,7 +308,9 @@
                         
                         let date = new Date(msg.timestamp);
                         let msgTime = date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) + " - " + date.toLocaleDateString('ar-EG');
-                        let deleteBtn = msg.userId === myId ? `<i class="fa-solid fa-trash delete-btn" onclick="deleteMessage('${roomId}', '${msg.id}')" title="حذف الرسالة"></i>` : '';
+                        
+                        // زرار الحذف بيظهر لكل الرسائل (سواء اللي بعتها أو اللي جتلك)
+                        let deleteBtn = `<i class="fa-solid fa-trash delete-btn" onclick="deleteMessage('${roomId}', '${msg.id}')" title="حذف الرسالة"></i>`;
 
                         let textContent = msg.text;
                         if (msg.type === 'image') {
@@ -324,8 +332,9 @@
             });
         };
 
+        // دالة الحذف (مخصصة لكل طرف لوحده، ومتاحة لأي رسالة)
         window.deleteMessage = async function(roomId, msgId) {
-            if(confirm("هل أنت متأكد من حذف الرسالة لديك فقط؟")) {
+            if(confirm("هل أنت متأكد من حذف هذه الرسالة من عندك فقط؟ (لن يتم حذفها عند الطرف الآخر)")) {
                 const msgRef = ref(db, `chats/${roomId}/${msgId}`);
                 onValue(msgRef, async (snapshot) => {
                     const msgData = snapshot.val();
@@ -334,6 +343,7 @@
                         if(!deletedFor.includes(currentUserCode)) {
                             deletedFor.push(currentUserCode);
                             await update(msgRef, { deletedFor: deletedFor });
+                            showToast("تم إخفاء الرسالة من عندك", "success");
                         }
                     }
                 }, { onlyOnce: true });
