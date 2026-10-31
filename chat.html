@@ -46,11 +46,18 @@
         .message .text a { color: #c59b27; text-decoration: underline; display: block; margin-top: 5px; }
 
         .input-area { background: #1e293b; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #334155; flex-wrap: wrap; align-items: center; }
-        .input-area input, .input-area select { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; }
-        .input-area input[type="text"] { flex: 1; }
-        .input-area select { width: 220px; }
+        .input-area input[type="text"] { padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; flex: 1; }
+        
         .send-btn { background: #c59b27; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 900; }
         .icon-btn { background: none; border: none; color: #c59b27; font-size: 18px; cursor: pointer; padding: 5px; }
+
+        /* تنسيقات البحث الذكي (Autocomplete) */
+        .search-container { position: relative; width: 250px; }
+        #searchInput { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; outline: none; }
+        #suggestionsList { position: absolute; bottom: 100%; left: 0; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; list-style: none; margin-bottom: 5px; box-shadow: 0 -4px 12px rgba(0,0,0,0.2); }
+        #suggestionsList li { padding: 10px; cursor: pointer; border-bottom: 1px solid #334155; font-size: 13px; color: #fff; transition: 0.2s; }
+        #suggestionsList li:hover { background: #c59b27; color: #0f172a; }
+        #suggestionsList li:last-child { border-bottom: none; }
 
         /* تصميم الرسائل التفاعلية (Toasts) */
         #toast-container { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; align-items: center; }
@@ -62,7 +69,7 @@
 
         @media (max-width: 768px) { 
             .chat-wrapper { top: 75px; left: 10px; right: 10px; bottom: 10px; } 
-            .input-area select { width: 100%; margin-bottom: 5px; } 
+            .search-container { width: 100%; margin-bottom: 5px; } 
             .delete-btn { left: auto; right: 5px; background: rgba(0,0,0,0.5); border-radius: 50%; padding: 2px 5px; }
         }
     </style>
@@ -80,13 +87,13 @@
     </script>
 </head>
 <body>
-    <!-- حاوية الرسائل التفاعلية -->
     <div id="toast-container"></div>
 
     <header>
         <div class="logo-area"><h1>بوابة الخدمات الرقمية</h1></div>
         <a href="index.html" class="back-btn">الرئيسية</a>
     </header>
+    
     <div id="loginScreen">
         <div class="login-box">
             <h2>تسجيل الدخول</h2>
@@ -95,6 +102,7 @@
             <button onclick="login()">دخول</button>
         </div>
     </div>
+    
     <div id="chatScreen">
         <div class="chat-wrapper">
             <div class="chat-header-title">
@@ -103,15 +111,20 @@
             </div>
             <div class="messages" id="messagesDiv"></div>
             <div class="input-area">
-                <select id="targetUserSelect" onchange="loadChatRoom()">
-                    <option value="">اختر زميلاً للمراسلة...</option>
-                </select>
+                
+                <!-- البحث الذكي الجديد -->
+                <div class="search-container">
+                    <input type="text" id="searchInput" placeholder="ابحث عن زميل بالاسم..." oninput="searchEmployee()" autocomplete="off">
+                    <ul id="suggestionsList"></ul>
+                </div>
+
                 <input type="text" id="msgInput" placeholder="اكتب رسالتك هنا..." onkeypress="handleEnter(event)">
                 <button class="icon-btn" onclick="sendFileOrImage()" title="إرفاق رابط صورة أو ملف"><i class="fa-solid fa-paperclip"></i></button>
                 <button class="send-btn" onclick="sendMessage()">إرسال</button>
             </div>
         </div>
     </div>
+    
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getDatabase, ref, push, serverTimestamp, onValue, update, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -135,9 +148,9 @@
         
         let currentUserName = ""; 
         let currentUserCode = ""; 
+        let selectedUserCode = ""; // الكود الخاص بالشخص اللي تم اختياره من البحث
         let allUsersList = [];
         
-        // ✅ تم تحديث الرابط هنا
         const scriptUrl = "https://script.google.com/macros/s/AKfycbxtNuk-gZSC0ARNQ0nkRVkP5lPn8J-IzZDAo-sbMcQgVlGD7pqKPdItOrSkgwpYtux7qA/exec";
 
         // دالة عرض الرسائل التفاعلية
@@ -145,19 +158,59 @@
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            
-            // صورة الشعار دائرية
             toast.innerHTML = `<img src="hig.png" alt="Logo"> <span>${message}</span>`;
-            
             container.appendChild(toast);
-            
             setTimeout(() => { toast.classList.add('show'); }, 100);
-            
             setTimeout(() => {
                 toast.classList.remove('show');
                 setTimeout(() => toast.remove(), 300);
             }, 3500);
         }
+
+        // دالة البحث الذكي
+        window.searchEmployee = function() {
+            const input = document.getElementById('searchInput').value.trim().toLowerCase();
+            const suggestionsList = document.getElementById('suggestionsList');
+            suggestionsList.innerHTML = '';
+            
+            // تفريغ المتغير لو المستخدم مسح النص
+            if(input === "") {
+                selectedUserCode = "";
+                suggestionsList.style.display = 'none';
+                messagesDiv.innerHTML = ''; 
+                return;
+            }
+
+            // فلترة الموظفين بناءً على الحروف المكتوبة
+            const filteredUsers = allUsersList.filter(u => 
+                u.empName && u.empName.toLowerCase().includes(input) && u.username !== currentUserCode
+            );
+
+            if (filteredUsers.length > 0) {
+                suggestionsList.style.display = 'block';
+                filteredUsers.forEach(user => {
+                    const li = document.createElement('li');
+                    li.innerText = user.empName; // عرض الاسم فقط
+                    li.onclick = function() {
+                        document.getElementById('searchInput').value = user.empName; // حط الاسم في الخانة
+                        selectedUserCode = user.username; // احتفظ بالكود بتاعه
+                        suggestionsList.style.display = 'none'; // اقفل القائمة
+                        loadChatRoom(); // افتح الشات بتاعه
+                    };
+                    suggestionsList.appendChild(li);
+                });
+            } else {
+                suggestionsList.style.display = 'none';
+            }
+        };
+
+        // اقفل قائمة المقترحات لو المستخدم داس في أي مكان تاني
+        document.addEventListener('click', function(e) {
+            const searchContainer = document.querySelector('.search-container');
+            if (!searchContainer.contains(e.target)) {
+                document.getElementById('suggestionsList').style.display = 'none';
+            }
+        });
 
         async function sendNotificationToUser(targetUserCode, messageText) {
             try {
@@ -213,15 +266,6 @@
 
                     const usersResponse = await fetch(scriptUrl);
                     allUsersList = await usersResponse.json();
-
-                    const select = document.getElementById('targetUserSelect');
-                    select.innerHTML = '<option value="">اختر زميلاً للمراسلة...</option>';
-                    
-                    allUsersList.forEach(u => {
-                        if (u.empName && u.username !== codeInput) {
-                            select.innerHTML += `<option value="${u.username}" id="user_${u.username}">${u.empName}</option>`;
-                        }
-                    });
                     
                     showToast("تم تسجيل الدخول بنجاح", "success");
 
@@ -241,10 +285,9 @@
         }
 
         window.loadChatRoom = function() {
-            const targetUserCode = document.getElementById('targetUserSelect').value; 
-            if (!targetUserCode) return;
+            if (!selectedUserCode) return; // لو مفيش حد متحدد من البحث
 
-            let roomId = getChatRoomId(currentUserCode, targetUserCode);
+            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
 
             onValue(ref(db, 'chats/' + roomId), (snapshot) => {
                 messagesDiv.innerHTML = '';
@@ -261,7 +304,6 @@
                         let msgTime = date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) + " - " + date.toLocaleDateString('ar-EG');
                         let deleteBtn = msg.userId === myId ? `<i class="fa-solid fa-trash delete-btn" onclick="deleteMessage('${roomId}', '${msg.id}')" title="حذف الرسالة"></i>` : '';
 
-                        // تنسيق النص لو كان صورة أو ملف
                         let textContent = msg.text;
                         if (msg.type === 'image') {
                             textContent = `<img src="${msg.text}" alt="صورة">`;
@@ -300,11 +342,10 @@
 
         window.sendMessage = function() {
             const text = document.getElementById('msgInput').value.trim();
-            const targetUserCode = document.getElementById('targetUserSelect').value; 
             if (!text) return;
-            if (!targetUserCode) { showToast("الرجاء اختيار الزميل أولاً", "error"); return; }
+            if (!selectedUserCode) { showToast("الرجاء البحث عن زميل واختياره أولاً", "error"); return; }
 
-            let roomId = getChatRoomId(currentUserCode, targetUserCode);
+            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
             const newMsgRef = push(ref(db, 'chats/' + roomId));
 
             set(newMsgRef, { 
@@ -316,14 +357,12 @@
                 timestamp: serverTimestamp() 
             });
 
-            sendNotificationToUser(targetUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
+            sendNotificationToUser(selectedUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
             document.getElementById('msgInput').value = '';
         };
 
-        // دالة إرسال صورة أو ملف عن طريق الرابط
         window.sendFileOrImage = function() {
-            const targetUserCode = document.getElementById('targetUserSelect').value; 
-            if (!targetUserCode) { showToast("الرجاء اختيار الزميل أولاً", "error"); return; }
+            if (!selectedUserCode) { showToast("الرجاء البحث عن زميل واختياره أولاً", "error"); return; }
             
             const url = prompt("ضع رابط الصورة أو الملف هنا:");
             if (!url) return;
@@ -333,7 +372,7 @@
                 type = 'image';
             }
 
-            let roomId = getChatRoomId(currentUserCode, targetUserCode);
+            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
             const newMsgRef = push(ref(db, 'chats/' + roomId));
 
             set(newMsgRef, { 
@@ -345,7 +384,7 @@
                 timestamp: serverTimestamp() 
             });
 
-            sendNotificationToUser(targetUserCode, "أرسل لك " + (type === 'image' ? 'صورة' : 'ملف') + " من " + currentUserName);
+            sendNotificationToUser(selectedUserCode, "أرسل لك " + (type === 'image' ? 'صورة' : 'ملف') + " من " + currentUserName);
         };
 
         window.handleEnter = function(event) { if (event.key === 'Enter') { event.preventDefault(); sendMessage(); } };
