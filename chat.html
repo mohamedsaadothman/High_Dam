@@ -62,7 +62,7 @@
     <div id="loginScreen">
         <div class="login-box">
             <h2>تسجيل الدخول</h2>
-            <input type="text" id="loginCode" placeholder="كود المستخدم (الرقم)">
+            <input type="text" id="loginCode" placeholder="اسم المستخدم">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
             <button onclick="login()">دخول</button>
         </div>
@@ -105,6 +105,7 @@
         let currentUserName = "";
         let allUsersList = [];
         
+        // ⚠️ تأكد إن الرابط ده هو آخر رابط بعد الـ Deploy
         const scriptUrl = "https://script.google.com/macros/s/AKfycbxhJ3PQ_vdnQxiIZkSpd85q-0OKWF-1OyFzwubP__3LsWFlbuYzvlGjC7KAV2QBUX-O9A/exec";
 
         function normalizeText(text) {
@@ -113,17 +114,16 @@
         }
 
         async function sendNotificationToUser(targetUserName, messageText) {
-            const data = new URLSearchParams();
-            data.append('action', 'sendPush');
-            data.append('targetName', targetUserName);
-            data.append('messageText', messageText);
-            data.append('name', currentUserName);
-            
             try {
                 await fetch(scriptUrl, { 
                     method: 'POST', 
-                    body: data, 
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' } 
+                    body: JSON.stringify({
+                        action: 'sendPush',
+                        targetName: targetUserName,
+                        messageText: messageText,
+                        name: currentUserName
+                    }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' } // Apps Script بيحب text/plain عشان يتجنب CORS
                 });
             } catch (error) {
                 console.error("خطأ في إرسال الإشعار:", error);
@@ -142,21 +142,32 @@
         }
 
         window.login = async function() {
-            const codeInput = document.getElementById('loginCode').value;
-            const passInput = document.getElementById('loginPassword').value;
+            const codeInput = document.getElementById('loginCode').value.trim();
+            const passInput = document.getElementById('loginPassword').value.trim();
             if (!codeInput || !passInput) { alert("الرجاء إدخال البيانات"); return; }
 
             try {
                 document.querySelector('#loginScreen button').innerText = "جاري التحقق...";
-                const response = await fetch(scriptUrl);
-                allUsersList = await response.json();
                 
-                const user = allUsersList.find(u => normalizeText(u.code) === normalizeText(codeInput) && normalizeText(u.password) === normalizeText(passInput));
+                // 1. إرسال بيانات الدخول للـ Apps Script
+                const response = await fetch(scriptUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'login',
+                        username: codeInput,
+                        password: passInput
+                    }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                });
+                
+                const result = await response.json();
 
-                if (user) {
-                    currentUserName = user.name.trim(); 
+                // 2. التحقق من نجاح الدخول
+                if (result.status === 'success') {
+                    currentUserName = result.empName; 
                     localStorage.setItem('chat_user_name', currentUserName);
                     
+                    // تسجيل الدخول في OneSignal
                     OneSignalDeferred.push(async function(OneSignal) {
                         await OneSignal.login(currentUserName);
                     });
@@ -166,20 +177,26 @@
                     document.getElementById('chatScreen').style.display = 'block';
                     document.getElementById('enableNotifyBtn').style.display = 'block';
 
+                    // جلب قائمة الزملاء من السيرفر عشان نعرضهم في القائمة
+                    const usersResponse = await fetch(scriptUrl);
+                    allUsersList = await usersResponse.json();
+
                     const select = document.getElementById('targetUserSelect');
                     select.innerHTML = '<option value="">اختر زميلاً للمراسلة...</option>';
                     allUsersList.forEach(u => {
-                        if (u.name && normalizeText(u.name) !== normalizeText(currentUserName)) {
-                            select.innerHTML += `<option value="${u.name}">${u.name}</option>`;
+                        // بنعرض اسم الموظف من العمود C
+                        if (u.empName && normalizeText(u.empName) !== normalizeText(currentUserName)) {
+                            select.innerHTML += `<option value="${u.empName}">${u.empName}</option>`;
                         }
                     });
 
                 } else {
-                    alert("بيانات الدخول غير صحيحة");
+                    alert(result.message || "بيانات الدخول غير صحيحة");
                     document.querySelector('#loginScreen button').innerText = "دخول";
                 }
             } catch (error) {
-                alert("خطأ في الاتصال");
+                console.error(error);
+                alert("خطأ في الاتصال بالسيرفر");
                 document.querySelector('#loginScreen button').innerText = "دخول";
             }
         }
