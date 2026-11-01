@@ -516,14 +516,25 @@
             let dateFrom = document.getElementById('filterDateFrom').value;
             let dateTo = document.getElementById('filterDateTo').value;
 
-            if (currentActiveData.length === 0) return;
-            let keys = Object.keys(currentActiveData[0]);
+            // تحديد البيانات الأساسية بناءً على الكارت المختار حالياً لتجنب ضياع الفرز عند استخدام البحث
+            let baseData = (currentType === 'leave') ? globalLeaveData : globalPurchaseData;
+            let filteredBase = baseData;
+
+            if (currentStatusFilter !== 'total') {
+                filteredBase = baseData.filter(row => {
+                    let st = (currentType === 'leave') ? getLeaveStatus(row) : getPurchaseStatus(row);
+                    return st === currentStatusFilter;
+                });
+            }
+
+            if (filteredBase.length === 0) return;
+            let keys = Object.keys(filteredBase[0]);
 
             let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2];
             let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.toLowerCase().includes('id') || k.includes('سريال') || k.includes('رقم')) || keys[1];
             let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time') || k.includes('تاريخ') || k.includes('وقت')) || keys[0];
 
-            let filtered = currentActiveData.filter(row => {
+            let filtered = filteredBase.filter(row => {
                 let nameVal = (row[nameKey] || "").toLowerCase();
                 let serialVal = (row[serialKey] || "").toLowerCase();
                 let dateVal = (row[dateKey] || "").split(' ')[0];
@@ -578,7 +589,7 @@
             html += '</tr></thead><tbody>';
 
             data.forEach((row, index) => {
-                // تم إزالة ألوان الصفوف نهائياً ليعود الجدول لشكله الافتراضي النظيف
+                // الجدول باللون الافتراضي بدون أي تلوين للخلفية
                 html += `<tr>`; 
                 html += `<td>${index + 1}</td>`;
                 
