@@ -8,24 +8,28 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     
+    <!-- مكتبة PapaParse لقراءة ملفات CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-
-    <script>
-        if (sessionStorage.getItem('app_access_token') !== 'granted') {
-            alert("عذراً، يجب الدخول من الصفحة الرئيسية أولاً.");
-            window.location.href = "index.html"; 
-        }
-    </script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
         body { background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)), url('./hig.png') no-repeat center center fixed; background-size: cover; color: #fff; min-height: 100vh; padding-bottom: 20px; }
         
+        /* تنسيقات شاشة الدخول */
+        #loginScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { background: #1e293b; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; text-align: center; border: 1px solid #c59b27; }
+        .login-box h2 { color: #fbbf24; margin-bottom: 20px; }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-family: 'Cairo'; }
+        .login-box button { width: 100%; padding: 12px; background: #c59b27; color: #0f172a; border: none; border-radius: 8px; font-weight: 900; cursor: pointer; font-family: 'Cairo'; font-size: 16px; }
+        .login-box button:hover { background: #eab308; }
+
+        /* تنسيقات لوحة المتابعة */
+        #dashboardScreen { display: none; }
         header { background: rgba(15, 23, 42, 0.95); padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #c59b27; position: sticky; top: 0; z-index: 100; }
         .logo-area { display: flex; align-items: center; gap: 8px; }
         .logo-area img { width: 35px; height: 35px; border-radius: 50%; background: #fff; padding: 2px; border: 1px solid #c59b27; }
         .logo-area h1 { font-size: 14px; color: #fbbf24; margin: 0; font-weight: 900; }
-        .back-btn { text-decoration: none; padding: 6px 12px; border-radius: 6px; background: #c59b27; color: #0f172a; font-weight: 700; font-size: 11px; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
+        .back-btn { text-decoration: none; padding: 6px 12px; border-radius: 6px; background: #c59b27; color: #0f172a; font-weight: 700; font-size: 11px; display: flex; align-items: center; gap: 5px; transition: 0.2s; cursor: pointer;}
         .back-btn:hover { background: #eab308; }
         
         .container { max-width: 1100px; margin: 15px auto; padding: 0 10px; }
@@ -54,120 +58,149 @@
 </head>
 <body>
 
-    <header>
-        <div class="logo-area">
-            <img src="./logo.png" alt="شعار">
-            <h1>لوحة المتابعة المركزية</h1>
+    <!-- شاشة تسجيل الدخول -->
+    <div id="loginScreen">
+        <div class="login-box">
+            <h2><i class="fas fa-lock"></i> تسجيل الدخول</h2>
+            <p style="font-size: 12px; color:#94a3b8; margin-bottom: 15px;">هذه الصفحة محمية، يرجى إدخال بياناتك.</p>
+            <input type="text" id="loginUsername" placeholder="اسم المستخدم">
+            <input type="password" id="loginPassword" placeholder="كلمة المرور">
+            <button onclick="checkLogin()">دخول</button>
+            <p id="loginError" style="color: #ef4444; font-size: 12px; margin-top: 10px; display: none;"></p>
         </div>
-        <a href="index.html" class="back-btn"><i class="fas fa-home"></i> الرئيسية</a>
-    </header>
+    </div>
 
-    <div class="container">
-        <div class="page-title">
-            <span><i class="fas fa-chart-pie"></i> إحصائيات حركة العمل</span>
-            <button class="refresh-btn" id="refreshBtn"><i class="fas fa-sync-alt"></i> تحديث</button>
-        </div>
+    <!-- لوحة المتابعة -->
+    <div id="dashboardScreen">
+        <header>
+            <div class="logo-area">
+                <img src="./logo.png" alt="شعار">
+                <h1>لوحة المتابعة المركزية</h1>
+            </div>
+            <a href="index.html" class="back-btn"><i class="fas fa-home"></i> الرئيسية</a>
+        </header>
 
-        <div id="errorBox" class="error-msg"></div>
+        <div class="container">
+            <div class="page-title">
+                <span><i class="fas fa-chart-pie"></i> إحصائيات حركة العمل</span>
+                <button class="refresh-btn" id="refreshBtn" onclick="location.reload()"><i class="fas fa-sync-alt"></i> تحديث</button>
+            </div>
 
-        <h2 class="section-title"><i class="fas fa-shopping-cart"></i> إدارة التعاقدات والمشتريات</h2>
-        <div class="stats-grid">
-            <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
-            <div class="stat-card card-green"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="purApproved">-</div></div>
-            <div class="stat-card card-red"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="purRejected">-</div></div>
-            <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
-        </div>
+            <div id="errorBox" class="error-msg"></div>
 
-        <h2 class="section-title"><i class="fas fa-calendar-alt"></i> إدارة الإجازات</h2>
-        <div class="stats-grid">
-            <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
-            <div class="stat-card card-green"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
-            <div class="stat-card card-red"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
-            <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
+            <h2 class="section-title"><i class="fas fa-shopping-cart"></i> إدارة التعاقدات والمشتريات</h2>
+            <div class="stats-grid">
+                <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
+                <div class="stat-card card-green"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="purApproved">-</div></div>
+                <div class="stat-card card-red"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="purRejected">-</div></div>
+                <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
+            </div>
+
+            <h2 class="section-title"><i class="fas fa-calendar-alt"></i> إدارة الإجازات</h2>
+            <div class="stats-grid">
+                <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
+                <div class="stat-card card-green"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
+                <div class="stat-card card-red"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
+                <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
+            </div>
         </div>
     </div>
 
     <script>
+        // ✅ الروابط بتاعتك
         const LEAVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1t4J0CU27xPKyNHRlsIYn1wDylkF6FM6rUG9TK7l8tXKW-upnje5ohCzWYIgMXHAeqRTjaDwI9EEe/pub?gid=0&single=true&output=csv";
         const PURCHASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxp-T7L4Q8VCHi5eLR4oY1FAq0vbDgJVKLphkUPeCMFeoYEeAQyCS7dUmd6STXFSK7LnTcDCk4NMTU/pub?gid=0&single=true&output=csv";
+        const USERS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7qyqwgacjwMEXUdYy_4GS2CYg74IzW2YYnLetmVhJyRjrCOM3AfRP5w6UqObYjuNuJjf9qj-B9QlN/pub?gid=667920095&single=true&output=csv";
 
-        function loadStats() {
-            document.getElementById('errorBox').style.display = 'none';
-            document.querySelectorAll('.number').forEach(el => el.innerText = '...');
+        // دالة التحقق من الدخول
+        function checkLogin() {
+            const user = document.getElementById('loginUsername').value.trim();
+            const pass = document.getElementById('loginPassword').value.trim();
+            const errorMsg = document.getElementById('loginError');
 
-            const timestamp = new Date().getTime();
+            if (!user || !pass) {
+                errorMsg.innerText = "يرجى إدخال اسم المستخدم وكلمة المرور";
+                errorMsg.style.display = 'block';
+                return;
+            }
 
-            Papa.parse(LEAVE_CSV_URL + "&t=" + timestamp, {
+            errorMsg.style.display = 'none';
+
+            Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
                 download: true,
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    let pending = 0, approved = 0, rejected = 0;
+                    let isValid = false;
                     let data = results.data;
                     
                     data.forEach(row => {
-                        let specStatus = row[Object.keys(row)[11]] || "";
-                        let mgrStatus = row[Object.keys(row)[14]] || "";
+                        // بنشوف اسم المستخدم (العمود A) والباسورد (العمود B)
+                        let dbUser = row[Object.keys(row)[0]] || "";
+                        let dbPass = row[Object.keys(row)[1]] || "";
                         
-                        if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) {
-                            rejected++;
-                        } else if (mgrStatus === "مقبول ومؤرشف") {
-                            approved++;
-                        } else {
-                            pending++;
+                        if (dbUser.trim() === user && dbPass.trim() === pass) {
+                            isValid = true;
                         }
                     });
 
-                    document.getElementById('leavePending').innerText = pending;
-                    document.getElementById('leaveApproved').innerText = approved;
-                    document.getElementById('leaveRejected').innerText = rejected;
-                    document.getElementById('leaveTotal').innerText = data.length;
+                    if (isValid) {
+                        document.getElementById('loginScreen').style.display = 'none';
+                        document.getElementById('dashboardScreen').style.display = 'block';
+                        loadStats(); // تشغيل جلب الأرقام
+                    } else {
+                        errorMsg.innerText = "اسم المستخدم أو كلمة المرور غير صحيحة";
+                        errorMsg.style.display = 'block';
+                    }
                 },
                 error: function(err) {
-                    console.error("خطأ في الإجازات:", err);
-                    document.getElementById('leaveTotal').innerText = "خطأ";
-                }
-            });
-
-            Papa.parse(PURCHASE_CSV_URL + "&t=" + timestamp, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
-                complete: function(results) {
-                    let pending = 0, approved = 0, rejected = 0;
-                    let data = results.data;
-                    
-                    data.forEach(row => {
-                        let stage = row[Object.keys(row)[13]] || "";
-                        
-                        if (stage.includes("مرفوض")) {
-                            rejected++;
-                        } else if (stage.includes("معتمد نهائياً")) {
-                            approved++;
-                        } else {
-                            pending++;
-                        }
-                    });
-
-                    document.getElementById('purPending').innerText = pending;
-                    document.getElementById('purApproved').innerText = approved;
-                    document.getElementById('purRejected').innerText = rejected;
-                    document.getElementById('purTotal').innerText = data.length;
-                },
-                error: function(err) {
-                    console.error("خطأ في العقود:", err);
-                    document.getElementById('purTotal').innerText = "خطأ";
+                    console.error(err);
+                    errorMsg.innerText = "حدث خطأ في الاتصال بالشيت، يرجى مراجعة الرابط";
+                    errorMsg.style.display = 'block';
                 }
             });
         }
 
-        // التشغيل التلقائي عند فتح الصفحة
-        window.onload = loadStats;
+        // دالة جلب الأرقام
+        function loadStats() {
+            const timestamp = new Date().getTime();
+            document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
-        // تعديل زرار التحديث ليقوم بعمل Refresh خفي للصفحة
-        document.getElementById('refreshBtn').onclick = function() {
-            location.reload(); 
-        };
+            Papa.parse(LEAVE_CSV_URL + "&t=" + timestamp, {
+                download: true, header: true, skipEmptyLines: true,
+                complete: function(results) {
+                    let pending = 0, approved = 0, rejected = 0;
+                    results.data.forEach(row => {
+                        let specStatus = row[Object.keys(row)[11]] || "";
+                        let mgrStatus = row[Object.keys(row)[14]] || "";
+                        if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) rejected++;
+                        else if (mgrStatus === "مقبول ومؤرشف") approved++;
+                        else pending++;
+                    });
+                    document.getElementById('leavePending').innerText = pending;
+                    document.getElementById('leaveApproved').innerText = approved;
+                    document.getElementById('leaveRejected').innerText = rejected;
+                    document.getElementById('leaveTotal').innerText = results.data.length;
+                }
+            });
+
+            Papa.parse(PURCHASE_CSV_URL + "&t=" + timestamp, {
+                download: true, header: true, skipEmptyLines: true,
+                complete: function(results) {
+                    let pending = 0, approved = 0, rejected = 0;
+                    results.data.forEach(row => {
+                        let stage = row[Object.keys(row)[13]] || "";
+                        if (stage.includes("مرفوض")) rejected++;
+                        else if (stage.includes("معتمد نهائياً")) approved++;
+                        else pending++;
+                    });
+                    document.getElementById('purPending').innerText = pending;
+                    document.getElementById('purApproved').innerText = approved;
+                    document.getElementById('purRejected').innerText = rejected;
+                    document.getElementById('purTotal').innerText = results.data.length;
+                }
+            });
+        }
     </script>
 </body>
 </html>
