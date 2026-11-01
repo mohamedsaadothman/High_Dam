@@ -95,6 +95,13 @@
         .details-table th { background: #0f172a; color: #fbbf24; }
         .details-table tr:hover { background: rgba(255,255,255,0.02); }
         
+        /* ألوان تمييز الصفوف عند النقر على الإجمالي */
+        .row-rejected { background-color: rgba(220, 38, 38, 0.4) !important; color: #ffffff !important; }
+        .row-rejected td { color: #ffffff !important; }
+        
+        .row-pending { background-color: rgba(217, 119, 6, 0.4) !important; color: #ffffff !important; }
+        .row-pending td { color: #ffffff !important; }
+
         .hide-col { display: none !important; }
         .col-items { display: none !important; }
 
@@ -112,6 +119,11 @@
             .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 4px; text-align: center; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
             
+            .row-rejected { background-color: #f87171 !important; color: #fff !important; }
+            .row-rejected td { color: #fff !important; }
+            .row-pending { background-color: #fbbf24 !important; color: #000 !important; }
+            .row-pending td { color: #000 !important; }
+
             .hide-col { display: none !important; }
             .col-items { display: none !important; }
         }
@@ -278,23 +290,19 @@
             "DaysCount": "عدد الأيام"
         };
 
-        // فحص دقيق ومحدد لعمود Status في الإجازات
         function getLeaveStatus(row) {
             let statusVal = (row["Status"] || "").trim().toLowerCase();
-            
             if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) {
                 return "rejected";
             }
-            if (statusVal.includes("مقبول ومؤرشف") || statusVal.includes("مقبول") || statusVal.includes("معتمد")) {
+            if (statusVal === "مقبول ومؤرشف" || statusVal.includes("مقبول") || statusVal.includes("معتمد")) {
                 return "approved";
             }
             return "pending";
         }
 
-        // فحص دقيق لعمود Current_Stage أو Status في المشتريات
         function getPurchaseStatus(row) {
             let stageVal = (row["Current_Stage"] || row["Status"] || "").trim().toLowerCase();
-            
             if (stageVal.includes("مرفوض") || stageVal.includes("رفض")) {
                 return "rejected";
             }
@@ -582,7 +590,18 @@
             html += '</tr></thead><tbody>';
 
             data.forEach((row, index) => {
-                html += `<tr>`; 
+                let rowClass = "";
+                // إذا تم النقر على كارت "الإجمالي"، نقوم بتلوين المرفوض بالأحمر والمعلق بالأصفر
+                if (currentStatusFilter === 'total') {
+                    let st = (currentType === 'leave') ? getLeaveStatus(row) : getPurchaseStatus(row);
+                    if (st === 'rejected') {
+                        rowClass = "row-rejected";
+                    } else if (st === 'pending') {
+                        rowClass = "row-pending";
+                    }
+                }
+
+                html += `<tr class="${rowClass}">`; 
                 html += `<td>${index + 1}</td>`;
                 
                 keys.forEach(key => {
