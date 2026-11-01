@@ -504,4 +504,99 @@
             let dateFrom = document.getElementById('filterDateFrom').value;
             let dateTo = document.getElementById('filterDateTo').value;
 
-            if (currentActiveData
+                        if (currentActiveData.length === 0) return;
+            let keys = Object.keys(currentActiveData[0]);
+
+            let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2];
+            let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.toLowerCase().includes('id') || k.includes('سريال') || k.includes('رقم')) || keys[1];
+            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time') || k.includes('تاريخ') || k.includes('وقت')) || keys[0];
+
+            let filtered = currentActiveData.filter(row => {
+                let nameVal = (row[nameKey] || "").toLowerCase();
+                let serialVal = (row[serialKey] || "").toLowerCase();
+                let dateVal = (row[dateKey] || "").split(' ')[0];
+
+                let matchName = !nameQuery || nameVal.includes(nameQuery);
+                let matchSerial = !serialQuery || serialVal.includes(serialQuery);
+                
+                let matchDate = true;
+                if (dateVal) {
+                    if (dateFrom && dateVal < dateFrom) matchDate = false;
+                    if (dateTo && dateVal > dateTo) matchDate = false;
+                }
+
+                return matchName && matchSerial && matchDate;
+            });
+
+            renderTable(filtered);
+        }
+
+        function renderTable(data) {
+            let container = document.getElementById('modalTableContainer');
+            if (data.length === 0) {
+                container.innerHTML = '<p style="text-align:center; padding: 20px; color: #94a3b8;">لا توجد طلبات مطابقة للبحث</p>';
+                return;
+            }
+
+            let keys = Object.keys(data[0]);
+
+            let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
+            html += '<th>م</th>'; // عمود المسلسل
+            keys.forEach(key => {
+                let arabicHeader = columnTranslations[key.trim()] || key;
+                html += `<th>${arabicHeader}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            data.forEach((row, index) => {
+                let rowClass = "";
+                // إذا كان العرض من خلال زر "الإجمالي"، نقوم بتلوين المعلق أو المرفوض باللون الأحمر
+                if (currentStatusFilter === 'total') {
+                    let isRejectedOrPending = false;
+                    if (currentType === 'leave') {
+                        let specStatus = row[Object.keys(row)[11]] || "";
+                        let mgrStatus = row[Object.keys(row)[14]] || "";
+                        if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض") || mgrStatus !== "مقبول ومؤرشف") {
+                            isRejectedOrPending = true;
+                        }
+                    } else {
+                        let stage = row[Object.keys(row)[13]] || "";
+                        if (stage.includes("مرفوض") || !stage.includes("معتمد نهائياً")) {
+                            isRejectedOrPending = true;
+                        }
+                    }
+                    if (isRejectedOrPending) {
+                        rowClass = "row-rejected-or-pending";
+                    }
+                }
+
+                html += `<tr class="${rowClass}">`;
+                html += `<td>${index + 1}</td>`; // الترقيم المسلسل
+                keys.forEach(key => {
+                    html += `<td>${row[key] || '-'}</td>`;
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+
+        function closeModal() {
+            document.getElementById('detailsModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            let modal = document.getElementById('detailsModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+            if (!event.target.closest('#filterName')) {
+                let box = document.getElementById('nameSuggestions');
+                if(box) box.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
+                
