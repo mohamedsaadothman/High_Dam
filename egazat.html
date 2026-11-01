@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
@@ -51,7 +51,17 @@
 
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
+        
+        /* تعديل لعرض نصوص التاريخ بالشكل العربي (يوم / شهر / سنة) وإخفاء الأيقونة الافتراضية المعاكسة إن وجدوا */
         .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; }
+        input[type="date"] { direction: rtl; text-align: right; }
+        input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; }
+        input[type="date"]::-webkit-datetime-edit { flex: 1; }
+        input[type="date"]::-webkit-datetime-edit-year-field { order: 1; }
+        input[type="date"]::-webkit-datetime-edit-month-field { order: 2; }
+        input[type="date"]::-webkit-datetime-edit-day-field { order: 3; }
+        input[type="date"]::-webkit-datetime-edit-text { padding: 0 0.2em; }
+
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: #198754; background: #fff; }
         
         .btn-submit-main { width: 100%; background: #198754; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; transition: 0.3s; margin-top: 8px; box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3); }
@@ -110,7 +120,7 @@
         @media print {
             body * { visibility: hidden; }
             #printableSummaryArea, #printableSummaryArea * { visibility: visible; }
-            #printableSummaryArea { position: absolute; left: 0; top: 0; width: 100%; padding: 10px; }
+            #printableSummaryArea { position: absolute; left: 0; top: 0; width: 100%; padding: 10px; display: block !important; }
             .no-print { display: none !important; }
             .summary-report-table th { background-color: #e2e8f0 !important; color: #000 !important; -webkit-print-color-adjust: exact; }
             .summary-report-table .total-row { background-color: #fcd34d !important; color: #000 !important; -webkit-print-color-adjust: exact; }
@@ -316,7 +326,7 @@
                         <option value="إدارة الشئون المالية">إدارة الشئون المالية</option>
                         <option value="إدارة الشئون الإدارية">إدارة الشئون الإدارية</option>
                         <option value="إدارة الشئون القانونية">إدارة الشئون القانونية</option>
-                        <option value=إدارة الخدمات الطبية">إدارة الخدمات الطبية</option>
+                        <option value="إدارة الخدمات الطبية">إدارة الخدمات الطبية</option>
                     </select>
                 </div>
                 <div class="input-group">
@@ -464,7 +474,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <button class="act-btn btn-ex" onclick="generateSummaryReport()" style="padding: 8px; font-size: 12px;"><i class="fas fa-calculator"></i> عرض التقرير</button>
                     <button class="act-btn btn-pd" onclick="downloadExcelSummary()" style="padding: 8px; font-size: 12px;"><i class="fas fa-download"></i> تحميل إكسل</button>
-                    <button class="act-btn btn-warning" onclick="printSummaryReport()" style="padding: 8px; font-size: 12px; color:#000; grid-column: span 2;"><i class="fas fa-print"></i> طباعة التقرير</button>
+                    <button class="act-btn btn-warning" onclick="printSummaryReportPDF()" style="padding: 8px; font-size: 12px; color:#000; grid-column: span 2;"><i class="fas fa-print"></i> طباعة / حفظ PDF للتقرير</button>
                 </div>
             </div>
 
@@ -563,7 +573,6 @@
     </div>
 
 <script>
-    // ⚠️ الرابط الجديد
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxOiHNWTYk06p-AjRM43gEaWdyX7_J0qjtLg_O75R5An5Mbg0oWvs_GL3Ptr5ClqvM4/exec";
     
     var loggedInRole = "";
@@ -582,7 +591,6 @@
     var currentSpecActionRow = null;
     var currentSpecActionStatus = "";
 
-    // دوال التحقق من النصوص
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
     function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله'); }
     function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
@@ -1155,65 +1163,99 @@
             }
         }
 
-        let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-        let submissionDateStr = new Date().toISOString().split('T')[0];
-
         let submitBtn = document.querySelector("#leaveForm .btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص البيانات...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
         submitBtn.disabled = true;
 
-        let payload = {
-            action: "submit_leave",
-            requestId: randomId,
-            empName: name,
-            nationalId: nationalId,
-            dept: dept,
-            jobCategory: category,
-            mgrName: mName,
-            leaveType: type,
-            startDate: start,
-            endDate: end,
-            daysCount: totalDays,
-            reason: reason,
-            phone: phone,
-            titlePrefix: titlePrefix,
-            daysAnnual: dAnnual,
-            daysPrev: dPrev
-        };
+        // الحل للمشكلة 1: فحص التداخل للتأكد من عدم وجود إجازة معتمدة أو قيد الانتظار في نفس الفترة
+        fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nationalId}`)
+        .then(res => res.json())
+        .then(historyRes => {
+            if (historyRes.status === "success" && historyRes.data) {
+                let hasOverlap = false;
+                historyRes.data.forEach(item => {
+                    let st = (item.managerStatus || "").toLowerCase();
+                    // فحص الطلبات التي لم تُرفض نهائياً أو مرفوضة من المدير
+                    if (!st.includes("مرفوض")) {
+                        let existingStart = item.startDate;
+                        let existingEnd = item.endDate;
+                        // تحقق تداخل الفترات الزمنية
+                        if (!(end < existingStart || start > existingEnd)) {
+                            hasOverlap = true;
+                        }
+                    }
+                });
 
-        const formData = new URLSearchParams();
-        for (const key in payload) { formData.append(key, payload[key]); }
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(async res => {
-            let text = await res.text();
-            try {
-                return JSON.parse(text);
-            } catch (e) {
-                throw new Error("استجابة غير صالحة من الخادم. يرجى التأكد من نشر كود Apps Script (Deploy -> New Version).");
+                if (hasOverlap) {
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    submitBtn.disabled = false;
+                    showCustomAlert("خطأ في التواريخ", "عذراً، يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة الزمنية. لا يمكن تكرار الإجازة لنفس اليوم.");
+                    return;
+                }
             }
-        })
-        .then(res => {
+
+            // إذا لم يوجد تداخل، يتم المتابعة بالإرسال
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب...';
+            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+            let submissionDateStr = new Date().toISOString().split('T')[0];
+
+            let payload = {
+                action: "submit_leave",
+                requestId: randomId,
+                empName: name,
+                nationalId: nationalId,
+                dept: dept,
+                jobCategory: category,
+                mgrName: mName,
+                leaveType: type,
+                startDate: start,
+                endDate: end,
+                daysCount: totalDays,
+                reason: reason,
+                phone: phone,
+                titlePrefix: titlePrefix,
+                daysAnnual: dAnnual,
+                daysPrev: dPrev
+            };
+
+            const formData = new URLSearchParams();
+            for (const key in payload) { formData.append(key, payload[key]); }
+
+            fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+            .then(async res => {
+                let text = await res.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error("استجابة غير صالحة من الخادم. يرجى التأكد من نشر كود Apps Script (Deploy -> New Version).");
+                }
+            })
+            .then(res => {
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                submitBtn.disabled = false;
+                if (res.status === "success") {
+                    latestSubmittedData = {
+                        requestId: randomId, empName: name, nationalId: nationalId, dept: dept, jobCategory: category,
+                        mgrName: mName, titlePrefix: titlePrefix, leaveType: type, startDate: start, endDate: end,
+                        daysCount: totalDays, reason: reason, phone: phone,
+                        specialistStatus: "قيد الانتظار", managerStatus: "قيد الانتظار",
+                        requestDate: submissionDateStr, daysAnnual: dAnnual, daysPrev: dPrev
+                    };
+                    document.getElementById("leaveForm").classList.add("hidden");
+                    document.getElementById("leaveResultContainer").classList.remove("hidden");
+                } else {
+                    showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
+                }
+            })
+            .catch((err) => {
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                submitBtn.disabled = false;
+                showCustomAlert("خطأ في الاتصال", err.message);
+            });
+        }).catch(() => {
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
-            if (res.status === "success") {
-                latestSubmittedData = {
-                    requestId: randomId, empName: name, nationalId: nationalId, dept: dept, jobCategory: category,
-                    mgrName: mName, titlePrefix: titlePrefix, leaveType: type, startDate: start, endDate: end,
-                    daysCount: totalDays, reason: reason, phone: phone,
-                    specialistStatus: "قيد الانتظار", managerStatus: "قيد الانتظار",
-                    requestDate: submissionDateStr, daysAnnual: dAnnual, daysPrev: dPrev
-                };
-                document.getElementById("leaveForm").classList.add("hidden");
-                document.getElementById("leaveResultContainer").classList.remove("hidden");
-            } else {
-                showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
-            }
-        })
-        .catch((err) => {
-            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            submitBtn.disabled = false;
-            showCustomAlert("خطأ في الاتصال", err.message);
+            showCustomAlert("خطأ", "تعذر فحص التواريخ السابقة.");
         });
     }
 
@@ -1852,12 +1894,45 @@
         XLSX.writeFile(wb, `تقرير_الإجازات_التجميعي_${document.getElementById("summaryStartDate").value}_${document.getElementById("summaryEndDate").value}.xlsx`);
     }
 
-    function printSummaryReport() {
-        if (document.getElementById("printableSummaryArea").style.display === "none") {
-            showCustomAlert("لا يوجد تقرير", "يرجى عرض التقرير أولاً قبل طباعته.");
+    // الحل للمشكلة 2: فتح نافذة طباعة مخصصة ومستقلة للتقرير التجميعي لطباعته أو حفظه كـ PDF بنجاح
+    function printSummaryReportPDF() {
+        let summaryArea = document.getElementById("printableSummaryArea");
+        if (summaryArea.style.display === "none" || !summaryArea.innerHTML.trim()) {
+            showCustomAlert("لا يوجد تقرير", "يرجى عرض التقرير التجميعي أولاً قبل طباعته.");
             return;
         }
-        window.print();
+
+        let win = window.open('', '_blank');
+        win.document.write(`
+            <!DOCTYPE html>
+            <html dir="rtl" lang="ar">
+            <head>
+                <meta charset="UTF-8">
+                <title>تقرير تجميعي لبيانات الإجازات</title>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+                <style>
+                    body { font-family: 'Cairo', sans-serif; padding: 20px; direction: rtl; color: #000; }
+                    .header { text-align: center; margin-bottom: 20px; }
+                    h2 { font-size: 18px; font-weight: 900; margin-bottom: 5px; color: #1a365d; }
+                    p { font-size: 13px; color: #333; margin-bottom: 15px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+                    th, td { border: 1px solid #333; padding: 8px; text-align: center; vertical-align: middle; }
+                    th { background-color: #1e293b !important; color: #fff !important; font-weight: 800; -webkit-print-color-adjust: exact; }
+                    .total-row { background-color: #fcd34d !important; font-weight: 900; color: #000 !important; -webkit-print-color-adjust: exact; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>الهيئة العامة للسد العالي وخزان أسوان</h2>
+                    <h2>تقرير تجميعي لبيانات الإجازات</h2>
+                    <p>${document.getElementById("reportPeriodText").innerText}</p>
+                </div>
+                ${document.getElementById("summaryReportTable").outerHTML}
+            </body>
+            </html>
+        `);
+        win.document.close();
+        setTimeout(() => { win.focus(); win.print(); }, 500);
     }
 
 </script>
