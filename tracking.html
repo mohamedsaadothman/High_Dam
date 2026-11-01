@@ -141,8 +141,9 @@
     </div>
 
     <script>
-        // ✅ الرابط بتاع ملف Tracking (لو إنت أخدت رابط جديد، غيره هنا)
-        const TRACKING_API_URL = "https://script.google.com/macros/s/AKfycbzTQviHEYtXAjY3_Eue_JNFhN7dXN_HHMLz3dYFA3cLCIz-ntKPyEenA15icANi-JBIgQ/exec";
+        // ✅ الروابط المباشرة لملفاتك الأصلية (اللي إنت بعتها)
+        const LEAVE_API_URL = "https://script.google.com/macros/s/AKfycbzeRcHOdY9fAKh4ZZpAhJqEsp644xXoV8Ck_D0rf-3JeiBYVCdSKv-8de1502QZvT7s/exec";
+        const PURCHASE_API_URL = "https://script.google.com/macros/s/AKfycbwdpWanw3-od7iffXHaW3rtPe0nzde9wZFHdOSmX2SHEeXnEw1H_ivRWZlKFU2ixFGc/exec";
 
         function loadStats() {
             const btn = document.getElementById('refreshBtn');
@@ -152,40 +153,45 @@
             document.getElementById('errorBox').style.display = 'none';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
-            fetch(TRACKING_API_URL + "?action=getStats")
+            // 1. جلب الإجازات
+            fetch(LEAVE_API_URL + "?action=get_leave_stats")
             .then(res => res.json())
             .then(data => {
-                if (data.status === "success") {
-                    // تحديث المشتريات
-                    document.getElementById('purPending').innerText = data.purchases.pending;
-                    document.getElementById('purApproved').innerText = data.purchases.approved;
-                    document.getElementById('purRejected').innerText = data.purchases.rejected;
-                    document.getElementById('purTotal').innerText = data.purchases.total;
-
-                    // تحديث الإجازات
-                    document.getElementById('leavePending').innerText = data.leaves.pending;
-                    document.getElementById('leaveApproved').innerText = data.leaves.approved;
-                    document.getElementById('leaveRejected').innerText = data.leaves.rejected;
-                    document.getElementById('leaveTotal').innerText = data.leaves.total;
+                if(data.status === "success" && data.data) {
+                    document.getElementById('leavePending').innerText = data.data.pending;
+                    document.getElementById('leaveApproved').innerText = data.data.approved;
+                    document.getElementById('leaveRejected').innerText = data.data.rejected;
+                    document.getElementById('leaveTotal').innerText = data.data.total;
                 } else {
-                    showError("حدث خطأ: " + data.message);
+                    console.log("مشكلة في جلب الإجازات:", data);
                 }
             })
             .catch(err => {
-                console.error(err);
-                showError("تعذر الاتصال بالخادم. تأكد من الرابط وصلاحيات النشر.");
+                console.error("خطأ في الإجازات:", err);
+                document.getElementById('leaveTotal').innerText = "خطأ";
+            });
+
+            // 2. جلب المشتريات
+            fetch(PURCHASE_API_URL + "?action=getPurchaseStats")
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === "success" && data.data) {
+                    document.getElementById('purPending').innerText = data.data.pending;
+                    document.getElementById('purApproved').innerText = data.data.approved;
+                    document.getElementById('purRejected').innerText = data.data.rejected;
+                    document.getElementById('purTotal').innerText = data.data.total;
+                } else {
+                    console.log("مشكلة في جلب المشتريات:", data);
+                }
+            })
+            .catch(err => {
+                console.error("خطأ في المشتريات:", err);
+                document.getElementById('purTotal').innerText = "خطأ";
             })
             .finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
-        }
-
-        function showError(msg) {
-            const errorBox = document.getElementById('errorBox');
-            errorBox.innerText = msg;
-            errorBox.style.display = 'block';
-            document.querySelectorAll('.number').forEach(el => el.innerText = '0');
         }
 
         // تشغيل تلقائي عند فتح الصفحة
