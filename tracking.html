@@ -279,50 +279,79 @@
             });
         }
 
-        // 3. جلب الإحصائيات
+        // 3. جلب الإحصائيات لجميع الملفات في نفس الوقت
         function loadStats() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحديث...';
-            document.getElementById('errorBox').style.display = 'none';
+            
+            const errorBox = document.getElementById('errorBox');
+            errorBox.style.display = 'none';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
             const timestamp = new Date().getTime();
 
-            Papa.parse(LEAVE_CSV_URL + "&t=" + timestamp, {
-                download: true, header: true, skipEmptyLines: true,
-                complete: function(results) {
-                    let pending = 0, approved = 0, rejected = 0;
-                    results.data.forEach(row => {
-                        let specStatus = row[Object.keys(row)[11]] || "";
-                        let mgrStatus = row[Object.keys(row)[14]] || "";
-                        if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) rejected++;
-                        else if (mgrStatus === "مقبول ومؤرشف") approved++;
-                        else pending++;
+            // دالة مساعدة لتحميل ملف CSV وتحويله إلى بيانات باستخدام Promises
+            const fetchCSV = (url) => {
+                return new Promise((resolve, reject) => {
+                    Papa.parse(url + "&t=" + timestamp, {
+                        download: true,
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            resolve(results.data);
+                        },
+                        error: function(err) {
+                            reject(err);
+                        }
                     });
-                    document.getElementById('leavePending').innerText = pending;
-                    document.getElementById('leaveApproved').innerText = approved;
-                    document.getElementById('leaveRejected').innerText = rejected;
-                    document.getElementById('leaveTotal').innerText = results.data.length;
-                }
-            });
+                });
+            };
 
-            Papa.parse(PURCHASE_CSV_URL + "&t=" + timestamp, {
-                download: true, header: true, skipEmptyLines: true,
-                complete: function(results) {
-                    let pending = 0, approved = 0, rejected = 0;
-                    results.data.forEach(row => {
-                        let stage = row[Object.keys(row)[13]] || "";
-                        if (stage.includes("مرفوض")) rejected++;
-                        else if (stage.includes("معتمد نهائياً")) approved++;
-                        else pending++;
-                    });
-                    document.getElementById('purPending').innerText = pending;
-                    document.getElementById('purApproved').innerText = approved;
-                    document.getElementById('purRejected').innerText = rejected;
-                    document.getElementById('purTotal').innerText = results.data.length;
-                }
-            }).finally(() => {
+            // جلب الملفين معاً في نفس الوقت
+            Promise.all([
+                fetchCSV(LEAVE_CSV_URL),
+                fetchCSV(PURCHASE_CSV_URL)
+            ])
+            .then(([leaveData, purchaseData]) => {
+                
+                // 1. معالجة بيانات الإجازات
+                let leavePending = 0, leaveApproved = 0, leaveRejected = 0;
+                leaveData.forEach(row => {
+                    let specStatus = row[Object.keys(row)[11]] || "";
+                    let mgrStatus = row[Object.keys(row)[14]] || "";
+                    if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) leaveRejected++;
+                    else if (mgrStatus === "مقبول ومؤرشف") leaveApproved++;
+                    else leavePending++;
+                });
+
+                document.getElementById('leavePending').innerText = leavePending;
+                document.getElementById('leaveApproved').innerText = leaveApproved;
+                document.getElementById('leaveRejected').innerText = leaveRejected;
+                document.getElementById('leaveTotal').innerText = leaveData.length;
+
+                // 2. معالجة بيانات التعاقدات والمشتريات
+                let purPending = 0, purApproved = 0, purRejected = 0;
+                purchaseData.forEach(row => {
+                    let stage = row[Object.keys(row)[13]] || "";
+                    if (stage.includes("مرفوض")) purRejected++;
+                    else if (stage.includes("معتمد نهائياً")) purApproved++;
+                    else purPending++;
+                });
+
+                document.getElementById('purPending').innerText = purPending;
+                document.getElementById('purApproved').innerText = purApproved;
+                document.getElementById('purRejected').innerText = purRejected;
+                document.getElementById('purTotal').innerText = purchaseData.length;
+
+            })
+            .catch(err => {
+                console.error("خطأ في جلب البيانات:", err);
+                errorBox.innerText = "حدث خطأ أثناء تحديث البيانات، يرجى المحاولة مرة أخرى.";
+                errorBox.style.display = 'block';
+            })
+            .finally(() => {
+                // إعادة الزر لحالته الطبيعية
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
