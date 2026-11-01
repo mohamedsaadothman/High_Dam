@@ -14,12 +14,8 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
         
-        /* تنسيق خلفية الصفحة */
         body { background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)), url('./hig.png') no-repeat center center fixed; background-size: cover; color: #fff; min-height: 100vh; padding-bottom: 20px; }
         
-        /* ========================================= */
-        /* تنسيقات شاشة الدخول الفخمة */
-        /* ========================================= */
         #loginScreen { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: linear-gradient(135deg, #020617 0%, #0f172a 100%);
@@ -75,9 +71,6 @@
         .login-box button:hover { background: linear-gradient(135deg, #d4af37, #c59b27); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(197, 155, 39, 0.6); }
         .login-box button:disabled { opacity: 0.7; cursor: not-allowed; transform: none; box-shadow: none; }
 
-        /* ========================================= */
-        /* تنسيقات لوحة المتابعة */
-        /* ========================================= */
         #dashboardScreen { display: none; }
         header { background: rgba(15, 23, 42, 0.95); padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #c59b27; position: sticky; top: 0; z-index: 100; }
         .logo-area { display: flex; align-items: center; gap: 8px; }
@@ -112,15 +105,27 @@
 
         .error-msg { text-align: center; padding: 15px; color: #f87171; font-size: 14px; background: rgba(220,38,38,0.1); border-radius: 8px; margin-top: 15px; display: none;}
 
-        /* تنسيق النافذة المنبثقة (Modal) لعرض تفاصيل الطلبات */
+        /* تنسيق النافذة المنبثقة (Modal) */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; padding: 15px; }
-        .modal-content { background: #1e293b; width: 100%; max-width: 850px; border-radius: 12px; border: 1px solid #c59b27; overflow: hidden; max-height: 85vh; display: flex; flex-direction: column; }
+        .modal-content { background: #1e293b; width: 100%; max-width: 900px; border-radius: 12px; border: 1px solid #c59b27; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
         .modal-header { background: #0f172a; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
         .modal-header h3 { color: #fbbf24; font-size: 16px; }
         .close-modal { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; }
         .modal-body { padding: 15px; overflow-y: auto; }
         
-        /* جدول عرض التفاصيل داخل المودال */
+        /* أدوات الفلترة داخل المودال */
+        .filter-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 15px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; position: relative; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; position: relative; }
+        .filter-group label { font-size: 12px; color: #fbbf24; font-weight: 700; }
+        .filter-group input { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-family: 'Cairo'; font-size: 13px; outline: none; }
+        .filter-group input:focus { border-color: #fbbf24; }
+
+        /* قائمة المقترحات للاسم */
+        .suggestions-box { position: absolute; top: 100%; right: 0; left: 0; background: #1e293b; border: 1px solid #c59b27; border-radius: 6px; max-height: 150px; overflow-y: auto; z-index: 10; display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .suggestion-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #334155; transition: background 0.2s; }
+        .suggestion-item:hover { background: #c59b27; color: #0f172a; font-weight: bold; }
+
+        /* جدول عرض التفاصيل */
         .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 13px; }
         .details-table th, .details-table td { padding: 10px; border-bottom: 1px solid #334155; }
         .details-table th { background: #0f172a; color: #fbbf24; }
@@ -170,7 +175,7 @@
             <div class="welcome-msg" id="welcomeMsg"></div>
             
             <div class="page-title">
-                <span><i class="fas fa-chart-pie"></i> إحصائيات حركة العمل (انقر على أي كارت لعرض الطلبات)</span>
+                <span><i class="fas fa-chart-pie"></i> إحصائيات حركة العمل</span>
                 <button class="refresh-btn" id="refreshBtn" onclick="loadStats()"><i class="fas fa-sync-alt"></i> تحديث</button>
             </div>
 
@@ -178,31 +183,50 @@
 
             <h2 class="section-title"><i class="fas fa-shopping-cart"></i> إدارة التعاقدات والمشتريات</h2>
             <div class="stats-grid">
-                <div class="stat-card card-yellow" onclick="showDetails('purchase', 'pending')"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
-                <div class="stat-card card-green" onclick="showDetails('purchase', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="purApproved">-</div></div>
-                <div class="stat-card card-red" onclick="showDetails('purchase', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="purRejected">-</div></div>
-                <div class="stat-card card-blue" onclick="showDetails('purchase', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
+                <div class="stat-card card-yellow" onclick="openDetailsModal('purchase', 'pending')"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
+                <div class="stat-card card-green" onclick="openDetailsModal('purchase', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="purApproved">-</div></div>
+                <div class="stat-card card-red" onclick="openDetailsModal('purchase', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="purRejected">-</div></div>
+                <div class="stat-card card-blue" onclick="openDetailsModal('purchase', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
             </div>
 
             <h2 class="section-title"><i class="fas fa-calendar-alt"></i> إدارة الإجازات</h2>
             <div class="stats-grid">
-                <div class="stat-card card-yellow" onclick="showDetails('leave', 'pending')"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
-                <div class="stat-card card-green" onclick="showDetails('leave', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
-                <div class="stat-card card-red" onclick="showDetails('leave', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
-                <div class="stat-card card-blue" onclick="showDetails('leave', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
+                <div class="stat-card card-yellow" onclick="openDetailsModal('leave', 'pending')"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
+                <div class="stat-card card-green" onclick="openDetailsModal('leave', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
+                <div class="stat-card card-red" onclick="openDetailsModal('leave', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
+                <div class="stat-card card-blue" onclick="openDetailsModal('leave', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
             </div>
         </div>
     </div>
 
-    <!-- نافذة عرض تفاصيل الطلبات -->
+    <!-- نافذة عرض تفاصيل الطلبات مع الفلترة -->
     <div id="detailsModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="modalTitle">تفاصيل الطلبات</h3>
                 <button class="close-modal" onclick="closeModal()">&times;</button>
             </div>
-            <div class="modal-body" id="modalBody">
-                <!-- سيتم حقن الجدول هنا ديناميكياً -->
+            <div class="modal-body">
+                <!-- شريط الفلترة -->
+                <div class="filter-bar">
+                    <div class="filter-group" style="position: relative;">
+                        <label><i class="fas fa-user"></i> البحث بالاسم:</label>
+                        <input type="text" id="filterName" placeholder="اكتب الاسم أو الحرف الأول..." oninput="handleNameInput()">
+                        <div id="nameSuggestions" class="suggestions-box"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-barcode"></i> السريال نمبر:</label>
+                        <input type="text" id="filterSerial" placeholder="ابحث برقم السريال..." oninput="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar"></i> التاريخ:</label>
+                        <input type="date" id="filterDate" onchange="applyFilters()">
+                    </div>
+                </div>
+
+                <div id="modalTableContainer">
+                    <!-- سيتم حقن الجدول هنا ديناميكياً -->
+                </div>
             </div>
         </div>
     </div>
@@ -215,6 +239,37 @@
         let currentUserName = "";
         let globalLeaveData = [];
         let globalPurchaseData = [];
+        
+        // متغيرات للفلترة الحالية
+        let currentActiveData = [];
+        let currentType = "";
+
+        // قاموس ترجمة رؤوس الأعمدة للغة العربية حسب نوع الملف
+        const columnTranslations = {
+            leave: {
+                "Timestamp": "وقت الإرسال",
+                "Email Address": "البريد الإلكتروني",
+                "Name": "اسم الموظف",
+                "Serial": "السريال نمبر",
+                "Date": "التاريخ",
+                "Leave Type": "نوع الإجازة",
+                "From Date": "من تاريخ",
+                "To Date": "إلى تاريخ",
+                "Reason": "السبب",
+                "Status": "الحالة",
+                "Manager Status": "حالة المدير"
+            },
+            purchase: {
+                "Timestamp": "وقت الإرسال",
+                "Serial": "السريال نمبر",
+                "Name": "اسم الطالب",
+                "Date": "التاريخ",
+                "Item": "الصنف المطلوب",
+                "Quantity": "الكمية",
+                "Department": "الإدارة",
+                "Stage": "مرحلة الطلب"
+            }
+        };
 
         window.onload = function() {
             Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
@@ -306,7 +361,6 @@
                 globalLeaveData = leaveData;
                 globalPurchaseData = purchaseData;
                 
-                // الإجازات
                 let lPending = 0, lApproved = 0, lRejected = 0;
                 leaveData.forEach(row => {
                     let specStatus = row[Object.keys(row)[11]] || "";
@@ -321,7 +375,6 @@
                 document.getElementById('leaveRejected').innerText = lRejected;
                 document.getElementById('leaveTotal').innerText = leaveData.length;
 
-                // التعاقدات والمشتريات
                 let pPending = 0, pApproved = 0, pRejected = 0;
                 purchaseData.forEach(row => {
                     let stage = row[Object.keys(row)[13]] || "";
@@ -347,85 +400,173 @@
             });
         }
 
-        // وظيفة عرض تفاصيل الطلبات عند النقر على الكارت
-        function showDetails(type, status) {
+        // فتح المودال وتخزين البيانات الأساسية للحالة المختارة
+        function openDetailsModal(type, status) {
+            currentType = type;
             let data = (type === 'leave') ? globalLeaveData : globalPurchaseData;
-            let filteredData = [];
             let titleText = "";
 
             if (type === 'leave') {
                 if (status === 'pending') {
                     titleText = "طلبات الإجازات المعلقة";
-                    filteredData = data.filter(row => {
+                    currentActiveData = data.filter(row => {
                         let s = row[Object.keys(row)[11]] || "";
                         let m = row[Object.keys(row)[14]] || "";
                         return !s.includes("مرفوض") && !m.includes("مرفوض") && m !== "مقبول ومؤرشف";
                     });
                 } else if (status === 'approved') {
                     titleText = "طلبات الإجازات المعتمدة";
-                    filteredData = data.filter(row => (row[Object.keys(row)[14]] || "") === "مقبول ومؤرشف");
+                    currentActiveData = data.filter(row => (row[Object.keys(row)[14]] || "") === "مقبول ومؤرشف");
                 } else if (status === 'rejected') {
                     titleText = "طلبات الإجازات المرفوضة";
-                    filteredData = data.filter(row => {
+                    currentActiveData = data.filter(row => {
                         let s = row[Object.keys(row)[11]] || "";
                         let m = row[Object.keys(row)[14]] || "";
                         return s.includes("مرفوض") || m.includes("مرفوض");
                     });
                 } else {
                     titleText = "إجمالي طلبات الإجازات";
-                    filteredData = data;
+                    currentActiveData = data;
                 }
             } else {
                 if (status === 'pending') {
                     titleText = "طلبات المشتريات المعلقة";
-                    filteredData = data.filter(row => {
+                    currentActiveData = data.filter(row => {
                         let stage = row[Object.keys(row)[13]] || "";
                         return !stage.includes("مرفوض") && !stage.includes("معتمد نهائياً");
                     });
                 } else if (status === 'approved') {
                     titleText = "طلبات المشتريات المعتمدة نهائياً";
-                    filteredData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("معتمد نهائياً"));
+                    currentActiveData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("معتمد نهائياً"));
                 } else if (status === 'rejected') {
                     titleText = "طلبات المشتريات المرفوضة";
-                    filteredData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("مرفوض"));
+                    currentActiveData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("مرفوض"));
                 } else {
                     titleText = "إجمالي طلبات المشتريات";
-                    filteredData = data;
+                    currentActiveData = data;
                 }
             }
 
-            document.getElementById('modalTitle').innerText = titleText + " (" + filteredData.length + ")";
+            document.getElementById('modalTitle').innerText = titleText;
+            document.getElementById('filterName').value = '';
+            document.getElementById('filterSerial').value = '';
+            document.getElementById('filterDate').value = '';
+            document.getElementById('nameSuggestions').style.display = 'none';
+
+            renderTable(currentActiveData);
+            document.getElementById('detailsModal').style.display = 'flex';
+        }
+
+        // معالجة كتابة الاسم واظهار المقترحات التلقائية
+        function handleNameInput() {
+            let query = document.getElementById('filterName').value.trim().toLowerCase();
+            let suggestionsBox = document.getElementById('nameSuggestions');
             
-            let modalBody = document.getElementById('modalBody');
-            if (filteredData.length === 0) {
-                modalBody.innerHTML = '<p style="text-align:center; padding: 20px; color: #94a3b8;">لا توجد طلبات مطابقة لهذه الحالة</p>';
-            } else {
-                let keys = Object.keys(filteredData[0]);
-                let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
-                
-                // عرض أعمدة الجدول (أول 5 أعمدة مفيدة مثل الاسم والتاريخ وغيرها مثلاً، أو كلها)
-                keys.slice(0, 6).forEach(key => {
-                    html += '<th>' + key + '</th>';
-                });
-                html += '</tr></thead><tbody>';
-
-                filteredData.forEach(row => {
-                    html += '<tr>';
-                    keys.slice(0, 6).forEach(key => {
-                        html += '<td>' + (row[key] || '-') + '</td>';
-                    });
-                    html += '</tr>';
-                });
-
-                html += '</tbody></table></div>';
-                modalBody.innerHTML = html;
+            // استخراج اسم العميل من الأعمدة (نفترض أن العمود الثالث أو الذي يحتوي على الاسم هو المطلوب، سنبحث في كل صف عن قيمة مطابقة أو نبحث بالعمود الخاص بالاسم)
+            let nameKey = Object.keys(currentActiveData[0] || {})[2] || Object.keys(currentActiveData[0] || {})[1];
+            
+            if (!query) {
+                suggestionsBox.style.display = 'none';
+                applyFilters();
+                return;
             }
 
-            document.getElementById('detailsModal').style.display = 'flex';
+            // جمع الأسماء الفريدة التي تتطابق مع الحرف أو الكلمة المدخلة
+            let uniqueNames = [...new Set(currentActiveData.map(row => row[nameKey]))].filter(name => name && name.toLowerCase().includes(query));
+
+            if (uniqueNames.length > 0) {
+                let html = '';
+                uniqueNames.forEach(n => {
+                    html += `<div class="suggestion-item" onclick="selectSuggestion('${n}')">${n}</div>`;
+                });
+                suggestionsBox.innerHTML = html;
+                suggestionsBox.style.display = 'block';
+            } else {
+                suggestionsBox.style.display = 'none';
+            }
+
+            applyFilters();
+        }
+
+        function selectSuggestion(name) {
+            document.getElementById('filterName').value = name;
+            document.getElementById('nameSuggestions').style.display = 'none';
+            applyFilters();
+        }
+
+        // تطبيق الفلاتر (الاسم، السريال، التاريخ)
+        function applyFilters() {
+            let nameQuery = document.getElementById('filterName').value.trim().toLowerCase();
+            let serialQuery = document.getElementById('filterSerial').value.trim().toLowerCase();
+            let dateQuery = document.getElementById('filterDate').value;
+
+            let nameKey = Object.keys(currentActiveData[0] || {})[2] || Object.keys(currentActiveData[0] || {})[1];
+            // تخمين عمود السريال أو التاريخ من المفاتيح المتاحة
+            let keys = Object.keys(currentActiveData[0] || {});
+            let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.includes('سريال') || k.includes('رقم')) || keys[3];
+            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.includes('تاريخ') || k.includes('time')) || keys[0];
+
+            let filtered = currentActiveData.filter(row => {
+                let nameVal = (row[nameKey] || "").toLowerCase();
+                let serialVal = (row[serialKey] || "").toLowerCase();
+                let dateVal = (row[dateKey] || "");
+
+                let matchName = !nameQuery || nameVal.includes(nameQuery);
+                let matchSerial = !serialQuery || serialVal.includes(serialQuery);
+                let matchDate = !dateQuery || dateVal.includes(dateQuery);
+
+                return matchName && matchSerial && matchDate;
+            });
+
+            renderTable(filtered);
+        }
+
+        // رسم الجدول مع ترجمة الأعمدة للعربية
+        function renderTable(data) {
+            let container = document.getElementById('modalTableContainer');
+            if (data.length === 0) {
+                container.innerHTML = '<p style="text-align:center; padding: 20px; color: #94a3b8;">لا توجد طلبات مطابقة للبحث</p>';
+                return;
+            }
+
+            let keys = Object.keys(data[0]);
+            let translations = columnTranslations[currentType] || {};
+
+            let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
+            
+            // عرض رؤوس الأعمدة مترجمة للعربية إذا توفرت، أو استخدام الأصلية
+            keys.slice(0, 7).forEach(key => {
+                let arabicHeader = translations[key] || key;
+                html += `<th>${arabicHeader}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            data.forEach(row => {
+                html += '<tr>';
+                keys.slice(0, 7).forEach(key => {
+                    html += `<td>${row[key] || '-'}</td>`;
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
         }
 
         function closeModal() {
             document.getElementById('detailsModal').style.display = 'none';
+        }
+
+        // إغلاق قائمة المقترحات عند النقر خارجها
+        window.onclick = function(event) {
+            let modal = document.getElementById('detailsModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+            if (!event.target.closest('#filterName')) {
+                let box = document.getElementById('nameSuggestions');
+                if(box) box.style.display = 'none';
+            }
         }
     </script>
 </body>
