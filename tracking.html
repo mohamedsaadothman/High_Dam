@@ -39,7 +39,6 @@
             overflow: hidden;
         }
 
-        /* لمعة زخرفية في الكارت */
         .login-box::before {
             content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
             background: radial-gradient(circle, rgba(197,155,39,0.1) 0%, transparent 60%);
@@ -59,13 +58,12 @@
         .input-group i { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #c59b27; font-size: 16px; pointer-events: none; }
         
         .login-box select, .login-box input { 
-            width: 100%; padding: 14px 15px 14px 45px; /* مساحة للأيقونة */
+            width: 100%; padding: 14px 15px 14px 45px; 
             border-radius: 10px; border: 1px solid #334155; background: #0f172a; 
             color: #fff; font-family: 'Cairo'; font-size: 15px; outline: none; transition: 0.3s;
         }
         .login-box select:focus, .login-box input:focus { border-color: #fbbf24; box-shadow: 0 0 0 3px rgba(251,191,36,0.15); }
         
-        /* تنسيق الزرار الفخم */
         .login-box button { 
             width: 100%; padding: 15px; 
             background: linear-gradient(135deg, #c59b27, #9f7a17); 
@@ -101,7 +99,8 @@
         .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
         @media (min-width: 768px) { .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 15px; } }
         
-        .stat-card { padding: 12px 8px; border-radius: 10px; text-align: center; color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.3); position: relative; overflow: hidden; }
+        .stat-card { padding: 12px 8px; border-radius: 10px; text-align: center; color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.3); position: relative; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .stat-card:hover { transform: translateY(-3px); box-shadow: 0 6px 15px rgba(0,0,0,0.5); }
         .stat-card h3 { font-size: 11px; margin-bottom: 5px; opacity: 0.9; z-index: 2; position: relative; font-weight: 700;}
         .stat-card .number { font-size: 24px; font-weight: 900; z-index: 2; position: relative;}
         .stat-card i { position: absolute; left: -5px; bottom: -5px; font-size: 50px; opacity: 0.1; z-index: 1; }
@@ -112,6 +111,20 @@
         .card-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
 
         .error-msg { text-align: center; padding: 15px; color: #f87171; font-size: 14px; background: rgba(220,38,38,0.1); border-radius: 8px; margin-top: 15px; display: none;}
+
+        /* تنسيق النافذة المنبثقة (Modal) لعرض تفاصيل الطلبات */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; padding: 15px; }
+        .modal-content { background: #1e293b; width: 100%; max-width: 850px; border-radius: 12px; border: 1px solid #c59b27; overflow: hidden; max-height: 85vh; display: flex; flex-direction: column; }
+        .modal-header { background: #0f172a; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+        .modal-header h3 { color: #fbbf24; font-size: 16px; }
+        .close-modal { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; }
+        .modal-body { padding: 15px; overflow-y: auto; }
+        
+        /* جدول عرض التفاصيل داخل المودال */
+        .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 13px; }
+        .details-table th, .details-table td { padding: 10px; border-bottom: 1px solid #334155; }
+        .details-table th { background: #0f172a; color: #fbbf24; }
+        .details-table tr:hover { background: rgba(255,255,255,0.02); }
     </style>
 </head>
 <body>
@@ -123,7 +136,6 @@
             <h2>بوابة المتابعة</h2>
             <p class="subtitle">الهيئة العامة للسد العالي وخزان أسوان</p>
             
-            <!-- قائمة اختيار اسم المستخدم -->
             <div class="input-group">
                 <i class="fas fa-user"></i>
                 <select id="loginUsername">
@@ -140,7 +152,6 @@
                 <i class="fas fa-sign-in-alt"></i> تسجيل الدخول
             </button>
             
-            <!-- رسالة الخطأ -->
             <p id="loginError" style="color: #ef4444; font-size: 13px; margin-top: 15px; display: none; font-weight: bold;"></p>
         </div>
     </div>
@@ -159,7 +170,7 @@
             <div class="welcome-msg" id="welcomeMsg"></div>
             
             <div class="page-title">
-                <span><i class="fas fa-chart-pie"></i> إحصائيات حركة العمل</span>
+                <span><i class="fas fa-chart-pie"></i> إحصائيات حركة العمل (انقر على أي كارت لعرض الطلبات)</span>
                 <button class="refresh-btn" id="refreshBtn" onclick="loadStats()"><i class="fas fa-sync-alt"></i> تحديث</button>
             </div>
 
@@ -167,40 +178,50 @@
 
             <h2 class="section-title"><i class="fas fa-shopping-cart"></i> إدارة التعاقدات والمشتريات</h2>
             <div class="stats-grid">
-                <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
-                <div class="stat-card card-green"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="purApproved">-</div></div>
-                <div class="stat-card card-red"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="purRejected">-</div></div>
-                <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
+                <div class="stat-card card-yellow" onclick="showDetails('purchase', 'pending')"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
+                <div class="stat-card card-green" onclick="showDetails('purchase', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="purApproved">-</div></div>
+                <div class="stat-card card-red" onclick="showDetails('purchase', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="purRejected">-</div></div>
+                <div class="stat-card card-blue" onclick="showDetails('purchase', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
             </div>
 
             <h2 class="section-title"><i class="fas fa-calendar-alt"></i> إدارة الإجازات</h2>
             <div class="stats-grid">
-                <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
-                <div class="stat-card card-green"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
-                <div class="stat-card card-red"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
-                <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
+                <div class="stat-card card-yellow" onclick="showDetails('leave', 'pending')"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
+                <div class="stat-card card-green" onclick="showDetails('leave', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
+                <div class="stat-card card-red" onclick="showDetails('leave', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
+                <div class="stat-card card-blue" onclick="showDetails('leave', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة عرض تفاصيل الطلبات -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">تفاصيل الطلبات</h3>
+                <button class="close-modal" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- سيتم حقن الجدول هنا ديناميكياً -->
             </div>
         </div>
     </div>
 
     <script>
-        // ✅ الروابط بتاعتك
         const LEAVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1t4J0CU27xPKyNHRlsIYn1wDylkF6FM6rUG9TK7l8tXKW-upnje5ohCzWYIgMXHAeqRTjaDwI9EEe/pub?gid=0&single=true&output=csv";
         const PURCHASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxp-T7L4Q8VCHi5eLR4oY1FAq0vbDgJVKLphkUPeCMFeoYEeAQyCS7dUmd6STXFSK7LnTcDCk4NMTU/pub?gid=0&single=true&output=csv";
         const USERS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7qyqwgacjwMEXUdYy_4GS2CYg74IzW2YYnLetmVhJyRjrC0M3AfRP5w6Uq0bYjuNuJjf9qj-B9QlN/pub?gid=667920095&single=true&output=csv";
 
         let currentUserName = "";
+        let globalLeaveData = [];
+        let globalPurchaseData = [];
 
-        // 1. تحميل قائمة المستخدمين في القائمة المنسدلة
         window.onload = function() {
             Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
+                download: true, header: true, skipEmptyLines: true,
                 complete: function(results) {
                     let select = document.getElementById('loginUsername');
                     select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
-                    
                     results.data.forEach(row => {
                         let user = row[Object.keys(row)[0]] || "";
                         if (user) {
@@ -210,28 +231,18 @@
                             select.appendChild(opt);
                         }
                     });
-                },
-                error: function(err) {
-                    let select = document.getElementById('loginUsername');
-                    select.innerHTML = '<option value="">-- تعذر تحميل المستخدمين --</option>';
                 }
             });
         };
 
-        // 2. التحقق من الدخول
         function checkLogin() {
             const user = document.getElementById('loginUsername').value;
             const pass = document.getElementById('loginPassword').value.trim();
             const errorMsg = document.getElementById('loginError');
             const btn = document.getElementById('loginBtn');
 
-            if (!user) {
-                errorMsg.innerText = "يرجى اختيار اسم المستخدم";
-                errorMsg.style.display = 'block';
-                return;
-            }
-            if (!pass) {
-                errorMsg.innerText = "يرجى إدخال كلمة المرور";
+            if (!user || !pass) {
+                errorMsg.innerText = "يرجى اختيار المستخدم وإدخال كلمة المرور";
                 errorMsg.style.display = 'block';
                 return;
             }
@@ -241,17 +252,13 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
             Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
+                download: true, header: true, skipEmptyLines: true,
                 complete: function(results) {
                     let isValid = false;
-                    
                     results.data.forEach(row => {
                         let dbUser = row[Object.keys(row)[0]] || "";
                         let dbPass = row[Object.keys(row)[1]] || "";
-                        let dbName = row[Object.keys(row)[2]] || ""; // العمود الثالث هو الاسم
-                        
+                        let dbName = row[Object.keys(row)[2]] || "";
                         if (dbUser.trim() === user && dbPass.trim() === pass) {
                             isValid = true;
                             currentUserName = dbName || user; 
@@ -269,17 +276,10 @@
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
                     }
-                },
-                error: function(err) {
-                    errorMsg.innerText = "حدث خطأ أثناء الاتصال، يرجى المحاولة لاحقاً";
-                    errorMsg.style.display = 'block';
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
                 }
             });
         }
 
-        // 3. جلب الإحصائيات لجميع الملفات في نفس الوقت
         function loadStats() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
@@ -291,70 +291,141 @@
 
             const timestamp = new Date().getTime();
 
-            // دالة مساعدة لتحميل ملف CSV وتحويله إلى بيانات باستخدام Promises
             const fetchCSV = (url) => {
                 return new Promise((resolve, reject) => {
                     Papa.parse(url + "&t=" + timestamp, {
-                        download: true,
-                        header: true,
-                        skipEmptyLines: true,
-                        complete: function(results) {
-                            resolve(results.data);
-                        },
-                        error: function(err) {
-                            reject(err);
-                        }
+                        download: true, header: true, skipEmptyLines: true,
+                        complete: (results) => resolve(results.data),
+                        error: (err) => reject(err)
                     });
                 });
             };
 
-            // جلب الملفين معاً في نفس الوقت
-            Promise.all([
-                fetchCSV(LEAVE_CSV_URL),
-                fetchCSV(PURCHASE_CSV_URL)
-            ])
+            Promise.all([fetchCSV(LEAVE_CSV_URL), fetchCSV(PURCHASE_CSV_URL)])
             .then(([leaveData, purchaseData]) => {
+                globalLeaveData = leaveData;
+                globalPurchaseData = purchaseData;
                 
-                // 1. معالجة بيانات الإجازات
-                let leavePending = 0, leaveApproved = 0, leaveRejected = 0;
+                // الإجازات
+                let lPending = 0, lApproved = 0, lRejected = 0;
                 leaveData.forEach(row => {
                     let specStatus = row[Object.keys(row)[11]] || "";
                     let mgrStatus = row[Object.keys(row)[14]] || "";
-                    if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) leaveRejected++;
-                    else if (mgrStatus === "مقبول ومؤرشف") leaveApproved++;
-                    else leavePending++;
+                    if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) lRejected++;
+                    else if (mgrStatus === "مقبول ومؤرشف") lApproved++;
+                    else lPending++;
                 });
 
-                document.getElementById('leavePending').innerText = leavePending;
-                document.getElementById('leaveApproved').innerText = leaveApproved;
-                document.getElementById('leaveRejected').innerText = leaveRejected;
+                document.getElementById('leavePending').innerText = lPending;
+                document.getElementById('leaveApproved').innerText = lApproved;
+                document.getElementById('leaveRejected').innerText = lRejected;
                 document.getElementById('leaveTotal').innerText = leaveData.length;
 
-                // 2. معالجة بيانات التعاقدات والمشتريات
-                let purPending = 0, purApproved = 0, purRejected = 0;
+                // التعاقدات والمشتريات
+                let pPending = 0, pApproved = 0, pRejected = 0;
                 purchaseData.forEach(row => {
                     let stage = row[Object.keys(row)[13]] || "";
-                    if (stage.includes("مرفوض")) purRejected++;
-                    else if (stage.includes("معتمد نهائياً")) purApproved++;
-                    else purPending++;
+                    if (stage.includes("مرفوض")) pRejected++;
+                    else if (stage.includes("معتمد نهائياً")) pApproved++;
+                    else pPending++;
                 });
 
-                document.getElementById('purPending').innerText = purPending;
-                document.getElementById('purApproved').innerText = purApproved;
-                document.getElementById('purRejected').innerText = purRejected;
+                document.getElementById('purPending').innerText = pPending;
+                document.getElementById('purApproved').innerText = pApproved;
+                document.getElementById('purRejected').innerText = pRejected;
                 document.getElementById('purTotal').innerText = purchaseData.length;
 
             })
             .catch(err => {
-                console.error("خطأ في جلب البيانات:", err);
-                errorBox.innerText = "حدث خطأ أثناء تحديث البيانات، يرجى المحاولة مرة أخرى.";
+                console.error(err);
+                errorBox.innerText = "حدث خطأ أثناء تحديث البيانات.";
                 errorBox.style.display = 'block';
             })
             .finally(() => {
-                // إعادة الزر لحالته الطبيعية
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
+        }
+
+        // وظيفة عرض تفاصيل الطلبات عند النقر على الكارت
+        function showDetails(type, status) {
+            let data = (type === 'leave') ? globalLeaveData : globalPurchaseData;
+            let filteredData = [];
+            let titleText = "";
+
+            if (type === 'leave') {
+                if (status === 'pending') {
+                    titleText = "طلبات الإجازات المعلقة";
+                    filteredData = data.filter(row => {
+                        let s = row[Object.keys(row)[11]] || "";
+                        let m = row[Object.keys(row)[14]] || "";
+                        return !s.includes("مرفوض") && !m.includes("مرفوض") && m !== "مقبول ومؤرشف";
+                    });
+                } else if (status === 'approved') {
+                    titleText = "طلبات الإجازات المعتمدة";
+                    filteredData = data.filter(row => (row[Object.keys(row)[14]] || "") === "مقبول ومؤرشف");
+                } else if (status === 'rejected') {
+                    titleText = "طلبات الإجازات المرفوضة";
+                    filteredData = data.filter(row => {
+                        let s = row[Object.keys(row)[11]] || "";
+                        let m = row[Object.keys(row)[14]] || "";
+                        return s.includes("مرفوض") || m.includes("مرفوض");
+                    });
+                } else {
+                    titleText = "إجمالي طلبات الإجازات";
+                    filteredData = data;
+                }
+            } else {
+                if (status === 'pending') {
+                    titleText = "طلبات المشتريات المعلقة";
+                    filteredData = data.filter(row => {
+                        let stage = row[Object.keys(row)[13]] || "";
+                        return !stage.includes("مرفوض") && !stage.includes("معتمد نهائياً");
+                    });
+                } else if (status === 'approved') {
+                    titleText = "طلبات المشتريات المعتمدة نهائياً";
+                    filteredData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("معتمد نهائياً"));
+                } else if (status === 'rejected') {
+                    titleText = "طلبات المشتريات المرفوضة";
+                    filteredData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("مرفوض"));
+                } else {
+                    titleText = "إجمالي طلبات المشتريات";
+                    filteredData = data;
+                }
+            }
+
+            document.getElementById('modalTitle').innerText = titleText + " (" + filteredData.length + ")";
+            
+            let modalBody = document.getElementById('modalBody');
+            if (filteredData.length === 0) {
+                modalBody.innerHTML = '<p style="text-align:center; padding: 20px; color: #94a3b8;">لا توجد طلبات مطابقة لهذه الحالة</p>';
+            } else {
+                let keys = Object.keys(filteredData[0]);
+                let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
+                
+                // عرض أعمدة الجدول (أول 5 أعمدة مفيدة مثل الاسم والتاريخ وغيرها مثلاً، أو كلها)
+                keys.slice(0, 6).forEach(key => {
+                    html += '<th>' + key + '</th>';
+                });
+                html += '</tr></thead><tbody>';
+
+                filteredData.forEach(row => {
+                    html += '<tr>';
+                    keys.slice(0, 6).forEach(key => {
+                        html += '<td>' + (row[key] || '-') + '</td>';
+                    });
+                    html += '</tr>';
+                });
+
+                html += '</tbody></table></div>';
+                modalBody.innerHTML = html;
+            }
+
+            document.getElementById('detailsModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('detailsModal').style.display = 'none';
         }
     </script>
 </body>
