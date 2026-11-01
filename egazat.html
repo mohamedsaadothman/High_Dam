@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
-    <script src="https://cdnjs.cloudflare.com/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
@@ -52,8 +52,9 @@
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
         
-        /* تعديل لعرض نصوص التاريخ بالشكل العربي (يوم / شهر / سنة) وإخفاء الأيقونة الافتراضية المعاكسة إن وجدوا */
         .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; }
+        
+        /* تنسيق لضمان ظهور صيغة التاريخ العربي (يوم / شهر / سنة) */
         input[type="date"] { direction: rtl; text-align: right; }
         input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; }
         input[type="date"]::-webkit-datetime-edit { flex: 1; }
@@ -1167,7 +1168,6 @@
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
         submitBtn.disabled = true;
 
-        // الحل للمشكلة 1: فحص التداخل للتأكد من عدم وجود إجازة معتمدة أو قيد الانتظار في نفس الفترة
         fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nationalId}`)
         .then(res => res.json())
         .then(historyRes => {
@@ -1175,11 +1175,9 @@
                 let hasOverlap = false;
                 historyRes.data.forEach(item => {
                     let st = (item.managerStatus || "").toLowerCase();
-                    // فحص الطلبات التي لم تُرفض نهائياً أو مرفوضة من المدير
                     if (!st.includes("مرفوض")) {
                         let existingStart = item.startDate;
                         let existingEnd = item.endDate;
-                        // تحقق تداخل الفترات الزمنية
                         if (!(end < existingStart || start > existingEnd)) {
                             hasOverlap = true;
                         }
@@ -1194,7 +1192,6 @@
                 }
             }
 
-            // إذا لم يوجد تداخل، يتم المتابعة بالإرسال
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب...';
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
             let submissionDateStr = new Date().toISOString().split('T')[0];
@@ -1879,8 +1876,9 @@
         showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك الآن طباعته أو تحميله كملف إكسل.");
     }
 
+    // إصلاح دالة تحميل ملف إكسل للتقرير التجميعي
     function downloadExcelSummary() {
-        if (summaryDataForExcel.length <= 1) {
+        if (!summaryDataForExcel || summaryDataForExcel.length <= 1) {
             showCustomAlert("لا توجد بيانات", "يرجى عرض التقرير أولاً قبل تحميله.");
             return;
         }
@@ -1894,7 +1892,6 @@
         XLSX.writeFile(wb, `تقرير_الإجازات_التجميعي_${document.getElementById("summaryStartDate").value}_${document.getElementById("summaryEndDate").value}.xlsx`);
     }
 
-    // الحل للمشكلة 2: فتح نافذة طباعة مخصصة ومستقلة للتقرير التجميعي لطباعته أو حفظه كـ PDF بنجاح
     function printSummaryReportPDF() {
         let summaryArea = document.getElementById("printableSummaryArea");
         if (summaryArea.style.display === "none" || !summaryArea.innerHTML.trim()) {
