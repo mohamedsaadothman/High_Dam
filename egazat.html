@@ -54,17 +54,57 @@
         
         .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; }
         
-        /* تنسيق لضمان ظهور صيغة التاريخ العربي (يوم / شهر / سنة) */
-        input[type="date"] { direction: rtl; text-align: right; }
-        input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; flex-direction: row-reverse; }
-        input[type="date"]::-webkit-datetime-edit { flex: 1; }
-        input[type="date"]::-webkit-datetime-edit-year-field { order: 3; }
-        input[type="date"]::-webkit-datetime-edit-month-field { order: 2; }
-        input[type="date"]::-webkit-datetime-edit-day-field { order: 1; }
-        input[type="date"]::-webkit-datetime-edit-text { padding: 0 0.2em; order: 2; }
-
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: #198754; background: #fff; }
         
+        /* ================== التعديل الجديد: حل مشكلة الرموز المشوشة في حقول التاريخ ================== */
+        .date-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .date-wrapper input[type="date"] {
+            position: relative;
+            width: 100%;
+            z-index: 2;
+            background: transparent;
+            color: transparent; /* إخفاء النص الافتراضي المشوش */
+            direction: rtl;
+        }
+
+        .date-wrapper input[type="date"]:focus {
+            outline: none;
+            border-color: #198754;
+            background: transparent;
+        }
+
+        /* إظهار التاريخ المختار فقط باللون الأسود */
+        .date-wrapper input[type="date"]:valid {
+            color: #0f172a;
+        }
+
+        /* النص الوهمي الذي يظهر عندما يكون الحقل فارغاً */
+        .date-wrapper .date-placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-family: 'Cairo', sans-serif;
+            color: #64748b;
+            pointer-events: none; /* ليتمكن المستخدم من الضغط على الحقل الأصلي */
+            display: flex;
+            align-items: center;
+            z-index: 1;
+        }
+
+        /* إخفاء النص الوهمي عند اختيار تاريخ */
+        .date-wrapper input[type="date"]:valid + .date-placeholder {
+            display: none;
+        }
+        /* ========================================================================================= */
+
         .btn-submit-main { width: 100%; background: #198754; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; transition: 0.3s; margin-top: 8px; box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3); }
         .btn-submit-main:hover { background: #146c43; }
         .btn-submit-main:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -176,404 +216,468 @@
             </div>
         </div>
     </main>
-
     <!-- 2. نافذة التحقق من المختص (Modal) -->
-    <div id="specialistAuthModal" class="custom-modal-overlay hidden">
-        <div class="custom-modal-box">
-            <div class="custom-modal-header">
-                <i class="fas fa-user-shield" style="color: #0d6efd;"></i>
-                <h3>تأكيد هوية المختص</h3>
-            </div>
-            <div class="input-group" style="text-align: right;">
-                <label>اختر الإدارة / الفئة (للمختصين فقط):</label>
-                <select id="specAuthDept" style="padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
-                    <option value="">جاري التحميل...</option>
-                </select>
-            </div>
-            <div class="input-group" style="text-align: right;">
-                <label>كلمة المرور:</label>
-                <input type="password" id="specAuthPassword" placeholder="أدخل كلمة المرور..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
-            </div>
-            <button class="btn-submit-main" style="background: #0d6efd; margin-top: 15px;" onclick="verifySpecPassword()">دخول</button>
-            <button class="custom-modal-btn" style="background: #64748b; margin-top: 8px;" onclick="document.getElementById('specialistAuthModal').classList.add('hidden')">إلغاء</button>
+<div id="specialistAuthModal" class="custom-modal-overlay hidden">
+    <div class="custom-modal-box">
+        <div class="custom-modal-header">
+            <i class="fas fa-user-shield" style="color: #0d6efd;"></i>
+            <h3>تأكيد هوية المختص</h3>
         </div>
+        <div class="input-group" style="text-align: right;">
+            <label>اختر الإدارة / الفئة (للمختصين فقط):</label>
+            <select id="specAuthDept" style="padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+                <option value="">جاري التحميل...</option>
+            </select>
+        </div>
+        <div class="input-group" style="text-align: right;">
+            <label>كلمة المرور:</label>
+            <input type="password" id="specAuthPassword" placeholder="أدخل كلمة المرور..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
+        </div>
+        <button class="btn-submit-main" style="background: #0d6efd; margin-top: 15px;" onclick="verifySpecPassword()">دخول</button>
+        <button class="custom-modal-btn" style="background: #64748b; margin-top: 8px;" onclick="document.getElementById('specialistAuthModal').classList.add('hidden')">إلغاء</button>
     </div>
+</div>
 
-    <!-- 3. نموذج إضافة موظف جديد -->
-    <section id="addEmployeeSection" class="service-full-page hidden">
-        <div class="watermark-bg">Add Employee</div>
-        <div class="service-card-wrapper">
-            <div class="card-header-row">
-                <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
-                <div class="service-title-area">
-                    <h2>إضافة موظف جديد</h2>
-                    <p id="specCategoryDisplay" style="color: #198754; font-weight: bold;"></p>
-                </div>
+<!-- 3. نموذج إضافة موظف جديد -->
+<section id="addEmployeeSection" class="service-full-page hidden">
+    <div class="watermark-bg">Add Employee</div>
+    <div class="service-card-wrapper">
+        <div class="card-header-row">
+            <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
+            <div class="service-title-area">
+                <h2>إضافة موظف جديد</h2>
+                <p id="specCategoryDisplay" style="color: #198754; font-weight: bold;"></p>
             </div>
+        </div>
 
-            <div style="display: flex; gap: 10px; margin-bottom: 15px; background: #f1f5f9; padding: 10px; border-radius: 8px;">
-                <button class="act-btn btn-warning" onclick="renewBalances()" style="flex: 1;"><i class="fas fa-sync-alt"></i> تصفير عداد الإجازات للفئة</button>
-                <button class="act-btn btn-pd" onclick="loadSpecialistData()" style="flex: 1;"><i class="fas fa-download"></i> تحميل بيانات الفئة</button>
-            </div>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px; background: #f1f5f9; padding: 10px; border-radius: 8px;">
+            <button class="act-btn btn-warning" onclick="renewBalances()" style="flex: 1;"><i class="fas fa-sync-alt"></i> تصفير عداد الإجازات للفئة</button>
+            <button class="act-btn btn-pd" onclick="loadSpecialistData()" style="flex: 1;"><i class="fas fa-download"></i> تحميل بيانات الفئة</button>
+        </div>
 
-            <form id="addEmployeeForm" onsubmit="submitAddEmployee(event)">
-                <input type="hidden" id="hiddenJobCategory">
-                <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="newEmpName" required placeholder="مثال: محمد أحمد علي محمود"></div>
-                <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="newEmpNationalId" maxlength="14" required placeholder="أدخل الرقم القومي"></div>
-                <div class="input-group"><label>تاريخ التعيين:</label><input type="date" id="newEmpHireDate" required></div>
-                <div class="input-group"><label>تاريخ المعاش (اختياري):</label><input type="date" id="newEmpRetireDate"></div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="0" oninput="calcAutoBal()"></div>
-                    <div class="input-group"><label>إجازة عارضة:</label><input type="number" id="newEmpCasual" required value="0" oninput="calcAutoBal()"></div>
-                    <div class="input-group"><label>إجازة مرضية:</label><input type="number" id="newEmpSick" required value="0" oninput="calcAutoBal()"></div>
-                    <div class="input-group">
-                        <label>مرضية بقرار 259:</label>
-                        <select id="newEmpSick259" required onchange="calcAutoBal()">
-                            <option value="لا">لا</option>
-                            <option value="نعم">نعم</option>
-                        </select>
-                    </div>
-                    <div class="input-group"><label>رصيد سنوات سابقة:</label><input type="number" id="newEmpPrevBal" required value="0" oninput="calcAutoBal()"></div>
-                </div>
-                <div class="input-group">
-                    <label>الرصيد الحالي (اعتيادي + عارضة):</label>
-                    <input type="number" id="newEmpCurrentBal" readonly style="background:#e2e8f0; font-weight:bold;" value="0">
-                    <small style="font-size:11px; color:#64748b;">يُحسب الرصيد من مجموع (الاعتيادي + العارضة) فقط</small>
-                </div>
-
-                <button type="submit" id="saveEmployeeBtn" class="btn-submit-main" style="background: #0d6efd;">
-                    <i class="fas fa-save"></i> حفظ وترحيل البيانات
-                </button>
-            </form>
+        <form id="addEmployeeForm" onsubmit="submitAddEmployee(event)">
+            <input type="hidden" id="hiddenJobCategory">
+            <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="newEmpName" required placeholder="مثال: محمد أحمد علي محمود"></div>
+            <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="newEmpNationalId" maxlength="14" required placeholder="أدخل الرقم القومي"></div>
             
-            <div id="specialistDataContainer" style="margin-top: 20px; overflow-x: auto;"></div>
-        </div>
-    </section>
-
-    <!-- 4. نموذج الاستعلام عن الرصيد -->
-    <section id="balanceInquirySection" class="service-full-page hidden">
-        <div class="watermark-bg">Inquiry</div>
-        <div class="service-card-wrapper large">
-            <div class="card-header-row">
-                <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
-                <div class="service-title-area">
-                    <h2>الاستعلام وسجل الإجازات</h2>
-                    <p>ابحث باستخدام اسم المستخدم وكلمة المرور</p>
+            <div class="input-group">
+                <label>تاريخ التعيين:</label>
+                <div class="date-wrapper">
+                    <input type="date" id="newEmpHireDate" required>
+                    <div class="date-placeholder"><i class="far fa-calendar-alt" style="margin-left: 8px;"></i> يوم / شهر / سنة</div>
                 </div>
-            </div>
-
-            <div class="inquiry-login-box" id="empLoginBox">
-                <div class="input-group" style="margin-bottom: 0;">
-                    <input type="text" id="inquiryUsername" placeholder="اسم المستخدم..." style="padding: 12px;">
-                </div>
-                <div class="input-group" style="margin-bottom: 0;">
-                    <input type="password" id="inquiryPassword" placeholder="كلمة المرور..." style="padding: 12px;">
-                </div>
-                <button class="btn-submit-main" id="empLoginBtn" onclick="performEmployeeLogin()" style="margin-top: 0;"><i class="fas fa-sign-in-alt"></i> دخول</button>
-            </div>
-
-            <div id="inquiryResultBox" class="hidden">
-                <h3 style="color: #1a365d; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">بيانات الموظف والرصيد</h3>
-                
-                <div id="inquiryDataContainer" class="inquiry-data-grid"></div>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 15px;">
-                    <h3 style="color: #1a365d; font-size: 15px;">سجل الإجازات السابقة</h3>
-                    <button class="act-btn btn-warning" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> تغيير كلمة المرور</button>
-                </div>
-
-                <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center; flex-wrap: wrap; background: #f1f5f9; padding: 10px; border-radius: 8px;">
-                    <label style="font-size: 12px; font-weight: bold; color: #334155;">تصفية السجلات:</label>
-                    <select id="historyFiscalYear" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;" onchange="filterEmployeeHistory()">
-                        <option value="">كل السنوات</option>
-                    </select>
-                    <input type="date" id="historyFilterStart" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-                    <span>إلى</span>
-                    <input type="date" id="historyFilterEnd" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
-                    <button class="act-btn btn-pd" onclick="filterEmployeeHistory()"><i class="fas fa-filter"></i> تطبيق الفلترة</button>
-                    <button class="act-btn btn-ex" onclick="printHistoryPDF()"><i class="fas fa-print"></i> PDF</button>
-                    <button class="act-btn btn-ex" onclick="exportHistoryExcel()"><i class="fas fa-file-excel"></i> Excel</button>
-                </div>
-
-                <div id="historyContainer" style="max-height: 400px; overflow-y: auto;"></div>
-            </div>
-            <div id="inquiryErrorBox" class="hidden" style="text-align: center; color: #dc3545; padding: 20px; font-weight: bold;">
-                <i class="fas fa-times-circle" style="font-size: 30px; margin-bottom: 10px;"></i>
-                <p>اسم المستخدم أو كلمة المرور غير صحيحة.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- 5. نموذج تقديم طلب الإجازة -->
-    <section id="leaveFormSection" class="service-full-page hidden">
-        <div class="watermark-bg">Leave Request</div>
-        <div class="service-card-wrapper">
-            <div class="card-header-row">
-                <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
-                <div class="service-title-area">
-                    <h2>تقديم طلب إجازة رسمي</h2>
-                    <p>يرجى استيفاء كافة البيانات بدقة حسب الشروط المعتمدة</p>
-                </div>
-            </div>
-
-            <form id="leaveForm" onsubmit="submitLeaveForm(event)">
-                <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="empName" required placeholder="مثال: عبد الرازق محمد أحمد علي" onblur="validateEmployeeData()"></div>
-                <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="empNationalId" maxlength="14" required placeholder="أدخل الرقم القومي" onblur="validateEmployeeData()"></div>
-                <div class="input-group">
-                    <label>إدارة الإجازات:</label>
-                    <select id="empDept" required>
-                        <option value="إدارة الموارد البشرية">إدارة الموارد البشرية</option>
-                        <option value="إدارة الشئون المالية">إدارة الشئون المالية</option>
-                        <option value="إدارة الشئون الإدارية">إدارة الشئون الإدارية</option>
-                        <option value="إدارة الشئون القانونية">إدارة الشئون القانونية</option>
-                        <option value="إدارة الخدمات الطبية">إدارة الخدمات الطبية</option>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label>الفئة الوظيفية:</label>
-                    <select id="empCategory" required>
-                        <option value="تخصصية">تخصصية</option>
-                        <option value="مكتبية">مكتبية</option>
-                        <option value="فنية">فنية</option>
-                        <option value="حرفية وخدمات معاونة">حرفية وخدمات معاونة</option>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label>المسمى الوظيفي للمدير:</label>
-                    <select id="managerTitle" required>
-                        <option value="السيد المهندس /">السيد المهندس /</option>
-                        <option value="السيد المحاسب /">السيد المحاسب /</option>
-                        <option value="السيد الدكتور /">السيد الدكتور /</option>
-                        <option value="السيد الاستاذ /">السيد الاستاذ /</option>
-                        <option value="السيد المحامي /">السيد المحامي /</option>
-                    </select>
-                </div>
-                <div class="input-group"><label>اسم المدير المسؤول (رباعي):</label><input type="text" id="managerName" required placeholder="اكتب اسم المدير رباعياً..."></div>
-                <div class="input-group"><label>رقم التليفون (11 رقم):</label><input type="tel" id="empPhone" maxlength="11" required placeholder="01xxxxxxxx0"></div>
-                <div class="input-group">
-                    <label>نوع الإجازة:</label>
-                    <select id="leaveType" required onchange="toggleDualLeaveInputs()">
-                        <option value="اعتيادية">اعتيادية</option>
-                        <option value="رصيد سنوات سابقة">رصيد سنوات سابقة</option>
-                        <option value="اعتيادية + رصيد سنوات سابقة">اعتيادية + رصيد سنوات سابقة (مدمج)</option>
-                        <option value="عارضة">عارضة</option>
-                        <option value="مرضية">مرضية</option>
-                        <option value="مرضية بقرار 259">مرضية بقرار 259</option>
-                    </select>
-                </div>
-
-                <div id="dualLeaveInputs" class="hidden" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #fffbeb; padding: 10px; border-radius: 8px; border: 1px solid #f59e0b; margin-bottom: 12px;">
-                    <div class="input-group" style="margin-bottom:0;">
-                        <label style="color:#b45309;">عدد أيام الاعتيادي:</label>
-                        <input type="number" id="daysAnnual" min="1" placeholder="مثال: 5">
-                    </div>
-                    <div class="input-group" style="margin-bottom:0;">
-                        <label style="color:#b45309;">عدد أيام رصيد سابق:</label>
-                        <input type="number" id="daysPrev" min="1" placeholder="مثال: 3">
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                        <div class="input-group"><label>من تاريخ:</label><input type="date" id="startDate" required onchange="onStartDateChange()"></div>
-                    <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="endDate" required onchange="calculateDays()"></div>
-                </div>
-                <div class="input-group"><label>إجمالي عدد الأيام:</label><input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;"></div>
-                <div class="input-group"><label>السبب: (لا يقل عن 10 أحرف باللغة العربية ومفهومة)</label><textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة..."></textarea></div>
-
-                <button type="submit" class="btn-submit-main"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
-            </form>
-
-            <div id="leaveResultContainer" class="hidden" style="text-align: center; padding: 16px;">
-                <i class="fas fa-check-circle" style="font-size: 38px; color: #198754; margin-bottom: 10px;"></i>
-                <h3 style="color: #1a365d; font-size: 17px; margin-bottom: 6px; font-weight: 900;">تم تقديم الطلب بنجاح</h3>
-                <p style="color: #64748b; font-size: 12px; margin-bottom: 16px;">تم إرسال الطلب ومعالجته في الشيت بنجاح.</p>
-                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                    <button class="act-btn btn-ex" onclick="printLatestRequest()"><i class="fas fa-print"></i> طباعة الطلب / حفظ PDF</button>
-                    <button class="act-btn btn-pd" onclick="resetLeaveForm()">تقديم طلب جديد</button>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- 6. صفحة تسجيل دخول المديرين -->
-    <section id="managerLoginSection" class="service-full-page hidden">
-        <div class="watermark-bg">Manager Login</div>
-        <div class="service-card-wrapper">
-            <div class="card-header-row">
-                <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
-                <div class="service-title-area">
-                    <h2>صفحة تلقى طلبات الإجازات</h2>
-                    <p>تسجيل دخول المدير أو المسؤول لمتابعة واعتماد الطلبات</p>
-                </div>
-            </div>
-
-            <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
-                <div class="input-group">
-                    <label>اختر الجهة / الإدارة أو الموظف المختص:</label>
-                    <select id="loginDept" required>
-                        <option value="">جاري تحميل الإدارات...</option>
-                    </select>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="input-group"><label>من تاريخ (فلترة اختيارية):</label><input type="date" id="filterStartDate"></div>
-                    <div class="input-group"><label>إلى تاريخ (فلترة اختيارية):</label><input type="date" id="filterEndDate"></div>
-                </div>
-                <div class="input-group">
-                    <label>كلمة المرور:</label>
-                    <input type="password" id="loginPassword" required placeholder="أدخل كلمة المرور...">
-                </div>
-                <button type="submit" id="loginBtn" class="btn-submit-main" style="background: #198754; margin-top: 12px;">الدخول للاعتماد</button>
-            </form>
-        </div>
-    </section>
-
-    <!-- 7. لوحة تحكم الطلبات للمدير/المختص -->
-    <section id="managerDashboardSection" class="service-full-page hidden">
-        <div class="watermark-bg">Dashboard</div>
-        <div class="service-card-wrapper large">
-            <div class="card-header-row">
-                <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> تسجيل الخروج</button>
-                <div class="service-title-area">
-                    <h2 id="dashboardTitle">استعراض طلبات الإجازات</h2>
-                    <p id="welcomeManagerText" style="color: #198754; font-weight: bold; font-size: 12px;"></p>
-                </div>
-            </div>
-            
-            <div style="margin: 10px 0; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
-                <label style="font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 5px; display: block;">البحث بالاسم أو الرقم القومي (اتركه فارغاً لعرض الكل):</label>
-                <div class="input-group" style="margin-bottom: 0; position: relative;">
-                    <input type="text" id="dashSearchInput" placeholder="ابحث هنا..." onkeyup="handleSmartSearch(this.value)" autocomplete="off">
-                    <div id="searchSuggestions" class="suggestions-box"></div>
-                </div>
-            </div>
-
-            <div style="margin: 10px 0; background: #f1f5f9; padding: 10px; border-radius: 8px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-                <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
-                    <span style="font-size: 11px; font-weight: bold; color: #334155;">من:</span> <input type="date" id="dashFilterStart" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
-                    <span style="font-size: 11px; font-weight: bold; color: #334155;">إلى:</span> <input type="date" id="dashFilterEnd" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
-                </div>
-                <button class="act-btn btn-ex" onclick="applyDashboardDateFilter()" style="padding: 5px 12px; font-size: 11px;"><i class="fas fa-filter"></i> تطبيق الفلترة</button>
-                <button class="act-btn btn-secondary" onclick="resetDashboardDateFilter()" style="padding: 5px 10px; font-size: 11px;">إلغاء</button>
-            </div>
-            
-            <div id="bulkPrintArea" class="hidden" style="margin-bottom: 10px; text-align: left;">
-                <button class="act-btn btn-pd" onclick="printSelectedLeaves()" style="padding: 8px 15px; font-size: 12px; width: 100%;"><i class="fas fa-print"></i> طباعة الطلبات المحددة (<span id="selectedCount">0</span>)</button>
-            </div>
-
-            <div id="leavesCardsContainer" style="margin-top: 10px;">
-                <p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">جاري تحميل الطلبات...</p>
-            </div>
-
-            <div class="no-print" style="margin-top: 20px; background: #e0f2fe; padding: 15px; border-radius: 8px; border: 1px solid #7dd3fc;">
-                <h3 style="color: #0369a1; font-size: 15px; margin-bottom: 10px; font-weight: 900;"><i class="fas fa-file-excel"></i> استخراج تقرير تجميعي للإجازات</h3>
-                <p style="font-size: 11px; color: #475569; margin-bottom: 10px;">حدد الفترة الزمنية للحصول على إجمالي أيام الإجازات لكل موظف (مجمع)</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                    <div><label style="font-size: 11px; font-weight: bold; color: #334155;">من تاريخ:</label><input type="date" id="summaryStartDate" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;"></div>
-                    <div><label style="font-size: 11px; font-weight: bold; color: #334155;">إلى تاريخ:</label><input type="date" id="summaryEndDate" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;"></div>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <button class="act-btn btn-ex" onclick="generateSummaryReport()" style="padding: 8px; font-size: 12px;"><i class="fas fa-calculator"></i> عرض التقرير</button>
-                    <button class="act-btn btn-pd" onclick="downloadExcelSummary()" style="padding: 8px; font-size: 12px;"><i class="fas fa-download"></i> تحميل إكسل</button>
-                    <button class="act-btn btn-warning" onclick="printSummaryReportPDF()" style="padding: 8px; font-size: 12px; color:#000; grid-column: span 2;"><i class="fas fa-print"></i> طباعة / حفظ PDF للتقرير</button>
-                </div>
-            </div>
-
-            <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px; overflow-x: auto;">
-                <div style="text-align: center; margin-bottom: 10px;">
-                    <h2 id="summaryReportTitle" style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
-                    <p id="reportPeriodText" style="font-size: 12px; color: #333; margin-bottom: 5px;"></p>
-                </div>
-                <table class="summary-report-table" id="summaryReportTable">
-                    <thead>
-                        <tr>
-                            <th style="width: 5%;">م</th>
-                            <th style="width: 25%;">اسم الموظف</th>
-                            <th style="width: 15%;">الرقم القومي</th>
-                            <th style="width: 10%;">إجازة عارضة</th>
-                            <th style="width: 10%;">إجازة اعتيادية</th>
-                            <th style="width: 10%;">إجازة مرضية</th>
-                            <th style="width: 10%;">مرضية 259</th>
-                            <th style="width: 10%;">المجموع</th>
-                        </tr>
-                    </thead>
-                    <tbody id="summaryReportBody"></tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <!-- مودال تغيير الباسورد -->
-    <div id="changePasswordModal" class="custom-modal-overlay hidden">
-        <div class="custom-modal-box">
-            <div class="custom-modal-header">
-                <i class="fas fa-key" style="color: #f59e0b;"></i>
-                <h3>تغيير كلمة المرور</h3>
             </div>
             <div class="input-group">
-                <label>كلمة المرور الجديدة:</label>
-                <input type="password" id="newPasswordInput" placeholder="أدخل كلمة المرور الجديدة...">
+                <label>تاريخ المعاش (اختياري):</label>
+                <div class="date-wrapper">
+                    <input type="date" id="newEmpRetireDate">
+                    <div class="date-placeholder"><i class="far fa-calendar-alt" style="margin-left: 8px;"></i> يوم / شهر / سنة</div>
+                </div>
             </div>
-            <button class="custom-modal-btn" style="background: #198754;" onclick="submitChangePassword()">حفظ التغييرات</button>
-            <button class="custom-modal-btn" style="background: #64748b; margin-top: 8px;" onclick="document.getElementById('changePasswordModal').classList.add('hidden')">إلغاء</button>
-        </div>
-    </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="0" oninput="calcAutoBal()"></div>
+                <div class="input-group"><label>إجازة عارضة:</label><input type="number" id="newEmpCasual" required value="0" oninput="calcAutoBal()"></div>
+                <div class="input-group"><label>إجازة مرضية:</label><input type="number" id="newEmpSick" required value="0" oninput="calcAutoBal()"></div>
+                <div class="input-group">
+                    <label>مرضية بقرار 259:</label>
+                    <select id="newEmpSick259" required onchange="calcAutoBal()">
+                        <option value="لا">لا</option>
+                        <option value="نعم">نعم</option>
+                    </select>
+                </div>
+                <div class="input-group"><label>رصيد سنوات سابقة:</label><input type="number" id="newEmpPrevBal" required value="0" oninput="calcAutoBal()"></div>
+            </div>
+            <div class="input-group">
+                <label>الرصيد الحالي (اعتيادي + عارضة):</label>
+                <input type="number" id="newEmpCurrentBal" readonly style="background:#e2e8f0; font-weight:bold;" value="0">
+                <small style="font-size:11px; color:#64748b;">يُحسب الرصيد من مجموع (الاعتيادي + العارضة) فقط</small>
+            </div>
 
-    <!-- مودال تأكيد التصفير -->
-    <div id="renewWarningModal" class="custom-modal-overlay hidden">
-        <div class="custom-modal-box">
-            <div class="custom-modal-header">
-                <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
-                <h3>تحذير هام</h3>
-            </div>
-            <div class="custom-modal-body">
-                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك.<br>
-                هل أنت متأكد من المتابعة؟
-            </div>
-            <div class="modal-btn-group">
-                <button class="custom-modal-btn" style="background: #198754;" onclick="proceedToCarryOver()">نعم، متأكد</button>
-                <button class="custom-modal-btn" style="background: #64748b;" onclick="closeRenewModals()">إلغاء</button>
-            </div>
-        </div>
+            <button type="submit" id="saveEmployeeBtn" class="btn-submit-main" style="background: #0d6efd;">
+                <i class="fas fa-save"></i> حفظ وترحيل البيانات
+            </button>
+        </form>
+        
+        <div id="specialistDataContainer" style="margin-top: 20px; overflow-x: auto;"></div>
     </div>
+</section>
 
-    <!-- مودال خيار الترحيل -->
-    <div id="renewCarryOverModal" class="custom-modal-overlay hidden">
-        <div class="custom-modal-box">
-            <div class="custom-modal-header">
-                <i class="fas fa-question-circle" style="color: #0d6efd;"></i>
-                <h3>خيار الترحيل</h3>
-            </div>
-            <div class="custom-modal-body">
-                هل تريد ترحيل <b>الرصيد المتبقي من الإجازة الاعتيادية فقط</b> إلى "رصيد سنوات سابقة"؟<br>
-                <span style="color: #dc3545; font-size: 12px;">(ملاحظة: الإجازة العارضة تُصفَّر ولا تُرحَّل بأي حال).</span>
-            </div>
-            <div class="modal-btn-group">
-                <button class="custom-modal-btn" style="background: #0d6efd;" onclick="executeRenew('نعم')">نعم، رحل المتبقي</button>
-                <button class="custom-modal-btn" style="background: #64748b;" onclick="executeRenew('لا')">لا، بدون ترحيل</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- مودال إجراء المختص -->
-    <div id="specialistActionModal" class="custom-modal-overlay hidden">
-        <div class="custom-modal-box">
-            <div class="custom-modal-header">
-                <i class="fas fa-check-circle" style="color: #198754;"></i>
-                <h3>إجراء المختص</h3>
-            </div>
-            <div class="input-group" style="text-align: right;">
-                <label>ملاحظات / تفاصيل (اختياري):</label>
-                <input type="text" id="specActionReason" placeholder="اكتب ملاحظاتك هنا..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
-            </div>
-            <div class="modal-btn-group">
-                <button class="custom-modal-btn" id="specActionConfirmBtn" style="background: #198754;">تأكيد الإجراء</button>
-                <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('specialistActionModal').classList.add('hidden')">إلغاء</button>
+<!-- 4. نموذج الاستعلام عن الرصيد -->
+<section id="balanceInquirySection" class="service-full-page hidden">
+    <div class="watermark-bg">Inquiry</div>
+    <div class="service-card-wrapper large">
+        <div class="card-header-row">
+            <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
+            <div class="service-title-area">
+                <h2>الاستعلام وسجل الإجازات</h2>
+                <p>ابحث باستخدام اسم المستخدم وكلمة المرور</p>
             </div>
         </div>
-    </div>
 
-<script>
+        <div class="inquiry-login-box" id="empLoginBox">
+            <div class="input-group" style="margin-bottom: 0;">
+                <input type="text" id="inquiryUsername" placeholder="اسم المستخدم..." style="padding: 12px;">
+            </div>
+            <div class="input-group" style="margin-bottom: 0;">
+                <input type="password" id="inquiryPassword" placeholder="كلمة المرور..." style="padding: 12px;">
+            </div>
+            <button class="btn-submit-main" id="empLoginBtn" onclick="performEmployeeLogin()" style="margin-top: 0;"><i class="fas fa-sign-in-alt"></i> دخول</button>
+        </div>
+
+        <div id="inquiryResultBox" class="hidden">
+            <h3 style="color: #1a365d; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">بيانات الموظف والرصيد</h3>
+            
+            <div id="inquiryDataContainer" class="inquiry-data-grid"></div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 15px;">
+                <h3 style="color: #1a365d; font-size: 15px;">سجل الإجازات السابقة</h3>
+                <button class="act-btn btn-warning" onclick="openChangePasswordModal()"><i class="fas fa-key"></i> تغيير كلمة المرور</button>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin: 10px 0; align-items: center; flex-wrap: wrap; background: #f1f5f9; padding: 10px; border-radius: 8px;">
+                <label style="font-size: 12px; font-weight: bold; color: #334155;">تصفية السجلات:</label>
+                <select id="historyFiscalYear" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc;" onchange="filterEmployeeHistory()">
+                    <option value="">كل السنوات</option>
+                </select>
+                
+                <div class="date-wrapper" style="width: 130px;">
+                    <input type="date" id="historyFilterStart" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; font-size: 11px;">
+                    <div class="date-placeholder" style="padding: 5px; font-size: 11px;"><i class="far fa-calendar-alt" style="margin-left: 5px;"></i> من تاريخ</div>
+                </div>
+                <span>إلى</span>
+                <div class="date-wrapper" style="width: 130px;">
+                    <input type="date" id="historyFilterEnd" style="padding: 5px; border-radius: 5px; border: 1px solid #ccc; font-size: 11px;">
+                    <div class="date-placeholder" style="padding: 5px; font-size: 11px;"><i class="far fa-calendar-alt" style="margin-left: 5px;"></i> إلى تاريخ</div>
+                </div>
+                
+                <button class="act-btn btn-pd" onclick="filterEmployeeHistory()"><i class="fas fa-filter"></i> تطبيق الفلترة</button>
+                <button class="act-btn btn-ex" onclick="printHistoryPDF()"><i class="fas fa-print"></i> PDF</button>
+                <button class="act-btn btn-ex" onclick="exportHistoryExcel()"><i class="fas fa-file-excel"></i> Excel</button>
+            </div>
+
+            <div id="historyContainer" style="max-height: 400px; overflow-y: auto;"></div>
+        </div>
+        <div id="inquiryErrorBox" class="hidden" style="text-align: center; color: #dc3545; padding: 20px; font-weight: bold;">
+            <i class="fas fa-times-circle" style="font-size: 30px; margin-bottom: 10px;"></i>
+            <p>اسم المستخدم أو كلمة المرور غير صحيحة.</p>
+        </div>
+    </div>
+</section>
+
+<!-- 5. نموذج تقديم طلب الإجازة -->
+<section id="leaveFormSection" class="service-full-page hidden">
+    <div class="watermark-bg">Leave Request</div>
+    <div class="service-card-wrapper">
+        <div class="card-header-row">
+            <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
+            <div class="service-title-area">
+                <h2>تقديم طلب إجازة رسمي</h2>
+                <p>يرجى استيفاء كافة البيانات بدقة حسب الشروط المعتمدة</p>
+            </div>
+        </div>
+
+        <form id="leaveForm" onsubmit="submitLeaveForm(event)">
+            <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="empName" required placeholder="مثال: عبد الرازق محمد أحمد علي" onblur="validateEmployeeData()"></div>
+            <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="empNationalId" maxlength="14" required placeholder="أدخل الرقم القومي" onblur="validateEmployeeData()"></div>
+            <div class="input-group">
+                <label>إدارة الإجازات:</label>
+                <select id="empDept" required>
+                    <option value="إدارة الموارد البشرية">إدارة الموارد البشرية</option>
+                    <option value="إدارة الشئون المالية">إدارة الشئون المالية</option>
+                    <option value="إدارة الشئون الإدارية">إدارة الشئون الإدارية</option>
+                    <option value="إدارة الشئون القانونية">إدارة الشئون القانونية</option>
+                    <option value="إدارة الخدمات الطبية">إدارة الخدمات الطبية</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>الفئة الوظيفية:</label>
+                <select id="empCategory" required>
+                    <option value="تخصصية">تخصصية</option>
+                    <option value="مكتبية">مكتبية</option>
+                    <option value="فنية">فنية</option>
+                    <option value="حرفية وخدمات معاونة">حرفية وخدمات معاونة</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>المسمى الوظيفي للمدير:</label>
+                <select id="managerTitle" required>
+                    <option value="السيد المهندس /">السيد المهندس /</option>
+                    <option value="السيد المحاسب /">السيد المحاسب /</option>
+                    <option value="السيد الدكتور /">السيد الدكتور /</option>
+                    <option value="السيد الاستاذ /">السيد الاستاذ /</option>
+                                        <option value="السيد المحامي /">السيد المحامي /</option>
+                </select>
+            </div>
+            <div class="input-group"><label>اسم المدير المسؤول (رباعي):</label><input type="text" id="managerName" required placeholder="اكتب اسم المدير رباعياً..."></div>
+            <div class="input-group"><label>رقم التليفون (11 رقم):</label><input type="tel" id="empPhone" maxlength="11" required placeholder="01xxxxxxxx0"></div>
+            <div class="input-group">
+                <label>نوع الإجازة:</label>
+                <select id="leaveType" required onchange="toggleDualLeaveInputs()">
+                    <option value="اعتيادية">اعتيادية</option>
+                    <option value="رصيد سنوات سابقة">رصيد سنوات سابقة</option>
+                    <option value="اعتيادية + رصيد سنوات سابقة">اعتيادية + رصيد سنوات سابقة (مدمج)</option>
+                    <option value="عارضة">عارضة</option>
+                    <option value="مرضية">مرضية</option>
+                    <option value="مرضية بقرار 259">مرضية بقرار 259</option>
+                </select>
+            </div>
+
+            <div id="dualLeaveInputs" class="hidden" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #fffbeb; padding: 10px; border-radius: 8px; border: 1px solid #f59e0b; margin-bottom: 12px;">
+                <div class="input-group" style="margin-bottom:0;">
+                    <label style="color:#b45309;">عدد أيام الاعتيادي:</label>
+                    <input type="number" id="daysAnnual" min="1" placeholder="مثال: 5">
+                </div>
+                <div class="input-group" style="margin-bottom:0;">
+                    <label style="color:#b45309;">عدد أيام رصيد سابق:</label>
+                    <input type="number" id="daysPrev" min="1" placeholder="مثال: 3">
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="input-group">
+                    <label>من تاريخ:</label>
+                    <div class="date-wrapper">
+                        <input type="date" id="startDate" required onchange="onStartDateChange()">
+                        <div class="date-placeholder"><i class="far fa-calendar-alt" style="margin-left: 8px;"></i> يوم / شهر / سنة</div>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>إلى تاريخ:</label>
+                    <div class="date-wrapper">
+                        <input type="date" id="endDate" required onchange="calculateDays()">
+                        <div class="date-placeholder"><i class="far fa-calendar-alt" style="margin-left: 8px;"></i> يوم / شهر / سنة</div>
+                    </div>
+                </div>
+            </div>
+            <div class="input-group"><label>إجمالي عدد الأيام:</label><input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;"></div>
+            <div class="input-group"><label>السبب: (لا يقل عن 10 أحرف باللغة العربية ومفهومة)</label><textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة..."></textarea></div>
+
+            <button type="submit" class="btn-submit-main"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
+        </form>
+
+        <div id="leaveResultContainer" class="hidden" style="text-align: center; padding: 16px;">
+            <i class="fas fa-check-circle" style="font-size: 38px; color: #198754; margin-bottom: 10px;"></i>
+            <h3 style="color: #1a365d; font-size: 17px; margin-bottom: 6px; font-weight: 900;">تم تقديم الطلب بنجاح</h3>
+            <p style="color: #64748b; font-size: 12px; margin-bottom: 16px;">تم إرسال الطلب ومعالجته في الشيت بنجاح.</p>
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                <button class="act-btn btn-ex" onclick="printLatestRequest()"><i class="fas fa-print"></i> طباعة الطلب / حفظ PDF</button>
+                <button class="act-btn btn-pd" onclick="resetLeaveForm()">تقديم طلب جديد</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 6. صفحة تسجيل دخول المديرين -->
+<section id="managerLoginSection" class="service-full-page hidden">
+    <div class="watermark-bg">Manager Login</div>
+    <div class="service-card-wrapper">
+        <div class="card-header-row">
+            <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
+            <div class="service-title-area">
+                <h2>صفحة تلقى طلبات الإجازات</h2>
+                <p>تسجيل دخول المدير أو المسؤول لمتابعة واعتماد الطلبات</p>
+            </div>
+        </div>
+
+        <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
+            <div class="input-group">
+                <label>اختر الجهة / الإدارة أو الموظف المختص:</label>
+                <select id="loginDept" required>
+                    <option value="">جاري تحميل الإدارات...</option>
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="input-group">
+                    <label>من تاريخ (فلترة اختيارية):</label>
+                    <div class="date-wrapper">
+                        <input type="date" id="filterStartDate">
+                        <div class="date-placeholder"><i class="far fa-calendar-alt" style="margin-left: 8px;"></i> يوم / شهر / سنة</div>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>إلى تاريخ (فلترة اختيارية):</label>
+                    <div class="date-wrapper">
+                        <input type="date" id="filterEndDate">
+                        <div class="date-placeholder"><i class="far fa-calendar-alt" style="margin-left: 8px;"></i> يوم / شهر / سنة</div>
+                    </div>
+                </div>
+            </div>
+            <div class="input-group">
+                <label>كلمة المرور:</label>
+                <input type="password" id="loginPassword" required placeholder="أدخل كلمة المرور...">
+            </div>
+            <button type="submit" id="loginBtn" class="btn-submit-main" style="background: #198754; margin-top: 12px;">الدخول للاعتماد</button>
+        </form>
+    </div>
+</section>
+
+<!-- 7. لوحة تحكم الطلبات للمدير/المختص -->
+<section id="managerDashboardSection" class="service-full-page hidden">
+    <div class="watermark-bg">Dashboard</div>
+    <div class="service-card-wrapper large">
+        <div class="card-header-row">
+            <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> تسجيل الخروج</button>
+            <div class="service-title-area">
+                <h2 id="dashboardTitle">استعراض طلبات الإجازات</h2>
+                <p id="welcomeManagerText" style="color: #198754; font-weight: bold; font-size: 12px;"></p>
+            </div>
+        </div>
+        
+        <div style="margin: 10px 0; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
+            <label style="font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 5px; display: block;">البحث بالاسم أو الرقم القومي (اتركه فارغاً لعرض الكل):</label>
+            <div class="input-group" style="margin-bottom: 0; position: relative;">
+                <input type="text" id="dashSearchInput" placeholder="ابحث هنا..." onkeyup="handleSmartSearch(this.value)" autocomplete="off">
+                <div id="searchSuggestions" class="suggestions-box"></div>
+            </div>
+        </div>
+
+        <div style="margin: 10px 0; background: #f1f5f9; padding: 10px; border-radius: 8px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
+                <span style="font-size: 11px; font-weight: bold; color: #334155;">من:</span> 
+                <div class="date-wrapper" style="width: 130px;">
+                    <input type="date" id="dashFilterStart" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    <div class="date-placeholder" style="padding: 4px; font-size: 11px;">من تاريخ</div>
+                </div>
+                <span style="font-size: 11px; font-weight: bold; color: #334155;">إلى:</span> 
+                <div class="date-wrapper" style="width: 130px;">
+                    <input type="date" id="dashFilterEnd" style="padding: 4px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                    <div class="date-placeholder" style="padding: 4px; font-size: 11px;">إلى تاريخ</div>
+                </div>
+            </div>
+            <button class="act-btn btn-ex" onclick="applyDashboardDateFilter()" style="padding: 5px 12px; font-size: 11px;"><i class="fas fa-filter"></i> تطبيق الفلترة</button>
+            <button class="act-btn btn-secondary" onclick="resetDashboardDateFilter()" style="padding: 5px 10px; font-size: 11px;">إلغاء</button>
+        </div>
+        
+        <div id="bulkPrintArea" class="hidden" style="margin-bottom: 10px; text-align: left;">
+            <button class="act-btn btn-pd" onclick="printSelectedLeaves()" style="padding: 8px 15px; font-size: 12px; width: 100%;"><i class="fas fa-print"></i> طباعة الطلبات المحددة (<span id="selectedCount">0</span>)</button>
+        </div>
+
+        <div id="leavesCardsContainer" style="margin-top: 10px;">
+            <p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">جاري تحميل الطلبات...</p>
+        </div>
+
+        <div class="no-print" style="margin-top: 20px; background: #e0f2fe; padding: 15px; border-radius: 8px; border: 1px solid #7dd3fc;">
+            <h3 style="color: #0369a1; font-size: 15px; margin-bottom: 10px; font-weight: 900;"><i class="fas fa-file-excel"></i> استخراج تقرير تجميعي للإجازات</h3>
+            <p style="font-size: 11px; color: #475569; margin-bottom: 10px;">حدد الفترة الزمنية للحصول على إجمالي أيام الإجازات لكل موظف (مجمع)</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                <div>
+                    <label style="font-size: 11px; font-weight: bold; color: #334155;">من تاريخ:</label>
+                    <div class="date-wrapper">
+                        <input type="date" id="summaryStartDate" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">
+                        <div class="date-placeholder" style="padding: 6px; font-size: 12px;"><i class="far fa-calendar-alt" style="margin-left: 5px;"></i> يوم / شهر / سنة</div>
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size: 11px; font-weight: bold; color: #334155;">إلى تاريخ:</label>
+                    <div class="date-wrapper">
+                        <input type="date" id="summaryEndDate" style="width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">
+                        <div class="date-placeholder" style="padding: 6px; font-size: 12px;"><i class="far fa-calendar-alt" style="margin-left: 5px;"></i> يوم / شهر / سنة</div>
+                    </div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button class="act-btn btn-ex" onclick="generateSummaryReport()" style="padding: 8px; font-size: 12px;"><i class="fas fa-calculator"></i> عرض التقرير</button>
+                <button class="act-btn btn-pd" onclick="downloadExcelSummary()" style="padding: 8px; font-size: 12px;"><i class="fas fa-download"></i> تحميل إكسل</button>
+                <button class="act-btn btn-warning" onclick="printSummaryReportPDF()" style="padding: 8px; font-size: 12px; color:#000; grid-column: span 2;"><i class="fas fa-print"></i> طباعة / حفظ PDF للتقرير</button>
+            </div>
+        </div>
+
+        <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px; overflow-x: auto;">
+            <div style="text-align: center; margin-bottom: 10px;">
+                <h2 id="summaryReportTitle" style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
+                <p id="reportPeriodText" style="font-size: 12px; color: #333; margin-bottom: 5px;"></p>
+            </div>
+            <table class="summary-report-table" id="summaryReportTable">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">م</th>
+                        <th style="width: 25%;">اسم الموظف</th>
+                        <th style="width: 15%;">الرقم القومي</th>
+                        <th style="width: 10%;">إجازة عارضة</th>
+                        <th style="width: 10%;">إجازة اعتيادية</th>
+                        <th style="width: 10%;">إجازة مرضية</th>
+                        <th style="width: 10%;">مرضية 259</th>
+                        <th style="width: 10%;">المجموع</th>
+                    </tr>
+                </thead>
+                <tbody id="summaryReportBody"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- مودال تغيير الباسورد -->
+<div id="changePasswordModal" class="custom-modal-overlay hidden">
+    <div class="custom-modal-box">
+        <div class="custom-modal-header">
+            <i class="fas fa-key" style="color: #f59e0b;"></i>
+            <h3>تغيير كلمة المرور</h3>
+        </div>
+        <div class="input-group">
+            <label>كلمة المرور الجديدة:</label>
+            <input type="password" id="newPasswordInput" placeholder="أدخل كلمة المرور الجديدة...">
+        </div>
+        <button class="custom-modal-btn" style="background: #198754;" onclick="submitChangePassword()">حفظ التغييرات</button>
+        <button class="custom-modal-btn" style="background: #64748b; margin-top: 8px;" onclick="document.getElementById('changePasswordModal').classList.add('hidden')">إلغاء</button>
+    </div>
+</div>
+
+<!-- مودال تأكيد التصفير -->
+<div id="renewWarningModal" class="custom-modal-overlay hidden">
+    <div class="custom-modal-box">
+        <div class="custom-modal-header">
+            <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
+            <h3>تحذير هام</h3>
+        </div>
+        <div class="custom-modal-body">
+            سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك.<br>
+            هل أنت متأكد من المتابعة؟
+        </div>
+        <div class="modal-btn-group">
+            <button class="custom-modal-btn" style="background: #198754;" onclick="proceedToCarryOver()">نعم، متأكد</button>
+            <button class="custom-modal-btn" style="background: #64748b;" onclick="closeRenewModals()">إلغاء</button>
+        </div>
+    </div>
+</div>
+
+<!-- مودال خيار الترحيل -->
+<div id="renewCarryOverModal" class="custom-modal-overlay hidden">
+    <div class="custom-modal-box">
+        <div class="custom-modal-header">
+            <i class="fas fa-question-circle" style="color: #0d6efd;"></i>
+            <h3>خيار الترحيل</h3>
+        </div>
+        <div class="custom-modal-body">
+            هل تريد ترحيل <b>الرصيد المتبقي من الإجازة الاعتيادية فقط</b> إلى "رصيد سنوات سابقة"؟<br>
+            <span style="color: #dc3545; font-size: 12px;">(ملاحظة: الإجازة العارضة تُصفَّر ولا تُرحَّل بأي حال).</span>
+        </div>
+        <div class="modal-btn-group">
+            <button class="custom-modal-btn" style="background: #0d6efd;" onclick="executeRenew('نعم')">نعم، رحل المتبقي</button>
+            <button class="custom-modal-btn" style="background: #64748b;" onclick="executeRenew('لا')">لا، بدون ترحيل</button>
+        </div>
+    </div>
+</div>
+
+<!-- مودال إجراء المختص -->
+<div id="specialistActionModal" class="custom-modal-overlay hidden">
+    <div class="custom-modal-box">
+        <div class="custom-modal-header">
+            <i class="fas fa-check-circle" style="color: #198754;"></i>
+            <h3>إجراء المختص</h3>
+        </div>
+        <div class="input-group" style="text-align: right;">
+            <label>ملاحظات / تفاصيل (اختياري):</label>
+            <input type="text" id="specActionReason" placeholder="اكتب ملاحظاتك هنا..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
+        </div>
+        <div class="modal-btn-group">
+            <button class="custom-modal-btn" id="specActionConfirmBtn" style="background: #198754;">تأكيد الإجراء</button>
+            <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('specialistActionModal').classList.add('hidden')">إلغاء</button>
+        </div>
+    </div>
+</div>
+    
+        <script>
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxOiHNWTYk06p-AjRM43gEaWdyX7_J0qjtLg_O75R5An5Mbg0oWvs_GL3Ptr5ClqvM4/exec";
     
     var loggedInRole = "";
@@ -598,14 +702,9 @@
         "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
     ];
 
-    /**
-     * تنسيق تاريخ ISO (YYYY-MM-DD) إلى الصيغة العربية "يوم / شهر / سنة"
-     * مثال: 2026-11-02  ->  2 / نوفمبر / 2026
-     */
     function formatArabicDate(isoDate) {
         if (!isoDate) return "";
         let str = isoDate.toString().trim();
-        // دعم القيم التي قد تأتي كـ Date ISO كامل (2026-11-02T00:00:00.000Z)
         if (str.includes("T")) str = str.split("T")[0];
         let parts = str.split("-");
         if (parts.length !== 3) return isoDate;
@@ -617,9 +716,6 @@
         return day + " / " + monthName + " / " + year;
     }
 
-    /**
-     * تنسيق تاريخ كامل مع الوقت (يستخدم في تواريخ الرفض)
-     */
     function formatArabicDateTime(value) {
         if (!value) return "";
         let str = value.toString().trim();
@@ -629,22 +725,12 @@
         return timePart ? formatted + " - " + timePart : formatted;
     }
 
-    /**
-     * تنسيق تاريخ اليوم الحالي بالعربية
-     */
     function todayArabic() {
         let d = new Date();
         let y = d.getFullYear();
         let m = String(d.getMonth() + 1).padStart(2, "0");
         let day = String(d.getDate()).padStart(2, "0");
         return formatArabicDate(y + "-" + m + "-" + day);
-    }
-
-    /**
-     * تنسيق فترة (من - إلى) بالعربية
-     */
-    function formatArabicPeriod(startDate, endDate) {
-        return "من: " + formatArabicDate(startDate) + "  إلى: " + formatArabicDate(endDate);
     }
     // ====================================================================
 
@@ -893,67 +979,67 @@
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
             if (res.status === "success") {
                 showCustomAlert("تم بنجاح", res.message);
-            } else {
-                showCustomAlert("خطأ", res.message);
-            }
-        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
-    }
+                        } else {
+            showCustomAlert("خطأ", res.message);
+        }
+    }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+}
 
-    function loadSpecialistData() {
-        let cat = document.getElementById("hiddenJobCategory").value;
-        if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
-        
-        document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#64748b;">جاري تحميل البيانات...</p>';
-        
-        fetch(LEAVE_SCRIPT_URL + `?action=get_all_employees_by_category&category=${encodeURIComponent(cat)}`).then(res => res.json()).then(res => {
-            if (res.status === "success" && res.data) {
-                currentEmployeesList = res.data;
-                let html = `
-                    <div style="display:flex; gap:8px; margin-bottom:10px; justify-content:flex-start;">
-                        <button class="act-btn btn-ex" onclick="exportSpecialistExcel('${cat}')"><i class="fas fa-file-excel"></i> تحميل Excel</button>
-                        <button class="act-btn btn-danger" onclick="printSpecialistPDF('${cat}')"><i class="fas fa-file-pdf"></i> تحميل PDF / طباعة</button>
-                    </div>
-                    <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
-                    <table class="summary-report-table"><thead><tr>
-                        <th>م</th>
-                        <th>الاسم</th><th>الرقم القومي</th>
-                        <th>الاعتيادي</th><th>العارضة</th>
-                        <th>المرضية</th><th>مرضية 259</th>
-                        <th>رصيد سنوات سابقة</th><th>المتبقي</th>
-                    </tr></thead><tbody>`;
-                res.data.forEach((emp, idx) => {
-                    html += `<tr>
-                        <td>${idx + 1}</td>
-                        <td style="text-align:right; font-weight:bold;">${emp.name}</td>
-                        <td>${emp.nationalId}</td>
-                        <td>${emp.annual}</td>
-                        <td>${emp.casual}</td>
-                        <td>${emp.sick || 0}</td>
-                        <td>${emp.sick259 || 'لا'}</td>
-                        <td>${emp.prevBal || 0}</td>
-                        <td style="font-weight:bold; background:#f0fdf4;">${emp.remainingBal}</td>
-                    </tr>`;
-                });
-                html += `</tbody></table></div>`;
-                document.getElementById("specialistDataContainer").innerHTML = html;
-            } else {
-                document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#dc3545;">لا توجد بيانات متاحة لهذه الفئة.</p>';
-            }
-        }).catch(() => {
-            document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#dc3545;">تعذر تحميل البيانات.</p>';
-        });
-    }
+function loadSpecialistData() {
+    let cat = document.getElementById("hiddenJobCategory").value;
+    if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
+    
+    document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#64748b;">جاري تحميل البيانات...</p>';
+    
+    fetch(LEAVE_SCRIPT_URL + `?action=get_all_employees_by_category&category=${encodeURIComponent(cat)}`).then(res => res.json()).then(res => {
+        if (res.status === "success" && res.data) {
+            currentEmployeesList = res.data;
+            let html = `
+                <div style="display:flex; gap:8px; margin-bottom:10px; justify-content:flex-start;">
+                    <button class="act-btn btn-ex" onclick="exportSpecialistExcel('${cat}')"><i class="fas fa-file-excel"></i> تحميل Excel</button>
+                    <button class="act-btn btn-danger" onclick="printSpecialistPDF('${cat}')"><i class="fas fa-file-pdf"></i> تحميل PDF / طباعة</button>
+                </div>
+                <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
+                <table class="summary-report-table"><thead><tr>
+                    <th>م</th>
+                    <th>الاسم</th><th>الرقم القومي</th>
+                    <th>الاعتيادي</th><th>العارضة</th>
+                    <th>المرضية</th><th>مرضية 259</th>
+                    <th>رصيد سنوات سابقة</th><th>المتبقي</th>
+                </tr></thead><tbody>`;
+            res.data.forEach((emp, idx) => {
+                html += `<tr>
+                    <td>${idx + 1}</td>
+                    <td style="text-align:right; font-weight:bold;">${emp.name}</td>
+                    <td>${emp.nationalId}</td>
+                    <td>${emp.annual}</td>
+                    <td>${emp.casual}</td>
+                    <td>${emp.sick || 0}</td>
+                    <td>${emp.sick259 || 'لا'}</td>
+                    <td>${emp.prevBal || 0}</td>
+                    <td style="font-weight:bold; background:#f0fdf4;">${emp.remainingBal}</td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            document.getElementById("specialistDataContainer").innerHTML = html;
+        } else {
+            document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#dc3545;">لا توجد بيانات متاحة لهذه الفئة.</p>';
+        }
+    }).catch(() => {
+        document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#dc3545;">تعذر تحميل البيانات.</p>';
+    });
+}
 
-    function exportSpecialistExcel(cat) {
-        let table = document.querySelector("#specialistDataContainer table");
-        if (!table) return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها.");
-        let wb = XLSX.utils.book_new();
-        let ws = XLSX.utils.table_to_sheet(table);
-        XLSX.utils.book_append_sheet(wb, ws, "بيانات الفئة");
-        XLSX.writeFile(wb, `بيانات_فئة_${cat}.xlsx`);
-    }
+function exportSpecialistExcel(cat) {
+    let table = document.querySelector("#specialistDataContainer table");
+    if (!table) return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها.");
+    let wb = XLSX.utils.book_new();
+    let ws = XLSX.utils.table_to_sheet(table);
+    XLSX.utils.book_append_sheet(wb, ws, "بيانات الفئة");
+    XLSX.writeFile(wb, `بيانات_فئة_${cat}.xlsx`);
+}
 
-    function printSpecialistPDF(cat) {
+function printSpecialistPDF(cat) {
     let tableHtml = document.querySelector("#specialistDataContainer table");
     if (!tableHtml) return showCustomAlert("تنبيه", "لا توجد بيانات لطباعتها.");
     let win = window.open('', '_blank');
@@ -1063,7 +1149,6 @@ function populateFiscalYears(data) {
     });
 }
 
-// تنسيق التواريخ في جدول سجل الإجازات بالعربية
 function renderHistoryTable(data) {
     let html = `<table class="summary-report-table"><thead><tr><th>الطلب</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th><th>الحالة النهائية</th></tr></thead><tbody>`;
     if(data.length === 0) {
@@ -1499,7 +1584,6 @@ function toggleLeaveSelection(requestId) {
     }
 }
 
-// تنسيق التواريخ داخل كروت الطلبات بالعربية
 function renderLeavesCards(dataList) {
     let container = document.getElementById("leavesCardsContainer");
     if (!dataList || dataList.length === 0) {
@@ -1545,58 +1629,58 @@ function renderLeavesCards(dataList) {
             <p style="position:relative; z-index:1;"><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
             ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
             
-            <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
-                ${loggedInRole === 'hr_specialist' ? `
-                    ${item.specialistStatus === "قيد الانتظار" ? `
-                        <button class="act-btn btn-ex" onclick="openSpecialistActionModal(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
-                        <button class="act-btn btn-danger" onclick="openSpecialistActionModal(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
-                    ` : ''}
-                    ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
-                        <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
-                    ` : ''}
-                ` : `
-                    ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
-                        <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
-                        <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
-                    ` : ''}
-                    ${item.managerStatus === "مرفوض من المدير" ? `
-                        <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
-                        <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
-                    ` : ''}
-                `}
-                <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
-            </div>
-        </div>`;
-    });
-    container.innerHTML = html;
-}
+                            <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
+                    ${loggedInRole === 'hr_specialist' ? `
+                        ${item.specialistStatus === "قيد الانتظار" ? `
+                            <button class="act-btn btn-ex" onclick="openSpecialistActionModal(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
+                            <button class="act-btn btn-danger" onclick="openSpecialistActionModal(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
+                        ` : ''}
+                        ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
+                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
+                        ` : ''}
+                    ` : `
+                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
+                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
+                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
+                        ` : ''}
+                        ${item.managerStatus === "مرفوض من المدير" ? `
+                            <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
+                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
+                        ` : ''}
+                    `}
+                    <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    }
 
-function openSpecialistActionModal(rowIndex, statusType, defaultText) {
-    currentSpecActionRow = rowIndex;
-    currentSpecActionStatus = statusType;
-    document.getElementById("specActionReason").value = defaultText;
-    document.getElementById("specialistActionModal").classList.remove("hidden");
-}
+    function openSpecialistActionModal(rowIndex, statusType, defaultText) {
+        currentSpecActionRow = rowIndex;
+        currentSpecActionStatus = statusType;
+        document.getElementById("specActionReason").value = defaultText;
+        document.getElementById("specialistActionModal").classList.remove("hidden");
+    }
 
-document.getElementById("specActionConfirmBtn").onclick = function() {
-    let reason = document.getElementById("specActionReason").value;
-    document.getElementById("specialistActionModal").classList.add("hidden");
-    
-    let formData = new URLSearchParams({
-        action: "update_leave_action", rowIndex: currentSpecActionRow, status: currentSpecActionStatus, reason: reason, role: "hr_specialist"
-    });
+    document.getElementById("specActionConfirmBtn").onclick = function() {
+        let reason = document.getElementById("specActionReason").value;
+        document.getElementById("specialistActionModal").classList.add("hidden");
+        
+        let formData = new URLSearchParams({
+            action: "update_leave_action", rowIndex: currentSpecActionRow, status: currentSpecActionStatus, reason: reason, role: "hr_specialist"
+        });
 
-    fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-    .then(res => res.json())
-    .then(res => {
-        if (res.status === "success") {
-            showCustomAlert("تم بنجاح", "تم تسجيل الإجراء وإرسال إشعار بريدي.");
-            loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
-        } else {
-            showCustomAlert("خطأ", res.message);
-        }
-    }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
-};
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", "تم تسجيل الإجراء وإرسال إشعار بريدي.");
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
+            } else {
+                showCustomAlert("خطأ", res.message);
+            }
+        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+    };
 
     function processAction(rowIndex, status, defaultReason, role) {
         let formData = new URLSearchParams({
@@ -1669,7 +1753,6 @@ document.getElementById("specActionConfirmBtn").onclick = function() {
         return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
     }
 
-    // طباعة طلب إجازة واحد - مع تنسيق التواريخ بالعربية
     function openPrintWindow(item) {
         let printWindow = window.open('', '_blank');
         
@@ -1742,7 +1825,6 @@ document.getElementById("specActionConfirmBtn").onclick = function() {
         printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
     }
 
-    // طباعة عدة طلبات محددة - مع تنسيق التواريخ بالعربية
     function printSelectedLeaves() {
         let itemsToPrint = filteredLeavesData.filter(item => selectedLeaveIds.has(item.requestId));
         if(itemsToPrint.length === 0) return;
@@ -1842,22 +1924,22 @@ document.getElementById("specActionConfirmBtn").onclick = function() {
         let todayStr = new Date().toISOString().split('T')[0];
         document.getElementById("startDate").min = todayStr;
         document.getElementById("endDate").min = todayStr;
+        
+        // إجبار المتصفح على تحديث حالة الحقول لتعود للشكل الفارغ
+        document.getElementById("startDate").value = "";
+        document.getElementById("endDate").value = "";
     }
 
     // ============================================================
     // التقرير التجميعي - مع عنوان ديناميكي حسب الفئة/الإدارة
     // ============================================================
     function getDynamicReportTitle() {
-        // إذا كان المستخدم مختصاً -> يعرض اسم الفئة
-        // مثال: "تقرير الإجازات الشهري للفئة التخصصية"
         if (loggedInRole === "hr_specialist" && currentCategoryName) {
             return "تقرير الإجازات الشهري للفئة " + currentCategoryName;
         }
-        // إذا كان مديراً -> يعرض اسم الإدارة
         if (currentDeptOrCat) {
             return "تقرير الإجازات الشهري لـ " + currentDeptOrCat;
         }
-        // الحالة الافتراضية
         return "تقرير تجميعي لبيانات الإجازات";
     }
 
@@ -1948,13 +2030,11 @@ document.getElementById("specActionConfirmBtn").onclick = function() {
 
         tbody.innerHTML = rowsHtml;
         
-        // تطبيق العنوان الديناميكي
         let dynamicTitle = getDynamicReportTitle();
         document.getElementById("summaryReportTitle").innerText = dynamicTitle;
         document.getElementById("reportPeriodText").innerText = `عن الفترة من: ${formatArabicDate(sDate)} إلى: ${formatArabicDate(eDate)}`;
         document.getElementById("printableSummaryArea").style.display = "block";
 
-        // تجهيز بيانات الإكسل مع العنوان الديناميكي
         summaryDataForExcel = [
             [dynamicTitle],
             [`عن الفترة من: ${formatArabicDate(sDate)} إلى: ${formatArabicDate(eDate)}`],
@@ -2034,3 +2114,4 @@ document.getElementById("specActionConfirmBtn").onclick = function() {
 </script>
 </body>
 </html>
+            
