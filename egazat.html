@@ -56,12 +56,12 @@
         
         /* تنسيق لضمان ظهور صيغة التاريخ العربي (يوم / شهر / سنة) */
         input[type="date"] { direction: rtl; text-align: right; }
-        input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; }
+        input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; flex-direction: row-reverse; }
         input[type="date"]::-webkit-datetime-edit { flex: 1; }
-        input[type="date"]::-webkit-datetime-edit-year-field { order: 1; }
+        input[type="date"]::-webkit-datetime-edit-year-field { order: 3; }
         input[type="date"]::-webkit-datetime-edit-month-field { order: 2; }
-        input[type="date"]::-webkit-datetime-edit-day-field { order: 3; }
-        input[type="date"]::-webkit-datetime-edit-text { padding: 0 0.2em; }
+        input[type="date"]::-webkit-datetime-edit-day-field { order: 1; }
+        input[type="date"]::-webkit-datetime-edit-text { padding: 0 0.2em; order: 2; }
 
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: #198754; background: #fff; }
         
@@ -375,7 +375,7 @@
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="input-group"><label>من تاريخ:</label><input type="date" id="startDate" required onchange="onStartDateChange()"></div>
+                                        <div class="input-group"><label>من تاريخ:</label><input type="date" id="startDate" required onchange="onStartDateChange()"></div>
                     <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="endDate" required onchange="calculateDays()"></div>
                 </div>
                 <div class="input-group"><label>إجمالي عدد الأيام:</label><input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;"></div>
@@ -481,7 +481,7 @@
 
             <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px; overflow-x: auto;">
                 <div style="text-align: center; margin-bottom: 10px;">
-                    <h2 style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
+                    <h2 id="summaryReportTitle" style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
                     <p id="reportPeriodText" style="font-size: 12px; color: #333; margin-bottom: 5px;"></p>
                 </div>
                 <table class="summary-report-table" id="summaryReportTable">
@@ -591,6 +591,62 @@
     var summaryDataForExcel = [];
     var currentSpecActionRow = null;
     var currentSpecActionStatus = "";
+
+    // ========== دوال تنسيق التاريخ العربي (يوم / شهر / سنة) ==========
+    const ARABIC_MONTHS = [
+        "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+        "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+    ];
+
+    /**
+     * تنسيق تاريخ ISO (YYYY-MM-DD) إلى الصيغة العربية "يوم / شهر / سنة"
+     * مثال: 2026-11-02  ->  2 / نوفمبر / 2026
+     */
+    function formatArabicDate(isoDate) {
+        if (!isoDate) return "";
+        let str = isoDate.toString().trim();
+        // دعم القيم التي قد تأتي كـ Date ISO كامل (2026-11-02T00:00:00.000Z)
+        if (str.includes("T")) str = str.split("T")[0];
+        let parts = str.split("-");
+        if (parts.length !== 3) return isoDate;
+        let year = parts[0];
+        let month = parseInt(parts[1], 10);
+        let day = parseInt(parts[2], 10);
+        if (isNaN(month) || isNaN(day) || month < 1 || month > 12) return isoDate;
+        let monthName = ARABIC_MONTHS[month - 1];
+        return day + " / " + monthName + " / " + year;
+    }
+
+    /**
+     * تنسيق تاريخ كامل مع الوقت (يستخدم في تواريخ الرفض)
+     */
+    function formatArabicDateTime(value) {
+        if (!value) return "";
+        let str = value.toString().trim();
+        let datePart = str.split(" ")[0];
+        let timePart = str.split(" ")[1] || "";
+        let formatted = formatArabicDate(datePart);
+        return timePart ? formatted + " - " + timePart : formatted;
+    }
+
+    /**
+     * تنسيق تاريخ اليوم الحالي بالعربية
+     */
+    function todayArabic() {
+        let d = new Date();
+        let y = d.getFullYear();
+        let m = String(d.getMonth() + 1).padStart(2, "0");
+        let day = String(d.getDate()).padStart(2, "0");
+        return formatArabicDate(y + "-" + m + "-" + day);
+    }
+
+    /**
+     * تنسيق فترة (من - إلى) بالعربية
+     */
+    function formatArabicPeriod(startDate, endDate) {
+        return "من: " + formatArabicDate(startDate) + "  إلى: " + formatArabicDate(endDate);
+    }
+    // ====================================================================
 
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
     function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله'); }
@@ -898,639 +954,649 @@
     }
 
     function printSpecialistPDF(cat) {
-        let tableHtml = document.querySelector("#specialistDataContainer table");
-        if (!tableHtml) return showCustomAlert("تنبيه", "لا توجد بيانات لطباعتها.");
-        let win = window.open('', '_blank');
-        win.document.write(`
-            <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-            <title>تقرير الفئة ${cat}</title>
-            <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-            <style>
-                body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
-                h2{text-align:center; color:#1a365d;}
-                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
-                th,td{border:1px solid #333; padding:6px; text-align:center;}
-                th{background:#1e293b; color:#fff;}
-                tr:nth-child(even){background:#f1f5f9;}
-                .header{text-align:center; margin-bottom:15px;}
-            </style></head><body>
-            <div class="header">
-                <h2>الهيئة العامة للسد العالي وخزان أسوان</h2>
-                <h3>تقرير بيانات الفئة: ${cat}</h3>
-                <p>تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
-            </div>
-            ${tableHtml.outerHTML}
-            </body></html>
-        `);
-        win.document.close();
-        setTimeout(() => { win.focus(); win.print(); }, 500);
-    }
+    let tableHtml = document.querySelector("#specialistDataContainer table");
+    if (!tableHtml) return showCustomAlert("تنبيه", "لا توجد بيانات لطباعتها.");
+    let win = window.open('', '_blank');
+    win.document.write(`
+        <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+        <title>تقرير الفئة ${cat}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+        <style>
+            body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
+            h2{text-align:center; color:#1a365d;}
+            table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
+            th,td{border:1px solid #333; padding:6px; text-align:center;}
+            th{background:#1e293b; color:#fff;}
+            tr:nth-child(even){background:#f1f5f9;}
+            .header{text-align:center; margin-bottom:15px;}
+        </style></head><body>
+        <div class="header">
+            <h2>الهيئة العامة للسد العالي وخزان أسوان</h2>
+            <h3>تقرير بيانات الفئة: ${cat}</h3>
+            <p>تاريخ الطباعة: ${todayArabic()}</p>
+        </div>
+        ${tableHtml.outerHTML}
+        </body></html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.focus(); win.print(); }, 500);
+}
 
-    function performEmployeeLogin() {
-        let username = document.getElementById("inquiryUsername").value.trim();
-        let password = document.getElementById("inquiryPassword").value.trim();
-        if (!username || !password) return showCustomAlert("تنبيه", "أدخل اسم المستخدم وكلمة المرور.");
+function performEmployeeLogin() {
+    let username = document.getElementById("inquiryUsername").value.trim();
+    let password = document.getElementById("inquiryPassword").value.trim();
+    if (!username || !password) return showCustomAlert("تنبيه", "أدخل اسم المستخدم وكلمة المرور.");
 
-        let btn = document.getElementById("empLoginBtn");
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
-        btn.disabled = true;
+    let btn = document.getElementById("empLoginBtn");
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+    btn.disabled = true;
 
-        fetch(LEAVE_SCRIPT_URL + `?action=employee_login_inquiry&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`)
-        .then(res => res.json())
-        .then(res => {
-            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-            btn.disabled = false;
-            if (res.status === "success" && res.data) {
-                let emp = res.data;
-                currentInquiryNationalId = emp.nationalId;
-                currentInquiryName = emp.name;
-                
-                let computedRemaining = (parseFloat(emp.annual)||0) + (parseFloat(emp.casual)||0) + (parseFloat(emp.prevBal)||0);
-                let remainingToShow = (emp.remainingBal !== undefined && emp.remainingBal !== null && emp.remainingBal !== '')
-                    ? emp.remainingBal : computedRemaining;
-                
-                document.getElementById("inquiryDataContainer").innerHTML = `
-                    <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${emp.name}</div>
-                    <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${emp.nationalId}</div>
-                    <div class="inquiry-data-item"><strong>الفئة:</strong> ${emp.jobCategory}</div>
-                    <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${emp.annual}</span></div>
-                    <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${emp.casual}</span></div>
-                    <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${emp.sick || 0}</span></div>
-                    <div class="inquiry-data-item"><strong>مرضية 259:</strong> <span>${emp.sick259 || 'لا'}</span></div>
-                    <div class="inquiry-data-item"><strong>رصيد سنوات سابقة:</strong> <span>${emp.prevBal || 0}</span></div>
-                    <div class="inquiry-data-item" style="grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي (اعتيادي + عارضة + سنوات سابقة):</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${remainingToShow}</span></div>
-                `;
-                document.getElementById("inquiryResultBox").classList.remove("hidden");
-                document.getElementById("inquiryErrorBox").classList.add("hidden");
-                document.getElementById("empLoginBox").classList.add("hidden");
-                loadEmployeeHistory(emp.nationalId);
-            } else {
-                document.getElementById("inquiryResultBox").classList.add("hidden");
-                document.getElementById("inquiryErrorBox").classList.remove("hidden");
-            }
-        }).catch(() => {
-            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-            btn.disabled = false;
-            showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
-        });
-    }
-
-    function loadEmployeeHistory(nid) {
-        fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nid}`).then(res => res.json()).then(res => {
-            if (res.status === "success") { 
-                currentInquiryHistory = res.data; 
-                populateFiscalYears(currentInquiryHistory);
-                renderHistoryTable(currentInquiryHistory); 
-            }
-        }).catch(() => {});
-    }
-
-    function populateFiscalYears(data) {
-        let yearSelect = document.getElementById("historyFiscalYear");
-        let currentYear = new Date().getFullYear();
-        let years = new Set();
-        years.add(currentYear.toString());
-        years.add((currentYear - 1).toString());
-        data.forEach(item => {
-            if (item.startDate) {
-                let d = new Date(item.startDate);
-                if (!isNaN(d.getFullYear())) years.add(d.getFullYear().toString());
-            }
-        });
-        let sortedYears = Array.from(years).sort((a, b) => b - a);
-        yearSelect.innerHTML = '<option value="">كل السنوات</option>';
-        sortedYears.forEach(y => {
-            let opt = document.createElement("option");
-            opt.value = y;
-            opt.textContent = y;
-            yearSelect.appendChild(opt);
-        });
-    }
-
-    function renderHistoryTable(data) {
-        let html = `<table class="summary-report-table"><thead><tr><th>الطلب</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th><th>الحالة النهائية</th></tr></thead><tbody>`;
-        if(data.length === 0) {
-            html += `<tr><td colspan="6">لا توجد إجازات سابقة</td></tr>`;
+    fetch(LEAVE_SCRIPT_URL + `?action=employee_login_inquiry&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`)
+    .then(res => res.json())
+    .then(res => {
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+        btn.disabled = false;
+        if (res.status === "success" && res.data) {
+            let emp = res.data;
+            currentInquiryNationalId = emp.nationalId;
+            currentInquiryName = emp.name;
+            
+            let computedRemaining = (parseFloat(emp.annual)||0) + (parseFloat(emp.casual)||0) + (parseFloat(emp.prevBal)||0);
+            let remainingToShow = (emp.remainingBal !== undefined && emp.remainingBal !== null && emp.remainingBal !== '')
+                ? emp.remainingBal : computedRemaining;
+            
+            document.getElementById("inquiryDataContainer").innerHTML = `
+                <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${emp.name}</div>
+                <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${emp.nationalId}</div>
+                <div class="inquiry-data-item"><strong>الفئة:</strong> ${emp.jobCategory}</div>
+                <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${emp.annual}</span></div>
+                <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${emp.casual}</span></div>
+                <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${emp.sick || 0}</span></div>
+                <div class="inquiry-data-item"><strong>مرضية 259:</strong> <span>${emp.sick259 || 'لا'}</span></div>
+                <div class="inquiry-data-item"><strong>رصيد سنوات سابقة:</strong> <span>${emp.prevBal || 0}</span></div>
+                <div class="inquiry-data-item" style="grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي (اعتيادي + عارضة + سنوات سابقة):</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${remainingToShow}</span></div>
+            `;
+            document.getElementById("inquiryResultBox").classList.remove("hidden");
+            document.getElementById("inquiryErrorBox").classList.add("hidden");
+            document.getElementById("empLoginBox").classList.add("hidden");
+            loadEmployeeHistory(emp.nationalId);
         } else {
-            data.forEach(item => {
-                html += `<tr><td>${item.requestId}</td><td>${item.leaveType}</td><td>${item.startDate}</td><td>${item.endDate}</td><td>${item.daysCount}</td><td>${item.managerStatus}</td></tr>`;
-            });
+            document.getElementById("inquiryResultBox").classList.add("hidden");
+            document.getElementById("inquiryErrorBox").classList.remove("hidden");
         }
-        html += `</tbody></table>`;
-        document.getElementById("historyContainer").innerHTML = html;
-    }
+    }).catch(() => {
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+        btn.disabled = false;
+        showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
+    });
+}
 
-    function filterEmployeeHistory() {
-        let selectedYear = document.getElementById("historyFiscalYear").value;
-        let s = document.getElementById("historyFilterStart").value; 
-        let e = document.getElementById("historyFilterEnd").value;
-        let filtered = currentInquiryHistory.filter(item => { 
-            let match = true; 
-            if (selectedYear && item.startDate) {
-                let itemYear = item.startDate.split('-')[0];
-                if (itemYear !== selectedYear) match = false;
-            }
-            if(s && item.startDate < s) match = false; 
-            if(e && item.startDate > e) match = false; 
-            return match; 
-        });
-        renderHistoryTable(filtered);
-    }
-
-    function printHistoryPDF() { 
-        let printContents = document.getElementById("historyContainer").innerHTML;
-        let empNameToPrint = currentInquiryName ? currentInquiryName : "غير محدد";
-        let win = window.open('', '_blank');
-        win.document.write(`
-            <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-            <title>سجل الإجازات - ${empNameToPrint}</title>
-            <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-            <style>
-                body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
-                .header{text-align:center; margin-bottom:20px; border-bottom:2px solid #000; padding-bottom:10px;}
-                h2{margin:0; color:#1a365d;}
-                h3{margin:5px 0 0 0; color:#334155;}
-                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
-                th,td{border:1px solid #333; padding:6px; text-align:center;}
-                th{background:#1e293b; color:#fff;}
-                tr:nth-child(even){background:#f1f5f9;}
-            </style></head><body>
-            <div class="header">
-                <h2>سجل الإجازات</h2>
-                <h3>اسم الموظف: ${empNameToPrint}</h3>
-            </div>
-            ${printContents}
-            </body></html>
-        `);
-        win.document.close();
-        setTimeout(() => { win.focus(); win.print(); }, 500);
-    }
-    
-    function exportHistoryExcel() {
-        let wb = XLSX.utils.table_to_book(document.getElementById("historyContainer"));
-        XLSX.writeFile(wb, "سجل_الإجازات.xlsx");
-    }
-
-    function openChangePasswordModal() { 
-        document.getElementById("newPasswordInput").value = ""; 
-        document.getElementById("changePasswordModal").classList.remove("hidden"); 
-    }
-
-    function submitChangePassword() {
-        let newPass = document.getElementById("newPasswordInput").value;
-        if (!newPass) return showCustomAlert("تنبيه", "أدخل كلمة المرور الجديدة");
-        let formData = new URLSearchParams({ action: "change_employee_password", nationalId: currentInquiryNationalId, newPassword: newPass });
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
-            if (res.status === "success") { 
-                showCustomAlert("تم", "تم تغيير كلمة المرور بنجاح."); 
-                document.getElementById("changePasswordModal").classList.add("hidden"); 
-            } else { 
-                showCustomAlert("خطأ", res.message); 
-            }
-        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
-    }
-
-    function toggleDualLeaveInputs() {
-        let type = document.getElementById("leaveType").value;
-        let dualDiv = document.getElementById("dualLeaveInputs");
-        if (type === "اعتيادية + رصيد سنوات سابقة") {
-            dualDiv.classList.remove("hidden");
-        } else {
-            dualDiv.classList.add("hidden");
-            document.getElementById("daysAnnual").value = "";
-            document.getElementById("daysPrev").value = "";
+function loadEmployeeHistory(nid) {
+    fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nid}`).then(res => res.json()).then(res => {
+        if (res.status === "success") { 
+            currentInquiryHistory = res.data; 
+            populateFiscalYears(currentInquiryHistory);
+            renderHistoryTable(currentInquiryHistory); 
         }
-    }
+    }).catch(() => {});
+}
 
-    function onStartDateChange() {
-        let start = document.getElementById("startDate").value;
-        let endDateInput = document.getElementById("endDate");
-        if (start) {
-            endDateInput.min = start;
-            if (endDateInput.value && endDateInput.value < start) endDateInput.value = start;
-        }
-        calculateDays();
-    }
-
-    function calculateDays() {
-        let start = document.getElementById("startDate").value;
-        let end = document.getElementById("endDate").value;
-        if (start && end) {
-            let d1 = new Date(start);
-            let d2 = new Date(end);
-            let diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
-            document.getElementById("calcDays").value = diffDays > 0 ? diffDays + " يوم" : "تاريخ غير صحيح";
-        }
-    }
-
-    function submitLeaveForm(e) {
-        e.preventDefault();
-        let name = document.getElementById("empName").value.trim();
-        let nationalId = document.getElementById("empNationalId").value.trim();
-        let dept = document.getElementById("empDept").value;
-        let category = document.getElementById("empCategory").value;
-        let titlePrefix = document.getElementById("managerTitle").value;
-        let mName = document.getElementById("managerName").value.trim();
-        let phone = document.getElementById("empPhone").value.trim();
-        let type = document.getElementById("leaveType").value;
-        let start = document.getElementById("startDate").value;
-        let end = document.getElementById("endDate").value;
-        let reason = document.getElementById("leaveReason").value.trim();
-
-        let dAnnual = 0, dPrev = 0;
-        if (type === "اعتيادية + رصيد سنوات سابقة") {
-            dAnnual = parseFloat(document.getElementById("daysAnnual").value);
-            dPrev = parseFloat(document.getElementById("daysPrev").value);
-            if (isNaN(dAnnual) || dAnnual <= 0 || isNaN(dPrev) || dPrev <= 0) {
-                showCustomAlert("خطأ في التفاصيل", "يرجى إدخال عدد أيام الاعتيادي وعدد أيام رصيد السنوات السابقة بشكل صحيح (أكبر من صفر).");
-                return;
-            }
-        }
-
-        let todayStr = new Date().toISOString().split('T')[0];
-        if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي."); return; }
-        if (!isArabicOnly(name) || !isQuadrupleName(name)) { showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); return; }
-        if (!isArabicOnly(mName) || !isQuadrupleName(mName)) { showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); return; }
-        if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) { showCustomAlert("خطأ في الرقم القومي", "يجب أن يكون الرقم القومي مكوناً من 14 رقماً بالأرقام الإنجليزية الصحيحة."); return; }
-        if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); return; }
-        if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب الإجازة", "يجب أن يكون سبب الإجازة مكتوباً باللغة العربية وبشكل مفهوم وواضح وألا يقل عن 10 أحرف صحيحة."); return; }
-
-        let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
-        
-        if (type === "اعتيادية + رصيد سنوات سابقة") {
-            if ((dAnnual + dPrev) !== totalDays) {
-                showCustomAlert("تنبيه هام", "مجموع الأيام (الاعتيادي + رصيد سابق) وهو (" + (dAnnual + dPrev) + " يوم) لا يتطابق مع المدة المحسوبة بين التاريخين وهي (" + totalDays + " يوم). يرجى تعديل التواريخ أو الأرقام.");
-                return;
-            }
-        }
-
-        let submitBtn = document.querySelector("#leaveForm .btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
-        submitBtn.disabled = true;
-
-        fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nationalId}`)
-        .then(res => res.json())
-        .then(historyRes => {
-            if (historyRes.status === "success" && historyRes.data) {
-                let hasOverlap = false;
-                historyRes.data.forEach(item => {
-                    let st = (item.managerStatus || "").toLowerCase();
-                    if (!st.includes("مرفوض")) {
-                        let existingStart = item.startDate;
-                        let existingEnd = item.endDate;
-                        if (!(end < existingStart || start > existingEnd)) {
-                            hasOverlap = true;
-                        }
-                    }
-                });
-
-                if (hasOverlap) {
-                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    submitBtn.disabled = false;
-                    showCustomAlert("خطأ في التواريخ", "عذراً، يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة الزمنية. لا يمكن تكرار الإجازة لنفس اليوم.");
-                    return;
-                }
-            }
-
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب...';
-            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-            let submissionDateStr = new Date().toISOString().split('T')[0];
-
-            let payload = {
-                action: "submit_leave",
-                requestId: randomId,
-                empName: name,
-                nationalId: nationalId,
-                dept: dept,
-                jobCategory: category,
-                mgrName: mName,
-                leaveType: type,
-                startDate: start,
-                endDate: end,
-                daysCount: totalDays,
-                reason: reason,
-                phone: phone,
-                titlePrefix: titlePrefix,
-                daysAnnual: dAnnual,
-                daysPrev: dPrev
-            };
-
-            const formData = new URLSearchParams();
-            for (const key in payload) { formData.append(key, payload[key]); }
-
-            fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-            .then(async res => {
-                let text = await res.text();
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    throw new Error("استجابة غير صالحة من الخادم. يرجى التأكد من نشر كود Apps Script (Deploy -> New Version).");
-                }
-            })
-            .then(res => {
-                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                submitBtn.disabled = false;
-                if (res.status === "success") {
-                    latestSubmittedData = {
-                        requestId: randomId, empName: name, nationalId: nationalId, dept: dept, jobCategory: category,
-                        mgrName: mName, titlePrefix: titlePrefix, leaveType: type, startDate: start, endDate: end,
-                        daysCount: totalDays, reason: reason, phone: phone,
-                        specialistStatus: "قيد الانتظار", managerStatus: "قيد الانتظار",
-                        requestDate: submissionDateStr, daysAnnual: dAnnual, daysPrev: dPrev
-                    };
-                    document.getElementById("leaveForm").classList.add("hidden");
-                    document.getElementById("leaveResultContainer").classList.remove("hidden");
-                } else {
-                    showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
-                }
-            })
-            .catch((err) => {
-                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                submitBtn.disabled = false;
-                showCustomAlert("خطأ في الاتصال", err.message);
-            });
-        }).catch(() => {
-            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            submitBtn.disabled = false;
-            showCustomAlert("خطأ", "تعذر فحص التواريخ السابقة.");
-        });
-    }
-
-    function submitManagerLogin(e) {
-        e.preventDefault();
-        let dept = document.getElementById("loginDept").value;
-        let password = document.getElementById("loginPassword").value.trim();
-        let start = document.getElementById("filterStartDate").value;
-        let end = document.getElementById("filterEndDate").value;
-
-        if(start) document.getElementById("dashFilterStart").value = start;
-        if(end) document.getElementById("dashFilterEnd").value = end;
-
-        let loginBtn = document.getElementById("loginBtn");
-        loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
-        loginBtn.disabled = true;
-
-        let formData = new URLSearchParams({ action: "manager_login", dept: dept, password: password });
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            loginBtn.innerHTML = 'الدخول للاعتماد';
-            loginBtn.disabled = false;
-
-            if (res.status === "success") {
-                loggedInRole = res.role; 
-                currentDeptOrCat = dept;
-                currentManagerName = res.managerName || res.name;
-                currentCategoryName = res.category || "";
-                
-                document.getElementById("leavesCardsContainer").innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">جاري تحميل الطلبات...</p>';
-                document.getElementById("managerLoginSection").classList.add("hidden");
-                
-                if (res.role === "hr_specialist") {
-                    document.getElementById("managerDashboardSection").classList.remove("hidden");
-                    document.getElementById("dashboardTitle").innerText = "طلبات إجازات فئة: " + currentCategoryName;
-                    document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك المختص: " + currentManagerName;
-                    loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
-                } else {
-                    document.getElementById("managerDashboardSection").classList.remove("hidden");
-                    document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
-                    document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
-                    loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
-                }
-            } else {
-                showCustomAlert("خطأ في الدخول", res.message || "كلمة المرور غير صحيحة.");
-            }
-        })
-        .catch(() => {
-            loginBtn.innerHTML = 'الدخول للاعتماد';
-            loginBtn.disabled = false;
-            showCustomAlert("خطأ في الاتصال", "تعذر الاتصال بالخادم.");
-        });
-    }
-
-    function loadDepartmentLeaves(deptName, role, category) {
-        let actionUrl = LEAVE_SCRIPT_URL + `?action=get_department_leaves&dept=${encodeURIComponent(deptName)}&role=${role}`;
-        if (role === "hr_specialist") {
-            actionUrl = LEAVE_SCRIPT_URL + `?action=get_leaves_by_category&category=${encodeURIComponent(category)}`;
-        }
-
-        fetch(actionUrl)
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === "success" && data.data) {
-                currentLeavesData = data.data;
-                filteredLeavesData = [...currentLeavesData]; 
-                renderLeavesCards(filteredLeavesData);
-                applyDashboardDateFilter(); 
-            } else {
-                currentLeavesData = [];
-                filteredLeavesData = [];
-                document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات مسجلة حالياً.</p>`;
-            }
-        })
-        .catch(() => {
-            document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #dc3545; padding: 25px; font-weight: 700;">تعذر تحميل الطلبات.</p>`;
-        });
-    }
-
-    function applyDashboardDateFilter() {
-        let fStart = document.getElementById("dashFilterStart").value;
-        let fEnd = document.getElementById("dashFilterEnd").value;
-        let searchTxt = document.getElementById("dashSearchInput").value.toLowerCase().trim();
-
-        filteredLeavesData = currentLeavesData.filter(item => {
-            let itemDate = item.startDate;
-            let matchesDate = true;
-            if (fStart && itemDate < fStart) matchesDate = false;
-            if (fEnd && itemDate > fEnd) matchesDate = false;
-
-            let matchesSearch = true;
-            if (searchTxt) {
-                let nameMatch = item.empName && item.empName.toLowerCase().includes(searchTxt);
-                let nidMatch = item.nationalId && item.nationalId.includes(searchTxt);
-                matchesSearch = nameMatch || nidMatch;
-            }
-
-            return matchesDate && matchesSearch;
-        });
-
-        renderLeavesCards(filteredLeavesData);
-    }
-
-    function resetDashboardDateFilter() {
-        document.getElementById("dashFilterStart").value = "";
-        document.getElementById("dashFilterEnd").value = "";
-        document.getElementById("dashSearchInput").value = "";
-        document.getElementById("searchSuggestions").style.display = "none";
-        filteredLeavesData = [...currentLeavesData];
-        renderLeavesCards(filteredLeavesData);
-    }
-
-    function handleSmartSearch(val) {
-        let query = val.toLowerCase().trim();
-        let suggestBox = document.getElementById("searchSuggestions");
-        
-        if (!query) {
-            suggestBox.style.display = "none";
-            applyDashboardDateFilter(); 
-            return;
-        }
-
-        let matches = currentLeavesData.filter(item => 
-            (item.empName && item.empName.toLowerCase().includes(query)) || 
-            (item.nationalId && item.nationalId.includes(query))
-        );
-
-        if (matches.length > 0) {
-            suggestBox.innerHTML = "";
-            let uniqueMatches = [];
-            let seen = new Set();
-            matches.forEach(m => {
-                if(!seen.has(m.nationalId)) {
-                    seen.add(m.nationalId);
-                    uniqueMatches.push(m);
-                }
-            });
-
-            uniqueMatches.slice(0, 5).forEach(m => {
-                let div = document.createElement("div");
-                div.className = "suggestion-item";
-                div.innerHTML = `<strong>${m.empName}</strong> - ${m.nationalId}`;
-                div.onclick = function() {
-                    document.getElementById("dashSearchInput").value = m.empName; 
-                    suggestBox.style.display = "none";
-                    applyDashboardDateFilter(); 
-                };
-                suggestBox.appendChild(div);
-            });
-            suggestBox.style.display = "block";
-        } else {
-            suggestBox.style.display = "none";
-        }
-    }
-
-    document.addEventListener('click', function(e) {
-        let suggestBox = document.getElementById("searchSuggestions");
-        let searchInput = document.getElementById("dashSearchInput");
-        if (suggestBox && e.target !== searchInput && e.target !== suggestBox && !suggestBox.contains(e.target)) {
-            suggestBox.style.display = "none";
+function populateFiscalYears(data) {
+    let yearSelect = document.getElementById("historyFiscalYear");
+    let currentYear = new Date().getFullYear();
+    let years = new Set();
+    years.add(currentYear.toString());
+    years.add((currentYear - 1).toString());
+    data.forEach(item => {
+        if (item.startDate) {
+            let d = new Date(item.startDate);
+            if (!isNaN(d.getFullYear())) years.add(d.getFullYear().toString());
         }
     });
+    let sortedYears = Array.from(years).sort((a, b) => b - a);
+    yearSelect.innerHTML = '<option value="">كل السنوات</option>';
+    sortedYears.forEach(y => {
+        let opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+    });
+}
 
-    function toggleLeaveSelection(requestId) {
-        if (selectedLeaveIds.has(requestId)) {
-            selectedLeaveIds.delete(requestId);
-        } else {
-            selectedLeaveIds.add(requestId);
-        }
-        
-        let count = selectedLeaveIds.size;
-        document.getElementById("selectedCount").innerText = count;
-        if (count > 0) {
-            document.getElementById("bulkPrintArea").classList.remove("hidden");
-        } else {
-            document.getElementById("bulkPrintArea").classList.add("hidden");
-        }
+// تنسيق التواريخ في جدول سجل الإجازات بالعربية
+function renderHistoryTable(data) {
+    let html = `<table class="summary-report-table"><thead><tr><th>الطلب</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th><th>الحالة النهائية</th></tr></thead><tbody>`;
+    if(data.length === 0) {
+        html += `<tr><td colspan="6">لا توجد إجازات سابقة</td></tr>`;
+    } else {
+        data.forEach(item => {
+            html += `<tr>
+                <td>${item.requestId}</td>
+                <td>${item.leaveType}</td>
+                <td>${formatArabicDate(item.startDate)}</td>
+                <td>${formatArabicDate(item.endDate)}</td>
+                <td>${item.daysCount}</td>
+                <td>${item.managerStatus}</td>
+            </tr>`;
+        });
     }
+    html += `</tbody></table>`;
+    document.getElementById("historyContainer").innerHTML = html;
+}
 
-    function renderLeavesCards(dataList) {
-        let container = document.getElementById("leavesCardsContainer");
-        if (!dataList || dataList.length === 0) {
-            container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات تطابق معايير البحث.</p>`;
+function filterEmployeeHistory() {
+    let selectedYear = document.getElementById("historyFiscalYear").value;
+    let s = document.getElementById("historyFilterStart").value; 
+    let e = document.getElementById("historyFilterEnd").value;
+    let filtered = currentInquiryHistory.filter(item => { 
+        let match = true; 
+        if (selectedYear && item.startDate) {
+            let itemYear = item.startDate.split('-')[0];
+            if (itemYear !== selectedYear) match = false;
+        }
+        if(s && item.startDate < s) match = false; 
+        if(e && item.startDate > e) match = false; 
+        return match; 
+    });
+    renderHistoryTable(filtered);
+}
+
+function printHistoryPDF() { 
+    let printContents = document.getElementById("historyContainer").innerHTML;
+    let empNameToPrint = currentInquiryName ? currentInquiryName : "غير محدد";
+    let win = window.open('', '_blank');
+    win.document.write(`
+        <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+        <title>سجل الإجازات - ${empNameToPrint}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+        <style>
+            body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
+            .header{text-align:center; margin-bottom:20px; border-bottom:2px solid #000; padding-bottom:10px;}
+            h2{margin:0; color:#1a365d;}
+            h3{margin:5px 0 0 0; color:#334155;}
+            table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
+            th,td{border:1px solid #333; padding:6px; text-align:center;}
+            th{background:#1e293b; color:#fff;}
+            tr:nth-child(even){background:#f1f5f9;}
+        </style></head><body>
+        <div class="header">
+            <h2>سجل الإجازات</h2>
+            <h3>اسم الموظف: ${empNameToPrint}</h3>
+            <p style="font-size:12px; color:#555;">تاريخ الطباعة: ${todayArabic()}</p>
+        </div>
+        ${printContents}
+        </body></html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.focus(); win.print(); }, 500);
+}
+
+function exportHistoryExcel() {
+    let wb = XLSX.utils.table_to_book(document.getElementById("historyContainer"));
+    XLSX.writeFile(wb, "سجل_الإجازات.xlsx");
+}
+
+function openChangePasswordModal() { 
+    document.getElementById("newPasswordInput").value = ""; 
+    document.getElementById("changePasswordModal").classList.remove("hidden"); 
+}
+
+function submitChangePassword() {
+    let newPass = document.getElementById("newPasswordInput").value;
+    if (!newPass) return showCustomAlert("تنبيه", "أدخل كلمة المرور الجديدة");
+    let formData = new URLSearchParams({ action: "change_employee_password", nationalId: currentInquiryNationalId, newPassword: newPass });
+    fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
+        if (res.status === "success") { 
+            showCustomAlert("تم", "تم تغيير كلمة المرور بنجاح."); 
+            document.getElementById("changePasswordModal").classList.add("hidden"); 
+        } else { 
+            showCustomAlert("خطأ", res.message); 
+        }
+    }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+}
+
+function toggleDualLeaveInputs() {
+    let type = document.getElementById("leaveType").value;
+    let dualDiv = document.getElementById("dualLeaveInputs");
+    if (type === "اعتيادية + رصيد سنوات سابقة") {
+        dualDiv.classList.remove("hidden");
+    } else {
+        dualDiv.classList.add("hidden");
+        document.getElementById("daysAnnual").value = "";
+        document.getElementById("daysPrev").value = "";
+    }
+}
+
+function onStartDateChange() {
+    let start = document.getElementById("startDate").value;
+    let endDateInput = document.getElementById("endDate");
+    if (start) {
+        endDateInput.min = start;
+        if (endDateInput.value && endDateInput.value < start) endDateInput.value = start;
+    }
+    calculateDays();
+}
+
+function calculateDays() {
+    let start = document.getElementById("startDate").value;
+    let end = document.getElementById("endDate").value;
+    if (start && end) {
+        let d1 = new Date(start);
+        let d2 = new Date(end);
+        let diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+        document.getElementById("calcDays").value = diffDays > 0 ? diffDays + " يوم" : "تاريخ غير صحيح";
+    }
+}
+
+function submitLeaveForm(e) {
+    e.preventDefault();
+    let name = document.getElementById("empName").value.trim();
+    let nationalId = document.getElementById("empNationalId").value.trim();
+    let dept = document.getElementById("empDept").value;
+    let category = document.getElementById("empCategory").value;
+    let titlePrefix = document.getElementById("managerTitle").value;
+    let mName = document.getElementById("managerName").value.trim();
+    let phone = document.getElementById("empPhone").value.trim();
+    let type = document.getElementById("leaveType").value;
+    let start = document.getElementById("startDate").value;
+    let end = document.getElementById("endDate").value;
+    let reason = document.getElementById("leaveReason").value.trim();
+
+    let dAnnual = 0, dPrev = 0;
+    if (type === "اعتيادية + رصيد سنوات سابقة") {
+        dAnnual = parseFloat(document.getElementById("daysAnnual").value);
+        dPrev = parseFloat(document.getElementById("daysPrev").value);
+        if (isNaN(dAnnual) || dAnnual <= 0 || isNaN(dPrev) || dPrev <= 0) {
+            showCustomAlert("خطأ في التفاصيل", "يرجى إدخال عدد أيام الاعتيادي وعدد أيام رصيد السنوات السابقة بشكل صحيح (أكبر من صفر).");
             return;
         }
+    }
 
-        let html = "";
-        dataList.forEach((item, index) => {
-            let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
-            let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-            let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || (item.managerStatus && item.managerStatus.includes("مقبول"));
-            
-            let cardClass = "";
-            let watermarkHtml = "";
-            
-            if (isSpecRejected) {
-                cardClass = "rejected-spec locked";
-                watermarkHtml = `<div class="watermark-rejected spec">مرفوض من المختص<br><span style="font-size: 14px;">${item.specRejectTime ? item.specRejectTime.split(' ')[0] : ''}</span></div>`;
-            } else if (isMgrRejected) {
-                cardClass = "rejected-mgr locked";
-                watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? item.mgrRejectTime.split(' ')[0] : ''}</span></div>`;
-            } else if (isApprovedByMgr) {
-                cardClass = "approved-mgr locked";
-                watermarkHtml = `<div class="watermark-rejected approved">معتمد ومؤرشف<br><span style="font-size: 14px;">${item.startDate || ''}</span></div>`;
+    let todayStr = new Date().toISOString().split('T')[0];
+    if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "عذراً، لا يمكن اختيار تاريخ إجازة يقع في الماضي."); return; }
+    if (!isArabicOnly(name) || !isQuadrupleName(name)) { showCustomAlert("خطأ في اسم الموظف", "يجب أن يكون اسم الموظف باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); return; }
+    if (!isArabicOnly(mName) || !isQuadrupleName(mName)) { showCustomAlert("خطأ في اسم المدير", "يجب أن يكون اسم المدير المسؤول باللغة العربية ومكوناً من 4 أسماء رباعية صحيحة."); return; }
+    if (nationalId.length !== 14 || !isEnglishNumbers(nationalId)) { showCustomAlert("خطأ في الرقم القومي", "يجب أن يكون الرقم القومي مكوناً من 14 رقماً بالأرقام الإنجليزية الصحيحة."); return; }
+    if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); return; }
+    if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب الإجازة", "يجب أن يكون سبب الإجازة مكتوباً باللغة العربية وبشكل مفهوم وواضح وألا يقل عن 10 أحرف صحيحة."); return; }
+
+    let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
+    
+    if (type === "اعتيادية + رصيد سنوات سابقة") {
+        if ((dAnnual + dPrev) !== totalDays) {
+            showCustomAlert("تنبيه هام", "مجموع الأيام (الاعتيادي + رصيد سابق) وهو (" + (dAnnual + dPrev) + " يوم) لا يتطابق مع المدة المحسوبة بين التاريخين وهي (" + totalDays + " يوم). يرجى تعديل التواريخ أو الأرقام.");
+            return;
+        }
+    }
+
+    let submitBtn = document.querySelector("#leaveForm .btn-submit-main");
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
+    submitBtn.disabled = true;
+
+    fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nationalId}`)
+    .then(res => res.json())
+    .then(historyRes => {
+        if (historyRes.status === "success" && historyRes.data) {
+            let hasOverlap = false;
+            historyRes.data.forEach(item => {
+                let st = (item.managerStatus || "").toLowerCase();
+                if (!st.includes("مرفوض")) {
+                    let existingStart = item.startDate;
+                    let existingEnd = item.endDate;
+                    if (!(end < existingStart || start > existingEnd)) {
+                        hasOverlap = true;
+                    }
+                }
+            });
+
+            if (hasOverlap) {
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                submitBtn.disabled = false;
+                showCustomAlert("خطأ في التواريخ", "عذراً، يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة الزمنية. لا يمكن تكرار الإجازة لنفس اليوم.");
+                return;
             }
+        }
 
-            let isChecked = selectedLeaveIds.has(item.requestId) ? "checked" : "";
-            let dualText = (item.daysAnnual && item.daysPrev) ? `<br><span style="color:#b45309; font-size:12px;">(اعتيادي: ${item.daysAnnual} | سنوات سابقة: ${item.daysPrev})</span>` : "";
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب...';
+        let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+        let submissionDateStr = new Date().toISOString().split('T')[0];
 
-            html += `
-            <div class="emp-card-box ${cardClass}" style="position:relative;">
-                ${watermarkHtml}
-                <h4 style="position:relative; z-index:1;">
-                    <input type="checkbox" class="print-chk" onchange="toggleLeaveSelection('${item.requestId}')" ${isChecked}>
-                    الموظف: ${item.empName} (${item.requestId})
-                </h4>
-                <p style="position:relative; z-index:1;"><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
-                <p style="position:relative; z-index:1;"><strong>نوع الإجازة:</strong> ${item.leaveType} ${dualText} (${item.daysCount} أيام)</p>
-                <p style="position:relative; z-index:1;"><strong>الفترة:</strong> من ${item.startDate} إلى ${item.endDate}</p>
-                <p style="position:relative; z-index:1;"><strong>السبب:</strong> ${item.reason}</p>
-                <p style="position:relative; z-index:1;"><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
-                <p style="position:relative; z-index:1;"><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
-                ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
-                
-                <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
-                    ${loggedInRole === 'hr_specialist' ? `
-                        ${item.specialistStatus === "قيد الانتظار" ? `
-                            <button class="act-btn btn-ex" onclick="openSpecialistActionModal(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
-                            <button class="act-btn btn-danger" onclick="openSpecialistActionModal(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
-                        ` : ''}
-                        ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
-                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
-                        ` : ''}
-                    ` : `
-                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
-                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
-                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
-                        ` : ''}
-                        ${item.managerStatus === "مرفوض من المدير" ? `
-                            <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
-                            <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
-                        ` : ''}
-                    `}
-                    <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
-                </div>
-            </div>`;
-        });
-        container.innerHTML = html;
-    }
+        let payload = {
+            action: "submit_leave",
+            requestId: randomId,
+            empName: name,
+            nationalId: nationalId,
+            dept: dept,
+            jobCategory: category,
+            mgrName: mName,
+            leaveType: type,
+            startDate: start,
+            endDate: end,
+            daysCount: totalDays,
+            reason: reason,
+            phone: phone,
+            titlePrefix: titlePrefix,
+            daysAnnual: dAnnual,
+            daysPrev: dPrev
+        };
 
-    function openSpecialistActionModal(rowIndex, statusType, defaultText) {
-        currentSpecActionRow = rowIndex;
-        currentSpecActionStatus = statusType;
-        document.getElementById("specActionReason").value = defaultText;
-        document.getElementById("specialistActionModal").classList.remove("hidden");
-    }
-
-    document.getElementById("specActionConfirmBtn").onclick = function() {
-        let reason = document.getElementById("specActionReason").value;
-        document.getElementById("specialistActionModal").classList.add("hidden");
-        
-        let formData = new URLSearchParams({
-            action: "update_leave_action", rowIndex: currentSpecActionRow, status: currentSpecActionStatus, reason: reason, role: "hr_specialist"
-        });
+        const formData = new URLSearchParams();
+        for (const key in payload) { formData.append(key, payload[key]); }
 
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الإجراء وإرسال إشعار بريدي.");
-                loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
-            } else {
-                showCustomAlert("خطأ", res.message);
+        .then(async res => {
+            let text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                throw new Error("استجابة غير صالحة من الخادم. يرجى التأكد من نشر كود Apps Script (Deploy -> New Version).");
             }
-        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
-    };
+        })
+        .then(res => {
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            submitBtn.disabled = false;
+            if (res.status === "success") {
+                latestSubmittedData = {
+                    requestId: randomId, empName: name, nationalId: nationalId, dept: dept, jobCategory: category,
+                    mgrName: mName, titlePrefix: titlePrefix, leaveType: type, startDate: start, endDate: end,
+                    daysCount: totalDays, reason: reason, phone: phone,
+                    specialistStatus: "قيد الانتظار", managerStatus: "قيد الانتظار",
+                    requestDate: submissionDateStr, daysAnnual: dAnnual, daysPrev: dPrev
+                };
+                document.getElementById("leaveForm").classList.add("hidden");
+                document.getElementById("leaveResultContainer").classList.remove("hidden");
+            } else {
+                showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
+            }
+        })
+        .catch((err) => {
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            submitBtn.disabled = false;
+            showCustomAlert("خطأ في الاتصال", err.message);
+        });
+    }).catch(() => {
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+        submitBtn.disabled = false;
+        showCustomAlert("خطأ", "تعذر فحص التواريخ السابقة.");
+    });
+}
+
+function submitManagerLogin(e) {
+    e.preventDefault();
+    let dept = document.getElementById("loginDept").value;
+    let password = document.getElementById("loginPassword").value.trim();
+    let start = document.getElementById("filterStartDate").value;
+    let end = document.getElementById("filterEndDate").value;
+
+    if(start) document.getElementById("dashFilterStart").value = start;
+    if(end) document.getElementById("dashFilterEnd").value = end;
+
+    let loginBtn = document.getElementById("loginBtn");
+    loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+    loginBtn.disabled = true;
+
+    let formData = new URLSearchParams({ action: "manager_login", dept: dept, password: password });
+
+    fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+    .then(res => res.json())
+    .then(res => {
+        loginBtn.innerHTML = 'الدخول للاعتماد';
+        loginBtn.disabled = false;
+
+        if (res.status === "success") {
+            loggedInRole = res.role; 
+            currentDeptOrCat = dept;
+            currentManagerName = res.managerName || res.name;
+            currentCategoryName = res.category || "";
+            
+            document.getElementById("leavesCardsContainer").innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">جاري تحميل الطلبات...</p>';
+            document.getElementById("managerLoginSection").classList.add("hidden");
+            
+            if (res.role === "hr_specialist") {
+                document.getElementById("managerDashboardSection").classList.remove("hidden");
+                document.getElementById("dashboardTitle").innerText = "طلبات إجازات فئة: " + currentCategoryName;
+                document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك المختص: " + currentManagerName;
+                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
+            } else {
+                document.getElementById("managerDashboardSection").classList.remove("hidden");
+                document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
+                document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
+                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
+            }
+        } else {
+            showCustomAlert("خطأ في الدخول", res.message || "كلمة المرور غير صحيحة.");
+        }
+    })
+    .catch(() => {
+        loginBtn.innerHTML = 'الدخول للاعتماد';
+        loginBtn.disabled = false;
+        showCustomAlert("خطأ في الاتصال", "تعذر الاتصال بالخادم.");
+    });
+}
+
+function loadDepartmentLeaves(deptName, role, category) {
+    let actionUrl = LEAVE_SCRIPT_URL + `?action=get_department_leaves&dept=${encodeURIComponent(deptName)}&role=${role}`;
+    if (role === "hr_specialist") {
+        actionUrl = LEAVE_SCRIPT_URL + `?action=get_leaves_by_category&category=${encodeURIComponent(category)}`;
+    }
+
+    fetch(actionUrl)
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success" && data.data) {
+            currentLeavesData = data.data;
+            filteredLeavesData = [...currentLeavesData]; 
+            renderLeavesCards(filteredLeavesData);
+            applyDashboardDateFilter(); 
+        } else {
+            currentLeavesData = [];
+            filteredLeavesData = [];
+            document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات مسجلة حالياً.</p>`;
+        }
+    })
+    .catch(() => {
+        document.getElementById("leavesCardsContainer").innerHTML = `<p style="text-align: center; color: #dc3545; padding: 25px; font-weight: 700;">تعذر تحميل الطلبات.</p>`;
+    });
+}
+
+function applyDashboardDateFilter() {
+    let fStart = document.getElementById("dashFilterStart").value;
+    let fEnd = document.getElementById("dashFilterEnd").value;
+    let searchTxt = document.getElementById("dashSearchInput").value.toLowerCase().trim();
+
+    filteredLeavesData = currentLeavesData.filter(item => {
+        let itemDate = item.startDate;
+        let matchesDate = true;
+        if (fStart && itemDate < fStart) matchesDate = false;
+        if (fEnd && itemDate > fEnd) matchesDate = false;
+
+        let matchesSearch = true;
+        if (searchTxt) {
+            let nameMatch = item.empName && item.empName.toLowerCase().includes(searchTxt);
+            let nidMatch = item.nationalId && item.nationalId.includes(searchTxt);
+            matchesSearch = nameMatch || nidMatch;
+        }
+
+        return matchesDate && matchesSearch;
+    });
+
+    renderLeavesCards(filteredLeavesData);
+}
+
+function resetDashboardDateFilter() {
+    document.getElementById("dashFilterStart").value = "";
+    document.getElementById("dashFilterEnd").value = "";
+    document.getElementById("dashSearchInput").value = "";
+    document.getElementById("searchSuggestions").style.display = "none";
+    filteredLeavesData = [...currentLeavesData];
+    renderLeavesCards(filteredLeavesData);
+}
+
+function handleSmartSearch(val) {
+    let query = val.toLowerCase().trim();
+    let suggestBox = document.getElementById("searchSuggestions");
+    
+    if (!query) {
+        suggestBox.style.display = "none";
+        applyDashboardDateFilter(); 
+        return;
+    }
+
+    let matches = currentLeavesData.filter(item => 
+        (item.empName && item.empName.toLowerCase().includes(query)) || 
+        (item.nationalId && item.nationalId.includes(query))
+    );
+
+    if (matches.length > 0) {
+        suggestBox.innerHTML = "";
+        let uniqueMatches = [];
+        let seen = new Set();
+        matches.forEach(m => {
+            if(!seen.has(m.nationalId)) {
+                seen.add(m.nationalId);
+                uniqueMatches.push(m);
+            }
+        });
+
+        uniqueMatches.slice(0, 5).forEach(m => {
+            let div = document.createElement("div");
+            div.className = "suggestion-item";
+            div.innerHTML = `<strong>${m.empName}</strong> - ${m.nationalId}`;
+            div.onclick = function() {
+                document.getElementById("dashSearchInput").value = m.empName; 
+                suggestBox.style.display = "none";
+                applyDashboardDateFilter(); 
+            };
+            suggestBox.appendChild(div);
+        });
+        suggestBox.style.display = "block";
+    } else {
+        suggestBox.style.display = "none";
+    }
+}
+
+document.addEventListener('click', function(e) {
+    let suggestBox = document.getElementById("searchSuggestions");
+    let searchInput = document.getElementById("dashSearchInput");
+    if (suggestBox && e.target !== searchInput && e.target !== suggestBox && !suggestBox.contains(e.target)) {
+        suggestBox.style.display = "none";
+    }
+});
+
+function toggleLeaveSelection(requestId) {
+    if (selectedLeaveIds.has(requestId)) {
+        selectedLeaveIds.delete(requestId);
+    } else {
+        selectedLeaveIds.add(requestId);
+    }
+    
+    let count = selectedLeaveIds.size;
+    document.getElementById("selectedCount").innerText = count;
+    if (count > 0) {
+        document.getElementById("bulkPrintArea").classList.remove("hidden");
+    } else {
+        document.getElementById("bulkPrintArea").classList.add("hidden");
+    }
+}
+
+// تنسيق التواريخ داخل كروت الطلبات بالعربية
+function renderLeavesCards(dataList) {
+    let container = document.getElementById("leavesCardsContainer");
+    if (!dataList || dataList.length === 0) {
+        container.innerHTML = `<p style="text-align: center; color: #64748b; padding: 25px; font-weight: 700;">لا توجد طلبات تطابق معايير البحث.</p>`;
+        return;
+    }
+
+    let html = "";
+    dataList.forEach((item, index) => {
+        let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
+        let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
+        let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || (item.managerStatus && item.managerStatus.includes("مقبول"));
+        
+        let cardClass = "";
+        let watermarkHtml = "";
+        
+        if (isSpecRejected) {
+            cardClass = "rejected-spec locked";
+            watermarkHtml = `<div class="watermark-rejected spec">مرفوض من المختص<br><span style="font-size: 14px;">${item.specRejectTime ? formatArabicDate(item.specRejectTime.split(' ')[0]) : ''}</span></div>`;
+        } else if (isMgrRejected) {
+            cardClass = "rejected-mgr locked";
+            watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? formatArabicDate(item.mgrRejectTime.split(' ')[0]) : ''}</span></div>`;
+        } else if (isApprovedByMgr) {
+            cardClass = "approved-mgr locked";
+            watermarkHtml = `<div class="watermark-rejected approved">معتمد ومؤرشف<br><span style="font-size: 14px;">${item.startDate ? formatArabicDate(item.startDate) : ''}</span></div>`;
+        }
+
+        let isChecked = selectedLeaveIds.has(item.requestId) ? "checked" : "";
+        let dualText = (item.daysAnnual && item.daysPrev) ? `<br><span style="color:#b45309; font-size:12px;">(اعتيادي: ${item.daysAnnual} | سنوات سابقة: ${item.daysPrev})</span>` : "";
+
+        html += `
+        <div class="emp-card-box ${cardClass}" style="position:relative;">
+            ${watermarkHtml}
+            <h4 style="position:relative; z-index:1;">
+                <input type="checkbox" class="print-chk" onchange="toggleLeaveSelection('${item.requestId}')" ${isChecked}>
+                الموظف: ${item.empName} (${item.requestId})
+            </h4>
+            <p style="position:relative; z-index:1;"><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
+            <p style="position:relative; z-index:1;"><strong>نوع الإجازة:</strong> ${item.leaveType} ${dualText} (${item.daysCount} أيام)</p>
+            <p style="position:relative; z-index:1;"><strong>الفترة:</strong> من ${formatArabicDate(item.startDate)} إلى ${formatArabicDate(item.endDate)}</p>
+            <p style="position:relative; z-index:1;"><strong>السبب:</strong> ${item.reason}</p>
+            <p style="position:relative; z-index:1;"><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
+            <p style="position:relative; z-index:1;"><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
+            ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
+            
+            <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
+                ${loggedInRole === 'hr_specialist' ? `
+                    ${item.specialistStatus === "قيد الانتظار" ? `
+                        <button class="act-btn btn-ex" onclick="openSpecialistActionModal(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
+                        <button class="act-btn btn-danger" onclick="openSpecialistActionModal(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
+                    ` : ''}
+                    ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
+                        <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
+                    ` : ''}
+                ` : `
+                    ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
+                        <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
+                        <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
+                    ` : ''}
+                    ${item.managerStatus === "مرفوض من المدير" ? `
+                        <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
+                        <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
+                    ` : ''}
+                `}
+                <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
+            </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function openSpecialistActionModal(rowIndex, statusType, defaultText) {
+    currentSpecActionRow = rowIndex;
+    currentSpecActionStatus = statusType;
+    document.getElementById("specActionReason").value = defaultText;
+    document.getElementById("specialistActionModal").classList.remove("hidden");
+}
+
+document.getElementById("specActionConfirmBtn").onclick = function() {
+    let reason = document.getElementById("specActionReason").value;
+    document.getElementById("specialistActionModal").classList.add("hidden");
+    
+    let formData = new URLSearchParams({
+        action: "update_leave_action", rowIndex: currentSpecActionRow, status: currentSpecActionStatus, reason: reason, role: "hr_specialist"
+    });
+
+    fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+    .then(res => res.json())
+    .then(res => {
+        if (res.status === "success") {
+            showCustomAlert("تم بنجاح", "تم تسجيل الإجراء وإرسال إشعار بريدي.");
+            loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
+        } else {
+            showCustomAlert("خطأ", res.message);
+        }
+    }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+};
 
     function processAction(rowIndex, status, defaultReason, role) {
         let formData = new URLSearchParams({
@@ -1603,6 +1669,7 @@
         return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
     }
 
+    // طباعة طلب إجازة واحد - مع تنسيق التواريخ بالعربية
     function openPrintWindow(item) {
         let printWindow = window.open('', '_blank');
         
@@ -1644,14 +1711,14 @@
                         <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
                         <div style="text-align: left;">
                             <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
-                            <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
+                            <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${formatArabicDate(reqDate)}</strong></span>
                         </div>
                     </div>
                     <div class="title">طلب إجازة رسمي</div>
                     <div class="content">
                         <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
                         <p>تحية طيبة وبعد،،،</p>
-                        <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                        <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatArabicDate(item.startDate)}</strong> وحتى تاريخ <strong>${formatArabicDate(item.endDate)}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
                         ${dualDetailsHtml}
                         <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
                     </div>
@@ -1675,6 +1742,7 @@
         printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
     }
 
+    // طباعة عدة طلبات محددة - مع تنسيق التواريخ بالعربية
     function printSelectedLeaves() {
         let itemsToPrint = filteredLeavesData.filter(item => selectedLeaveIds.has(item.requestId));
         if(itemsToPrint.length === 0) return;
@@ -1722,14 +1790,14 @@
                             <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
                             <div style="text-align: left;">
                                 <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
-                                <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
+                                <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${formatArabicDate(reqDate)}</strong></span>
                             </div>
                         </div>
                         <div class="title">طلب إجازة رسمي</div>
                         <div class="content">
                             <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
                             <p>تحية طيبة وبعد،،،</p>
-                            <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${item.startDate}</strong> وحتى تاريخ <strong>${item.endDate}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                            <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatArabicDate(item.startDate)}</strong> وحتى تاريخ <strong>${formatArabicDate(item.endDate)}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
                             ${dualDetailsHtml}
                             <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
                         </div>
@@ -1774,6 +1842,23 @@
         let todayStr = new Date().toISOString().split('T')[0];
         document.getElementById("startDate").min = todayStr;
         document.getElementById("endDate").min = todayStr;
+    }
+
+    // ============================================================
+    // التقرير التجميعي - مع عنوان ديناميكي حسب الفئة/الإدارة
+    // ============================================================
+    function getDynamicReportTitle() {
+        // إذا كان المستخدم مختصاً -> يعرض اسم الفئة
+        // مثال: "تقرير الإجازات الشهري للفئة التخصصية"
+        if (loggedInRole === "hr_specialist" && currentCategoryName) {
+            return "تقرير الإجازات الشهري للفئة " + currentCategoryName;
+        }
+        // إذا كان مديراً -> يعرض اسم الإدارة
+        if (currentDeptOrCat) {
+            return "تقرير الإجازات الشهري لـ " + currentDeptOrCat;
+        }
+        // الحالة الافتراضية
+        return "تقرير تجميعي لبيانات الإجازات";
     }
 
     function generateSummaryReport() {
@@ -1862,10 +1947,18 @@
         `;
 
         tbody.innerHTML = rowsHtml;
-        document.getElementById("reportPeriodText").innerText = `عن الفترة من: ${sDate} إلى: ${eDate}`;
+        
+        // تطبيق العنوان الديناميكي
+        let dynamicTitle = getDynamicReportTitle();
+        document.getElementById("summaryReportTitle").innerText = dynamicTitle;
+        document.getElementById("reportPeriodText").innerText = `عن الفترة من: ${formatArabicDate(sDate)} إلى: ${formatArabicDate(eDate)}`;
         document.getElementById("printableSummaryArea").style.display = "block";
 
+        // تجهيز بيانات الإكسل مع العنوان الديناميكي
         summaryDataForExcel = [
+            [dynamicTitle],
+            [`عن الفترة من: ${formatArabicDate(sDate)} إلى: ${formatArabicDate(eDate)}`],
+            [],
             ['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'مرضية 259', 'المجموع']
         ];
         finalData.forEach((emp, index) => {
@@ -1876,7 +1969,6 @@
         showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك الآن طباعته أو تحميله كملف إكسل.");
     }
 
-    // إصلاح دالة تحميل ملف إكسل للتقرير التجميعي
     function downloadExcelSummary() {
         if (!summaryDataForExcel || summaryDataForExcel.length <= 1) {
             showCustomAlert("لا توجد بيانات", "يرجى عرض التقرير أولاً قبل تحميله.");
@@ -1889,7 +1981,9 @@
             { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }
         ];
         XLSX.utils.book_append_sheet(wb, ws, "تقرير الإجازات");
-        XLSX.writeFile(wb, `تقرير_الإجازات_التجميعي_${document.getElementById("summaryStartDate").value}_${document.getElementById("summaryEndDate").value}.xlsx`);
+        
+        let fileTitle = getDynamicReportTitle().replace(/\s+/g, '_');
+        XLSX.writeFile(wb, `${fileTitle}_${document.getElementById("summaryStartDate").value}_${document.getElementById("summaryEndDate").value}.xlsx`);
     }
 
     function printSummaryReportPDF() {
@@ -1899,13 +1993,18 @@
             return;
         }
 
+        let dynamicTitle = getDynamicReportTitle();
+        let sDate = document.getElementById("summaryStartDate").value;
+        let eDate = document.getElementById("summaryEndDate").value;
+        let periodText = `عن الفترة من: ${formatArabicDate(sDate)} إلى: ${formatArabicDate(eDate)}`;
+
         let win = window.open('', '_blank');
         win.document.write(`
             <!DOCTYPE html>
             <html dir="rtl" lang="ar">
             <head>
                 <meta charset="UTF-8">
-                <title>تقرير تجميعي لبيانات الإجازات</title>
+                <title>${dynamicTitle}</title>
                 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
                 <style>
                     body { font-family: 'Cairo', sans-serif; padding: 20px; direction: rtl; color: #000; }
@@ -1921,8 +2020,8 @@
             <body>
                 <div class="header">
                     <h2>الهيئة العامة للسد العالي وخزان أسوان</h2>
-                    <h2>تقرير تجميعي لبيانات الإجازات</h2>
-                    <p>${document.getElementById("reportPeriodText").innerText}</p>
+                    <h2>${dynamicTitle}</h2>
+                    <p>${periodText}</p>
                 </div>
                 ${document.getElementById("summaryReportTable").outerHTML}
             </body>
