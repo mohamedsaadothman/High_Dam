@@ -230,9 +230,8 @@
             </div>
         </div>
     </div>
-
-
-        <script>
+    
+    <script>
         // ✅ 1. حماية الصفحة (منع النسخ واللصق للرابط)
         if (sessionStorage.getItem('app_access_token') !== 'granted') {
             window.location.replace("index.html");
@@ -391,12 +390,16 @@
                     let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص'));
                     let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
                     
-                    let specStatus = specKey ? (row[specKey] || "") : "";
-                    let mgrStatus = mgrKey ? (row[mgrKey] || "") : "";
+                    let specStatus = specKey ? (row[specKey] || "").trim() : "";
+                    let mgrStatus = mgrKey ? (row[mgrKey] || "").trim() : "";
                     
-                    if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) lRejected++;
-                    else if (mgrStatus === "مقبول ومؤرشف") lApproved++;
-                    else lPending++;
+                    if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) {
+                        lRejected++;
+                    } else if (mgrStatus === "مقبول ومؤرشف" || mgrStatus === "مؤرشف نهائي" || mgrStatus.includes("مقبول")) {
+                        lApproved++;
+                    } else {
+                        lPending++;
+                    }
                 });
 
                 document.getElementById('leavePending').innerText = lPending;
@@ -408,11 +411,15 @@
                 purchaseData.forEach(row => {
                     let keys = Object.keys(row);
                     let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
-                    let stage = stageKey ? (row[stageKey] || "") : "";
+                    let stage = stageKey ? (row[stageKey] || "").trim() : "";
                     
-                    if (stage.includes("مرفوض")) pRejected++;
-                    else if (stage.includes("معتمد نهائياً")) pApproved++;
-                    else pPending++;
+                    if (stage.includes("مرفوض")) {
+                        pRejected++;
+                    } else if (stage.includes("معتمد نهائياً")) {
+                        pApproved++;
+                    } else {
+                        pPending++;
+                    }
                 });
 
                 document.getElementById('purPending').innerText = pPending;
@@ -444,16 +451,17 @@
                         let keys = Object.keys(row);
                         let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص'));
                         let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
-                        let s = specKey ? (row[specKey] || "") : "";
-                        let m = mgrKey ? (row[mgrKey] || "") : "";
-                        return !s.includes("مرفوض") && !m.includes("مرفوض") && m !== "مقبول ومؤرشف";
+                        let s = specKey ? (row[specKey] || "").trim() : "";
+                        let m = mgrKey ? (row[mgrKey] || "").trim() : "";
+                        return !s.includes("مرفوض") && !m.includes("مرفوض") && m !== "مقبول ومؤرشف" && m !== "مؤرشف نهائي" && !m.includes("مقبول");
                     });
                 } else if (status === 'approved') {
                     titleText = "طلبات الإجازات المعتمدة";
                     currentActiveData = data.filter(row => {
                         let keys = Object.keys(row);
                         let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
-                        return (mgrKey ? row[mgrKey] : "") === "مقبول ومؤرشف";
+                        let m = mgrKey ? (row[mgrKey] || "").trim() : "";
+                        return m === "مقبول ومؤرشف" || m === "مؤرشف نهائي" || m.includes("مقبول");
                     });
                 } else if (status === 'rejected') {
                     titleText = "طلبات الإجازات المرفوضة";
@@ -461,8 +469,8 @@
                         let keys = Object.keys(row);
                         let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص'));
                         let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
-                        let s = specKey ? (row[specKey] || "") : "";
-                        let m = mgrKey ? (row[mgrKey] || "") : "";
+                        let s = specKey ? (row[specKey] || "").trim() : "";
+                        let m = mgrKey ? (row[mgrKey] || "").trim() : "";
                         return s.includes("مرفوض") || m.includes("مرفوض");
                     });
                 } else {
@@ -475,7 +483,7 @@
                     currentActiveData = data.filter(row => {
                         let keys = Object.keys(row);
                         let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
-                        let stage = stageKey ? (row[stageKey] || "") : "";
+                        let stage = stageKey ? (row[stageKey] || "").trim() : "";
                         return !stage.includes("مرفوض") && !stage.includes("معتمد نهائياً");
                     });
                 } else if (status === 'approved') {
@@ -483,14 +491,16 @@
                     currentActiveData = data.filter(row => {
                         let keys = Object.keys(row);
                         let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
-                        return (stageKey ? row[stageKey] : "").includes("معتمد نهائياً");
+                        let stage = stageKey ? (row[stageKey] || "").trim() : "";
+                        return stage.includes("معتمد نهائياً");
                     });
                 } else if (status === 'rejected') {
                     titleText = "طلبات المشتريات المرفوضة";
                     currentActiveData = data.filter(row => {
                         let keys = Object.keys(row);
                         let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
-                        return (stageKey ? row[stageKey] : "").includes("مرفوض");
+                        let stage = stageKey ? (row[stageKey] || "").trim() : "";
+                        return stage.includes("مرفوض");
                     });
                 } else {
                     titleText = "إجمالي طلبات المشتريات";
@@ -655,3 +665,4 @@
     </script>
 </body>
 </html>
+    
