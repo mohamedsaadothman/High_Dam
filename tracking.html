@@ -106,6 +106,9 @@
         
         .row-rejected-or-pending { background-color: rgba(220, 38, 38, 0.25) !important; }
 
+        /* ✅ إخفاء الأعمدة غير المطلوبة */
+        .hide-col { display: none !important; }
+
         /* ================= تخصيص الطباعة PDF ================= */
         @media print {
             @page { size: A4 landscape; margin: 5mm; }
@@ -117,14 +120,13 @@
             .modal-header h3 { color: #000 !important; font-size: 18px; text-align: center; margin-bottom: 10px; }
             .modal-body { padding: 0; overflow: visible; }
             
-            /* الجدول بتنسيق الطباعة */
             .details-table { font-size: 10px; table-layout: auto; width: 100%; page-break-inside: auto; }
             .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 4px; text-align: center; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
             .row-rejected-or-pending { background-color: #fecaca !important; }
 
-            /* إخفاء عمود الأصناف في الطباعة */
-            .col-items { display: none !important; }
+            /* ✅ تأكيد إخفاء الأعمدة في الطباعة */
+            .hide-col { display: none !important; }
         }
     </style>
 </head>
@@ -247,7 +249,7 @@
         let currentType = "";
         let currentStatusFilter = "";
 
-        // ✅ قاموس الترجمة الشامل (تمت إضافة Parent_Department و National_ID)
+        // ✅ قاموس الترجمة الشامل
         const columnTranslations = {
             "Timestamp": "وقت الإرسال",
             "Email Address": "البريد الإلكتروني",
@@ -276,6 +278,7 @@
             "Quantity": "الكمية",
             "Department": "الإدارة",
             "Parent_Department": "الإدارة",
+            "Parent_Deportment": "الإدارة", // ✅ لضمان الترجمة لو فيه خطأ إملائي
             "Stage": "مرحلة الطلب",
             "Current_Stage": "المرحلة الحالية",
             "Request_ID": "رقم الطلب",
@@ -289,7 +292,14 @@
             "National_ID": "الرقم القومي",
             "Phone": "رقم الهاتف",
             "FiledInfo": "حالة الملف",
-            "DaysCount": "عدد الأيام"
+            "DaysCount": "عدد الأيام",
+            "Gm_Date": "موافقة المدير",
+            "Central_Date": "موافقة الإدارة المركزية",
+            "Chairman_Date": "موافقة السلطة المختصة",
+            "PO_Status": "حالة أمر التوريد",
+            "PO_Details": "تفاصيل أمر التوريد",
+            "PO_Reason": "سبب الرفض",
+            "PO_Date": "تاريخ أمر التوريد"
         };
 
         window.onload = function() {
@@ -556,48 +566,35 @@
 
             let keys = Object.keys(data[0]);
 
+            // ✅ الأعمدة المسموح بعرضها فقط (لغاية التكلفة الإجمالية)
+            let allowedCols = [
+                "Request_ID", "Applicant_Name", "Role", "Parent_Department", 
+                "Total_Cost", "Items_list"
+            ];
+
             let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
-            html += '<th>م</th>';
+            html += '<th>م</th>'; // عمود المسلسل
             keys.forEach(key => {
-                // ✅ تنظيف الاسم لضمان عمل الترجمة
                 let cleanKey = key.trim().replace(/["']/g, '');
+                
+                // لو العمود مش في القائمة، هنخفيه
+                let isAllowed = allowedCols.includes(cleanKey);
+                let thClass = isAllowed ? '' : 'class="hide-col"';
+
                 let arabicHeader = columnTranslations[cleanKey] || cleanKey;
-                
-                // ✅ إخفاء عمود الأصناف في الطباعة
-                let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
-                let thClass = isItemsCol ? 'class="col-items"' : '';
-                
                 html += `<th ${thClass}>${arabicHeader}</th>`;
             });
             html += '</tr></thead><tbody>';
 
             data.forEach((row, index) => {
-                let rowClass = "";
-                if (currentStatusFilter === 'total') {
-                    let isRejectedOrPending = false;
-                    if (currentType === 'leave') {
-                        let specStatus = row[Object.keys(row)[11]] || "";
-                        let mgrStatus = row[Object.keys(row)[14]] || "";
-                        if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض") || mgrStatus !== "مقبول ومؤرشف") {
-                            isRejectedOrPending = true;
-                        }
-                    } else {
-                        let stage = row[Object.keys(row)[13]] || "";
-                        if (stage.includes("مرفوض") || !stage.includes("معتمد نهائياً")) {
-                            isRejectedOrPending = true;
-                        }
-                    }
-                    if (isRejectedOrPending) {
-                        rowClass = "row-rejected-or-pending";
-                    }
-                }
-
-                html += `<tr class="${rowClass}">`;
-                html += `<td>${index + 1}</td>`;
+                html += `<tr>`; // شيلنا التلوين بناءً على طلبك
+                html += `<td>${index + 1}</td>`; // الترقيم المسلسل
+                
                 keys.forEach(key => {
                     let cleanKey = key.trim().replace(/["']/g, '');
-                    let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
-                    let tdClass = isItemsCol ? 'class="col-items"' : '';
+                    let isAllowed = allowedCols.includes(cleanKey);
+                    let tdClass = isAllowed ? '' : 'class="hide-col"';
+
                     html += `<td ${tdClass}>${row[key] || '-'}</td>`;
                 });
                 html += '</tr>';
