@@ -7,7 +7,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
+    
+    <!-- مكتبة PapaParse لقراءة ملفات CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 
+    <!-- حماية الصفحة -->
     <script>
         if (sessionStorage.getItem('app_access_token') !== 'granted') {
             alert("عذراً، يجب الدخول من الصفحة الرئيسية أولاً.");
@@ -68,6 +72,7 @@
 
         <div id="errorBox" class="error-msg"></div>
 
+        <!-- قسم المشتريات -->
         <h2 class="section-title"><i class="fas fa-shopping-cart"></i> إدارة التعاقدات والمشتريات</h2>
         <div class="stats-grid">
             <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="purPending">-</div></div>
@@ -76,6 +81,7 @@
             <div class="stat-card card-blue"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="purTotal">-</div></div>
         </div>
 
+        <!-- قسم الإجازات -->
         <h2 class="section-title"><i class="fas fa-calendar-alt"></i> إدارة الإجازات</h2>
         <div class="stats-grid">
             <div class="stat-card card-yellow"><h3><i class="fas fa-clock"></i> معلقة</h3><div class="number" id="leavePending">-</div></div>
@@ -86,8 +92,9 @@
     </div>
 
     <script>
-        // ⚠️ حط هنا الرابط الجديد بتاع الـ Web app اللي إنت نسخته من الـ Deploy
-        const TRACKING_API_URL = "https://script.google.com/macros/s/AKfycbznigkgmar8AA-EaIzt7WYet_rsTv0zMoEy2d3Cn-UWym1sk7pP7ip3N1NTlYXXhfa9Iw/exec";
+        // ✅ الروابط الجديدة بتاعت الـ CSV
+        const LEAVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1t4J0CU27xPKyNHRlsIYn1wDylkF6FM6rUG9TK7l8tXKW-upnje5ohCzWYIgMXHAeqRTjaDwI9EEe/pub?gid=0&single=true&output=csv";
+        const PURCHASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxp-T7L4Q8VCHi5eLR4oY1FAq0vbDgJVKLphkUPeCMFeoYEeAQyCS7dUmd6STXFSK7LnTcDCk4NMTU/pub?gid=0&single=true&output=csv";
 
         function loadStats() {
             const btn = document.getElementById('refreshBtn');
@@ -96,40 +103,75 @@
             document.getElementById('errorBox').style.display = 'none';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
-            const url = TRACKING_API_URL + "?action=getStats&t=" + new Date().getTime();
+            const timestamp = new Date().getTime();
 
-            fetch(url)
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === "success") {
-                    document.getElementById('purPending').innerText = data.purchases.pending;
-                    document.getElementById('purApproved').innerText = data.purchases.approved;
-                    document.getElementById('purRejected').innerText = data.purchases.rejected;
-                    document.getElementById('purTotal').innerText = data.purchases.total;
+            // 1. جلب بيانات الإجازات
+            Papa.parse(LEAVE_CSV_URL + "&t=" + timestamp, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    let pending = 0, approved = 0, rejected = 0;
+                    let data = results.data;
+                    
+                    data.forEach(row => {
+                        let specStatus = row[Object.keys(row)[11]] || "";
+                        let mgrStatus = row[Object.keys(row)[14]] || "";
+                        
+                        if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) {
+                            rejected++;
+                        } else if (mgrStatus === "مقبول ومؤرشف") {
+                            approved++;
+                        } else {
+                            pending++;
+                        }
+                    });
 
-                    document.getElementById('leavePending').innerText = data.leaves.pending;
-                    document.getElementById('leaveApproved').innerText = data.leaves.approved;
-                    document.getElementById('leaveRejected').innerText = data.leaves.rejected;
-                    document.getElementById('leaveTotal').innerText = data.leaves.total;
-                } else {
-                    showError("حدث خطأ: " + data.message);
+                    document.getElementById('leavePending').innerText = pending;
+                    document.getElementById('leaveApproved').innerText = approved;
+                    document.getElementById('leaveRejected').innerText = rejected;
+                    document.getElementById('leaveTotal').innerText = data.length;
+                },
+                error: function(err) {
+                    console.error("خطأ في الإجازات:", err);
+                    document.getElementById('leaveTotal').innerText = "خطأ";
                 }
-            })
-            .catch(err => {
-                console.error(err);
-                showError("تعذر الاتصال بالخادم. تأكد من الرابط أو التصريحات.");
-            })
-            .finally(() => {
+            });
+
+            // 2. جلب بيانات العقود
+            Papa.parse(PURCHASE_CSV_URL + "&t=" + timestamp, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    let pending = 0, approved = 0, rejected = 0;
+                    let data = results.data;
+                    
+                    data.forEach(row => {
+                        let stage = row[Object.keys(row)[13]] || "";
+                        
+                        if (stage.includes("مرفوض")) {
+                            rejected++;
+                        } else if (stage.includes("معتمد نهائياً")) {
+                            approved++;
+                        } else {
+                            pending++;
+                        }
+                    });
+
+                    document.getElementById('purPending').innerText = pending;
+                    document.getElementById('purApproved').innerText = approved;
+                    document.getElementById('purRejected').innerText = rejected;
+                    document.getElementById('purTotal').innerText = data.length;
+                },
+                error: function(err) {
+                    console.error("خطأ في العقود:", err);
+                    document.getElementById('purTotal').innerText = "خطأ";
+                }
+            }).finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
-        }
-
-        function showError(msg) {
-            const errorBox = document.getElementById('errorBox');
-            errorBox.innerText = msg;
-            errorBox.style.display = 'block';
-            document.querySelectorAll('.number').forEach(el => el.innerText = '0');
         }
 
         window.onload = loadStats;
