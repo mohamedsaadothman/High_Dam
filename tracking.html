@@ -81,9 +81,6 @@
             cursor: pointer;
             opacity: 0.8;
         }
-        input[type="date"]::-webkit-calendar-picker-indicator:hover {
-            opacity: 1;
-        }
 
         .print-btn { background: #198754; color: #ffffff !important; border: none; padding: 10px 18px; border-radius: 8px; font-family: 'Cairo'; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s; height: fit-content; align-self: flex-end; }
         .print-btn i { color: #ffffff !important; font-size: 16px; }
@@ -281,6 +278,39 @@
             "DaysCount": "عدد الأيام"
         };
 
+        // دالة موحدة لتصنيف حالة الإجازات بدقة
+        function getLeaveStatus(row) {
+            let keys = Object.keys(row);
+            let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص') || k.toLowerCase().includes('spec'));
+            let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير') || k.toLowerCase().includes('mgr'));
+            
+            let s = specKey ? (row[specKey] || "").trim().toLowerCase() : "";
+            let m = mgrKey ? (row[mgrKey] || "").trim().toLowerCase() : "";
+            
+            if (s.includes("مرفوض") || m.includes("مرفوض") || s.includes("رفض") || m.includes("رفض") || s.includes("rejected") || m.includes("rejected")) {
+                return "rejected";
+            }
+            if (m.includes("مقبول ومؤرشف") || m.includes("مؤرشف نهائي") || m.includes("مقبول") || m.includes("معتمد") || m.includes("approved") || m.includes("archived")) {
+                return "approved";
+            }
+            return "pending";
+        }
+
+        // دالة موحدة لتصنيف حالة المشتريات بدقة
+        function getPurchaseStatus(row) {
+            let keys = Object.keys(row);
+            let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.toLowerCase().includes('status') || k.includes('مرحلة') || k.includes('حالة'));
+            let stage = stageKey ? (row[stageKey] || "").trim().toLowerCase() : "";
+            
+            if (stage.includes("مرفوض") || stage.includes("رفض") || stage.includes("rejected")) {
+                return "rejected";
+            }
+            if (stage.includes("معتمد نهائياً") || stage.includes("معتمد") || stage.includes("مقبول") || stage.includes("مؤرشف") || stage.includes("approved") || stage.includes("completed")) {
+                return "approved";
+            }
+            return "pending";
+        }
+
         window.onload = function() {
             Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
                 download: true, header: true, skipEmptyLines: true,
@@ -373,20 +403,10 @@
                 
                 let lPending = 0, lApproved = 0, lRejected = 0;
                 leaveData.forEach(row => {
-                    let keys = Object.keys(row);
-                    let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص') || k.toLowerCase().includes('spec'));
-                    let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير') || k.toLowerCase().includes('mgr'));
-                    
-                    let specStatus = specKey ? (row[specKey] || "").trim() : "";
-                    let mgrStatus = mgrKey ? (row[mgrKey] || "").trim() : "";
-                    
-                    if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض") || specStatus.includes("رفض") || mgrStatus.includes("رفض")) {
-                        lRejected++;
-                    } else if (mgrStatus.includes("مقبول ومؤرشف") || mgrStatus.includes("مؤرشف نهائي") || mgrStatus.includes("مقبول") || mgrStatus.includes("معتمد")) {
-                        lApproved++;
-                    } else {
-                        lPending++;
-                    }
+                    let status = getLeaveStatus(row);
+                    if (status === 'rejected') lRejected++;
+                    else if (status === 'approved') lApproved++;
+                    else lPending++;
                 });
 
                 document.getElementById('leavePending').innerText = lPending;
@@ -396,17 +416,10 @@
 
                 let pPending = 0, pApproved = 0, pRejected = 0;
                 purchaseData.forEach(row => {
-                    let keys = Object.keys(row);
-                    let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.toLowerCase().includes('status') || k.includes('مرحلة') || k.includes('حالة'));
-                    let stage = stageKey ? (row[stageKey] || "").trim() : "";
-                    
-                    if (stage.includes("مرفوض") || stage.includes("رفض")) {
-                        pRejected++;
-                    } else if (stage.includes("معتمد نهائياً") || stage.includes("معتمد") || stage.includes("مقبول") || stage.includes("مؤرشف")) {
-                        pApproved++;
-                    } else {
-                        pPending++;
-                    }
+                    let status = getPurchaseStatus(row);
+                    if (status === 'rejected') pRejected++;
+                    else if (status === 'approved') pApproved++;
+                    else pPending++;
                 });
 
                 document.getElementById('purPending').innerText = pPending;
@@ -434,36 +447,13 @@
             if (type === 'leave') {
                 if (status === 'pending') {
                     titleText = "طلبات الإجازات المعلقة";
-                    currentActiveData = data.filter(row => {
-                        let keys = Object.keys(row);
-                        let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص') || k.toLowerCase().includes('spec'));
-                        let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير') || k.toLowerCase().includes('mgr'));
-                        let s = specKey ? (row[specKey] || "").trim() : "";
-                        let m = mgrKey ? (row[mgrKey] || "").trim() : "";
-                        
-                        let isRejected = s.includes("مرفوض") || m.includes("مرفوض") || s.includes("رفض") || m.includes("رفض");
-                        let isApproved = m.includes("مقبول ومؤرشف") || m.includes("مؤرشف نهائي") || m.includes("مقبول") || m.includes("معتمد");
-                        
-                        return !isRejected && !isApproved;
-                    });
+                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'pending');
                 } else if (status === 'approved') {
                     titleText = "طلبات الإجازات المعتمدة";
-                    currentActiveData = data.filter(row => {
-                        let keys = Object.keys(row);
-                        let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير') || k.toLowerCase().includes('mgr'));
-                        let m = mgrKey ? (row[mgrKey] || "").trim() : "";
-                        return m.includes("مقبول ومؤرشف") || m.includes("مؤرشف نهائي") || m.includes("مقبول") || m.includes("معتمد");
-                    });
+                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'approved');
                 } else if (status === 'rejected') {
                     titleText = "طلبات الإجازات المرفوضة";
-                    currentActiveData = data.filter(row => {
-                        let keys = Object.keys(row);
-                        let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص') || k.toLowerCase().includes('spec'));
-                        let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير') || k.toLowerCase().includes('mgr'));
-                        let s = specKey ? (row[specKey] || "").trim() : "";
-                        let m = mgrKey ? (row[mgrKey] || "").trim() : "";
-                        return s.includes("مرفوض") || m.includes("مرفوض") || s.includes("رفض") || m.includes("رفض");
-                    });
+                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'rejected');
                 } else {
                     titleText = "إجمالي طلبات الإجازات";
                     currentActiveData = data;
@@ -471,32 +461,13 @@
             } else {
                 if (status === 'pending') {
                     titleText = "طلبات المشتريات المعلقة";
-                    currentActiveData = data.filter(row => {
-                        let keys = Object.keys(row);
-                        let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.toLowerCase().includes('status') || k.includes('مرحلة') || k.includes('حالة'));
-                        let stage = stageKey ? (row[stageKey] || "").trim() : "";
-                        
-                        let isRejected = stage.includes("مرفوض") || stage.includes("رفض");
-                        let isApproved = stage.includes("معتمد نهائياً") || stage.includes("معتمد") || stage.includes("مقبول") || stage.includes("مؤرشف");
-                        
-                        return !isRejected && !isApproved;
-                    });
+                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'pending');
                 } else if (status === 'approved') {
                     titleText = "طلبات المشتريات المعتمدة نهائياً";
-                    currentActiveData = data.filter(row => {
-                        let keys = Object.keys(row);
-                        let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.toLowerCase().includes('status') || k.includes('مرحلة') || k.includes('حالة'));
-                        let stage = stageKey ? (row[stageKey] || "").trim() : "";
-                        return stage.includes("معتمد نهائياً") || stage.includes("معتمد") || stage.includes("مقبول") || stage.includes("مؤرشف");
-                    });
+                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'approved');
                 } else if (status === 'rejected') {
                     titleText = "طلبات المشتريات المرفوضة";
-                    currentActiveData = data.filter(row => {
-                        let keys = Object.keys(row);
-                        let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.toLowerCase().includes('status') || k.includes('مرحلة') || k.includes('حالة'));
-                        let stage = stageKey ? (row[stageKey] || "").trim() : "";
-                        return stage.includes("مرفوض") || stage.includes("رفض");
-                    });
+                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'rejected');
                 } else {
                     titleText = "إجمالي طلبات المشتريات";
                     currentActiveData = data;
