@@ -79,10 +79,19 @@
         .filter-group label { font-size: 12px; color: #fbbf24; font-weight: 700; }
         .filter-group input { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-family: 'Cairo'; font-size: 13px; outline: none; }
         .filter-group input:focus { border-color: #fbbf24; }
+        
+        /* تلوين أيقونة التقويم بالأبيض */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+            opacity: 0.8;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
 
-        /* تنسيق زرار الطباعة */
         .print-btn { background: #198754; color: #ffffff !important; border: none; padding: 10px 18px; border-radius: 8px; font-family: 'Cairo'; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s; height: fit-content; align-self: flex-end; }
-        .print-btn i { color: #ffffff !important; font-size: 16px; } /* لون الأيقونة أبيض */
+        .print-btn i { color: #ffffff !important; font-size: 16px; }
         .print-btn:hover { background: #157347; }
 
         .suggestions-box { position: absolute; top: 100%; right: 0; left: 0; background: #1e293b; border: 1px solid #c59b27; border-radius: 6px; max-height: 150px; overflow-y: auto; z-index: 10; display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
@@ -109,10 +118,13 @@
             .modal-body { padding: 0; overflow: visible; }
             
             /* الجدول بتنسيق الطباعة */
-            .details-table { font-size: 9px; table-layout: auto; width: 100%; page-break-inside: auto; }
+            .details-table { font-size: 10px; table-layout: auto; width: 100%; page-break-inside: auto; }
             .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 4px; text-align: center; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
             .row-rejected-or-pending { background-color: #fecaca !important; }
+
+            /* إخفاء عمود الأصناف في الطباعة */
+            .col-items { display: none !important; }
         }
     </style>
 </head>
@@ -220,6 +232,13 @@
     </div>
 
     <script>
+        
+                // ✅ حماية الصفحة (منع النسخ واللصق للرابط)
+        if (sessionStorage.getItem('app_access_token') !== 'granted') {
+            // لو المستخدم مش جاي من الصفحة الرئيسية، نرجعه غصب عنه
+            window.location.replace("index.html");
+        }
+
         const LEAVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1t4J0CU27xPKyNHRlsIYn1wDylkF6FM6rUG9TK7l8tXKW-upnje5ohCzWYIgMXHAeqRTjaDwI9EEe/pub?gid=0&single=true&output=csv";
         const PURCHASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxp-T7L4Q8VCHi5eLR4oY1FAq0vbDgJVKLphkUPeCMFeoYEeAQyCS7dUmd6STXFSK7LnTcDCk4NMTU/pub?gid=0&single=true&output=csv";
         const USERS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7qyqwgacjwMEXUdYy_4GS2CYg74IzW2YYnLetmVhJyRjrC0M3AfRP5w6Uq0bYjuNuJjf9qj-B9QlN/pub?gid=667920095&single=true&output=csv";
@@ -231,7 +250,7 @@
         let currentType = "";
         let currentStatusFilter = "";
 
-        // ✅ قاموس الترجمة (تمت إضافة الأعمدة الجديدة)
+        // ✅ قاموس الترجمة (تمت إضافة Parent_Department و National_ID)
         const columnTranslations = {
             "Timestamp": "وقت الإرسال",
             "Email Address": "البريد الإلكتروني",
@@ -258,7 +277,7 @@
             "Item": "الصنف المطلوب",
             "Quantity": "الكمية",
             "Department": "الإدارة",
-            "Parent_Department": "الإدارة",
+            "Parent_Department": "اسم الإدارة", // ✅ التعديل الجديد
             "Stage": "مرحلة الطلب",
             "Current_Stage": "المرحلة الحالية",
             "Request_ID": "رقم الطلب",
@@ -269,6 +288,7 @@
             "Total_Cost": "التكلفة الإجمالية",
             "JobCategory": "الفئة الوظيفية",
             "NationalID": "الرقم القومي",
+            "National_ID": "الرقم القومي", // ✅ التعديل الجديد
             "Phone": "رقم الهاتف",
             "FiledInfo": "حالة الملف",
             "DaysCount": "عدد الأيام"
@@ -477,7 +497,7 @@
             let uniqueNames = [...new Set(currentActiveData.map(row => row[nameKey]))].filter(name => name && name.toLowerCase().includes(query));
 
             if (uniqueNames.length > 0) {
-                                let html = '';
+                let html = '';
                 uniqueNames.forEach(n => {
                     html += `<div class="suggestion-item" onclick="selectSuggestion('${n}')">${n}</div>`;
                 });
@@ -542,13 +562,14 @@
             html += '<th>م</th>'; // عمود المسلسل
             keys.forEach(key => {
                 let arabicHeader = columnTranslations[key.trim()] || key;
-                html += `<th>${arabicHeader}</th>`;
+                // ✅ إخفاء عمود الأصناف في الطباعة فقط
+                let thClass = (key.toLowerCase().includes('items') || key.includes('أصناف')) ? 'class="col-items"' : '';
+                html += `<th ${thClass}>${arabicHeader}</th>`;
             });
             html += '</tr></thead><tbody>';
 
             data.forEach((row, index) => {
                 let rowClass = "";
-                // إذا كان العرض من خلال زر "الإجمالي"، نقوم بتلوين المعلق أو المرفوض باللون الأحمر
                 if (currentStatusFilter === 'total') {
                     let isRejectedOrPending = false;
                     if (currentType === 'leave') {
@@ -571,7 +592,9 @@
                 html += `<tr class="${rowClass}">`;
                 html += `<td>${index + 1}</td>`; // الترقيم المسلسل
                 keys.forEach(key => {
-                    html += `<td>${row[key] || '-'}</td>`;
+                    // ✅ إخفاء عمود الأصناف في الطباعة فقط
+                    let tdClass = (key.toLowerCase().includes('items') || key.includes('أصناف')) ? 'class="col-items"' : '';
+                    html += `<td ${tdClass}>${row[key] || '-'}</td>`;
                 });
                 html += '</tr>';
             });
