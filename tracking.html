@@ -98,6 +98,12 @@
         .hide-col { display: none !important; }
         .col-items { display: none !important; }
 
+        /* شارات الحالة */
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+        .status-pending { background: rgba(217, 119, 6, 0.2); color: #fbbf24; border: 1px solid #d97706; }
+        .status-approved { background: rgba(5, 150, 105, 0.2); color: #4ade80; border: 1px solid #059669; }
+        .status-rejected { background: rgba(220, 38, 38, 0.2); color: #f87171; border: 1px solid #dc2626; }
+
         @media print {
             @page { size: A4 landscape; margin: 5mm; }
             body { background: #fff !important; color: #000 !important; }
@@ -112,6 +118,7 @@
             .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 4px; text-align: center; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
             
+            .status-badge { background: none !important; border: 1px solid #000 !important; color: #000 !important; }
             .hide-col { display: none !important; }
             .col-items { display: none !important; }
         }
@@ -193,7 +200,7 @@
                     <div class="filter-bar">
                         <div class="filter-group" style="position: relative;">
                             <label><i class="fas fa-user"></i> البحث بالاسم:</label>
-                            <input type="text" id="filterName" placeholder="اكتب الاسم..." oninput="handleNameInput()">
+                            <input type="text" id="filterName" placeholder="اكتب الاسم..." oninput="handleNameInput()" autocomplete="off">
                             <div id="nameSuggestions" class="suggestions-box"></div>
                         </div>
                         <div class="filter-group">
@@ -229,7 +236,7 @@
         let currentUserName = "";
         let globalLeaveData = [];
         let globalPurchaseData = [];
-        let currentActiveData = [];
+        let currentActiveData = [];       // البيانات المعروضة حالياً في المودال (بعد الفلترة حسب الحالة)
         let currentType = "";
         let currentStatusFilter = "";
 
@@ -278,6 +285,7 @@
             "DaysCount": "عدد الأيام"
         };
 
+        // ============ دوال تحديد الحالة ============
         function getLeaveStatus(row) {
             let statusVal = (row["Status"] || "").trim().toLowerCase();
             if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) {
@@ -300,6 +308,45 @@
             return "pending";
         }
 
+        // ============ دوال مساعدة موحدة ============
+        function getBaseDataForType() {
+            return (currentType === 'leave') ? globalLeaveData : globalPurchaseData;
+        }
+
+        function getStatusForType(row) {
+            return (currentType === 'leave') ? getLeaveStatus(row) : getPurchaseStatus(row);
+        }
+
+        function filterByStatus(data, status) {
+            if (status === 'total') return [...data];
+            return data.filter(row => getStatusForType(row) === status);
+        }
+
+        // ============ ترتيب الطلبات (الأحدث أولاً) ============
+        function sortRequests(data) {
+            if (data.length === 0) return data;
+            let keys = Object.keys(data[0]);
+            let dateKey = keys.find(k => 
+                k.toLowerCase().includes('date') || 
+                k.toLowerCase().includes('time') || 
+                k.toLowerCase() === 'timestamp' ||
+                k.includes('تاريخ') || 
+                k.includes('وقت')
+            );
+            
+            if (!dateKey) return data;
+            
+            return [...data].sort((a, b) => {
+                let dateA = new Date(a[dateKey]);
+                let dateB = new Date(b[dateKey]);
+                if (isNaN(dateA) || isNaN(dateB)) {
+                    return String(b[dateKey] || '').localeCompare(String(a[dateKey] || ''));
+                }
+                return dateB - dateA;
+            });
+        }
+
+        // ============ تحميل صفحة الدخول ============
         window.onload = function() {
             Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
                 download: true, header: true, skipEmptyLines: true,
@@ -319,6 +366,7 @@
             });
         };
 
+        // ============ تسجيل الدخول ============
         function checkLogin() {
             const user = document.getElementById('loginUsername').value;
             const pass = document.getElementById('loginPassword').value.trim();
@@ -364,6 +412,7 @@
             });
         }
 
+        // ============ تحميل الإحصائيات ============
         function loadStats() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
@@ -427,40 +476,30 @@
             });
         }
 
+        // ============ فتح المودال ============
         function openDetailsModal(type, status) {
             currentType = type;
             currentStatusFilter = status;
-            let data = (type === 'leave') ? globalLeaveData : globalPurchaseData;
+            
+            let allData = getBaseDataForType();
             let titleText = "";
 
+            // فلترة حسب الحالة المطلوبة
+            let filteredData = filterByStatus(allData, status);
+
+            // ترتيب البيانات (الأحدث أولاً)
+            currentActiveData = sortRequests(filteredData);
+
             if (type === 'leave') {
-                if (status === 'pending') {
-                    titleText = "طلبات الإجازات المعلقة";
-                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'pending');
-                } else if (status === 'approved') {
-                    titleText = "طلبات الإجازات المعتمدة";
-                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'approved');
-                } else if (status === 'rejected') {
-                    titleText = "طلبات الإجازات المرفوضة";
-                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'rejected');
-                } else {
-                    titleText = "إجمالي طلبات الإجازات";
-                    currentActiveData = data;
-                }
+                titleText = status === 'pending' ? "طلبات الإجازات المعلقة" :
+                            status === 'approved' ? "طلبات الإجازات المعتمدة" :
+                            status === 'rejected' ? "طلبات الإجازات المرفوضة" :
+                            "إجمالي طلبات الإجازات";
             } else {
-                if (status === 'pending') {
-                    titleText = "طلبات المشتريات المعلقة";
-                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'pending');
-                } else if (status === 'approved') {
-                    titleText = "طلبات المشتريات المعتمدة نهائياً";
-                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'approved');
-                } else if (status === 'rejected') {
-                    titleText = "طلبات المشتريات المرفوضة";
-                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'rejected');
-                } else {
-                    titleText = "إجمالي طلبات المشتريات";
-                    currentActiveData = data;
-                }
+                titleText = status === 'pending' ? "طلبات المشتريات المعلقة" :
+                            status === 'approved' ? "طلبات المشتريات المعتمدة نهائياً" :
+                            status === 'rejected' ? "طلبات المشتريات المرفوضة" :
+                            "إجمالي طلبات المشتريات";
             }
 
             document.getElementById('modalTitle').innerText = titleText;
@@ -474,26 +513,40 @@
             document.getElementById('detailsModal').style.display = 'flex';
         }
 
+        // ============ اقتراحات الأسماء ============
         function handleNameInput() {
             let query = document.getElementById('filterName').value.trim().toLowerCase();
             let suggestionsBox = document.getElementById('nameSuggestions');
-            
+
+            if (currentActiveData.length === 0) return;
+            let keys = Object.keys(currentActiveData[0]);
+            let nameKey = keys.find(k => k.toLowerCase().
+                        // ============ اقتراحات الأسماء ============
+        function handleNameInput() {
+            let query = document.getElementById('filterName').value.trim().toLowerCase();
+            let suggestionsBox = document.getElementById('nameSuggestions');
+
             if (currentActiveData.length === 0) return;
             let keys = Object.keys(currentActiveData[0]);
             let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2] || keys[1];
-            
+
             if (!query) {
                 suggestionsBox.style.display = 'none';
                 applyFilters();
                 return;
             }
 
-            let uniqueNames = [...new Set(currentActiveData.map(row => row[nameKey]))].filter(name => name && name.toLowerCase().includes(query));
+            let uniqueNames = [...new Set(
+                currentActiveData
+                    .map(row => row[nameKey])
+                    .filter(name => name && String(name).toLowerCase().includes(query))
+            )];
 
             if (uniqueNames.length > 0) {
                 let html = '';
                 uniqueNames.forEach(n => {
-                    html += `<div class="suggestion-item" onclick="selectSuggestion('${n}')">${n}</div>`;
+                    let safeName = String(n).replace(/'/g, "\\'");
+                    html += `<div class="suggestion-item" onclick="selectSuggestion('${safeName}')">${n}</div>`;
                 });
                 suggestionsBox.innerHTML = html;
                 suggestionsBox.style.display = 'block';
@@ -510,38 +563,44 @@
             applyFilters();
         }
 
+        // ============ تطبيق الفلاتر (البحث داخل currentActiveData فقط) ============
         function applyFilters() {
             let nameQuery = document.getElementById('filterName').value.trim().toLowerCase();
             let serialQuery = document.getElementById('filterSerial').value.trim().toLowerCase();
             let dateFrom = document.getElementById('filterDateFrom').value;
             let dateTo = document.getElementById('filterDateTo').value;
 
-            // تحديد البيانات الأساسية بناءً على الكارت المختار حالياً لتجنب ضياع الفرز عند استخدام البحث
-            let baseData = (currentType === 'leave') ? globalLeaveData : globalPurchaseData;
-            let filteredBase = baseData;
-
-            if (currentStatusFilter !== 'total') {
-                filteredBase = baseData.filter(row => {
-                    let st = (currentType === 'leave') ? getLeaveStatus(row) : getPurchaseStatus(row);
-                    return st === currentStatusFilter;
-                });
+            if (currentActiveData.length === 0) {
+                renderTable([]);
+                return;
             }
 
-            if (filteredBase.length === 0) return;
-            let keys = Object.keys(filteredBase[0]);
+            let keys = Object.keys(currentActiveData[0]);
 
             let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2];
-            let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.toLowerCase().includes('id') || k.includes('سريال') || k.includes('رقم')) || keys[1];
-            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time') || k.includes('تاريخ') || k.includes('وقت')) || keys[0];
+            let serialKey = keys.find(k => 
+                k.toLowerCase().includes('serial') || 
+                k.toLowerCase() === 'id' || 
+                k.toLowerCase().includes('request_id') ||
+                k.includes('سريال') || 
+                k.includes('رقم')
+            ) || keys[1];
+            let dateKey = keys.find(k => 
+                k.toLowerCase().includes('date') || 
+                k.toLowerCase().includes('time') || 
+                k.toLowerCase() === 'timestamp' ||
+                k.includes('تاريخ') || 
+                k.includes('وقت')
+            ) || keys[0];
 
-            let filtered = filteredBase.filter(row => {
-                let nameVal = (row[nameKey] || "").toLowerCase();
-                let serialVal = (row[serialKey] || "").toLowerCase();
-                let dateVal = (row[dateKey] || "").split(' ')[0];
+            let filtered = currentActiveData.filter(row => {
+                let nameVal = String(row[nameKey] || "").toLowerCase();
+                let serialVal = String(row[serialKey] || "").toLowerCase();
+                let dateVal = String(row[dateKey] || "").split(' ')[0];
 
                 let matchName = !nameQuery || nameVal.includes(nameQuery);
                 let matchSerial = !serialQuery || serialVal.includes(serialQuery);
-                
+
                 let matchDate = true;
                 if (dateVal) {
                     if (dateFrom && dateVal < dateFrom) matchDate = false;
@@ -554,6 +613,7 @@
             renderTable(filtered);
         }
 
+        // ============ عرض الجدول ============
         function renderTable(data) {
             let container = document.getElementById('modalTableContainer');
             if (data.length === 0) {
@@ -563,10 +623,14 @@
 
             let keys = Object.keys(data[0]);
 
+            // الأعمدة المسموح بها لجدول المشتريات
             let purchaseAllowedCols = [
                 "Request_ID", "Applicant_Name", "Role", "Parent_Department", 
                 "Total_Cost"
             ];
+
+            // إظهار عمود "الحالة" فقط عند عرض الإجمالي
+            let showStatusColumn = (currentStatusFilter === 'total');
 
             let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
             html += '<th>م</th>';
@@ -574,7 +638,6 @@
             keys.forEach(key => {
                 let cleanKey = key.trim().replace(/["']/g, '');
                 let arabicHeader = columnTranslations[cleanKey] || cleanKey;
-                
                 let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
                 let hideCol = false;
                 
@@ -583,14 +646,18 @@
                 }
                 
                 let thClass = hideCol ? 'class="hide-col"' : (isItemsCol ? 'class="col-items"' : '');
-
                 html += `<th ${thClass}>${arabicHeader}</th>`;
             });
+
+            // عمود الحالة يظهر فقط في الإجمالي
+            if (showStatusColumn) {
+                html += '<th>الحالة</th>';
+            }
+
             html += '</tr></thead><tbody>';
 
             data.forEach((row, index) => {
-                // الجدول باللون الافتراضي بدون أي تلوين للخلفية
-                html += `<tr>`; 
+                html += `<tr>`;
                 html += `<td>${index + 1}</td>`;
                 
                 keys.forEach(key => {
@@ -603,9 +670,18 @@
                     }
                     
                     let tdClass = hideCol ? 'class="hide-col"' : (isItemsCol ? 'class="col-items"' : '');
-
                     html += `<td ${tdClass}>${row[key] || '-'}</td>`;
                 });
+
+                // إضافة قيمة الحالة في الإجمالي
+                if (showStatusColumn) {
+                    let st = getStatusForType(row);
+                    let label = st === 'approved' ? '<span class="status-badge status-approved">✅ معتمد</span>' :
+                                st === 'rejected' ? '<span class="status-badge status-rejected">❌ مرفوض</span>' :
+                                '<span class="status-badge status-pending">⏳ معلق</span>';
+                    html += `<td>${label}</td>`;
+                }
+
                 html += '</tr>';
             });
 
@@ -613,10 +689,12 @@
             container.innerHTML = html;
         }
 
+        // ============ إغلاق المودال ============
         function closeModal() {
             document.getElementById('detailsModal').style.display = 'none';
         }
 
+        // ============ إغلاق المودال عند النقر خارجه ============
         window.onclick = function(event) {
             let modal = document.getElementById('detailsModal');
             if (event.target == modal) {
