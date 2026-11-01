@@ -278,24 +278,29 @@
             "DaysCount": "عدد الأيام"
         };
 
-        // تم ضبط هذه الدالة خصيصاً لتتطابق تماماً مع النصوص الموجودة في ملف Excel لديك (مثل مقبول ومؤرشف، قيد الانتظار)
+        // دالة مرنة جداً للتعرف على حالة الإجازات
         function getLeaveStatus(row) {
-            let statusVal = (row["Status"] || "").trim().toLowerCase();
-            if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) {
+            // فحص جميع القيم الممكنة في الصف التي قد تدل على الحالة
+            let statusVal = (row["Status"] || row["FiledInfo"] || row["Stage"] || "").trim().toLowerCase();
+            
+            if (statusVal.includes("مرفوض") || statusVal.includes("رفض") || statusVal.includes("غير متاح")) {
                 return "rejected";
             }
-            if (statusVal.includes("مقبول") || statusVal.includes("مؤرشف") || statusVal.includes("معتمد")) {
+            if (statusVal.includes("مقبول") || statusVal.includes("مؤرشف") || statusVal.includes("معتمد") || statusVal.includes("متاح")) {
                 return "approved";
             }
+            // إذا كانت تحتوي على "قيد" أو "انتظار" أو فارغة تعتبر معلقة
             return "pending";
         }
 
+        // دالة مرنة جداً للتعرف على حالة المشتريات
         function getPurchaseStatus(row) {
-            let stageVal = (row["Current_Stage"] || row["Status"] || "").trim().toLowerCase();
+            let stageVal = (row["Current_Stage"] || row["Status"] || row["Stage"] || "").trim().toLowerCase();
+            
             if (stageVal.includes("مرفوض") || stageVal.includes("رفض")) {
                 return "rejected";
             }
-            if (stageVal.includes("مقبول") || stageVal.includes("مؤرشف") || stageVal.includes("معتمد")) {
+            if (stageVal.includes("معتمد") || stageVal.includes("مقبول") || stageVal.includes("مؤرشف")) {
                 return "approved";
             }
             return "pending";
@@ -391,6 +396,12 @@
                 globalLeaveData = leaveData;
                 globalPurchaseData = purchaseData;
                 
+                // طباعة تشخيصية في الكونسول لمعرفة كيف يتم تصنيف الصفوف
+                console.log("--- تشخيص بيانات الإجازات ---");
+                leaveData.forEach((row, i) => {
+                    console.log(`صف ${i+1} | الحالة النصية:`, row["Status"], " | التصنيف:", getLeaveStatus(row));
+                });
+
                 let lPending = 0, lApproved = 0, lRejected = 0;
                 leaveData.forEach(row => {
                     let st = getLeaveStatus(row);
