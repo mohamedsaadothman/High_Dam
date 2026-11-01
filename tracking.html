@@ -104,8 +104,8 @@
         .details-table th { background: #0f172a; color: #fbbf24; }
         .details-table tr:hover { background: rgba(255,255,255,0.02); }
         
-        /* ✅ إخفاء الأعمدة غير المطلوبة */
-        .hide-col { display: none !important; }
+        /* ✅ إخفاء عمود الأصناف فقط */
+        .col-items { display: none !important; }
 
         /* ================= تخصيص الطباعة PDF ================= */
         @media print {
@@ -118,12 +118,11 @@
             .modal-header h3 { color: #000 !important; font-size: 18px; text-align: center; margin-bottom: 10px; }
             .modal-body { padding: 0; overflow: visible; }
             
-            .details-table { font-size: 12px; table-layout: auto; width: 100%; page-break-inside: auto; }
-            .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 6px; text-align: center; }
+            .details-table { font-size: 10px; table-layout: auto; width: 100%; page-break-inside: auto; }
+            .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 4px; text-align: center; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
-
-            /* ✅ تأكيد إخفاء الأعمدة في الطباعة */
-            .hide-col { display: none !important; }
+            
+            .col-items { display: none !important; }
         }
     </style>
 </head>
@@ -385,8 +384,13 @@
                 
                 let lPending = 0, lApproved = 0, lRejected = 0;
                 leaveData.forEach(row => {
-                    let specStatus = row[Object.keys(row)[11]] || "";
-                    let mgrStatus = row[Object.keys(row)[14]] || "";
+                    let keys = Object.keys(row);
+                    let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص'));
+                    let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
+                    
+                    let specStatus = specKey ? (row[specKey] || "") : "";
+                    let mgrStatus = mgrKey ? (row[mgrKey] || "") : "";
+                    
                     if (specStatus.includes("مرفوض") || mgrStatus.includes("مرفوض")) lRejected++;
                     else if (mgrStatus === "مقبول ومؤرشف") lApproved++;
                     else lPending++;
@@ -399,7 +403,10 @@
 
                 let pPending = 0, pApproved = 0, pRejected = 0;
                 purchaseData.forEach(row => {
-                    let stage = row[Object.keys(row)[13]] || "";
+                    let keys = Object.keys(row);
+                    let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
+                    let stage = stageKey ? (row[stageKey] || "") : "";
+                    
                     if (stage.includes("مرفوض")) pRejected++;
                     else if (stage.includes("معتمد نهائياً")) pApproved++;
                     else pPending++;
@@ -431,18 +438,28 @@
                 if (status === 'pending') {
                     titleText = "طلبات الإجازات المعلقة";
                     currentActiveData = data.filter(row => {
-                        let s = row[Object.keys(row)[11]] || "";
-                        let m = row[Object.keys(row)[14]] || "";
+                        let keys = Object.keys(row);
+                        let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص'));
+                        let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
+                        let s = specKey ? (row[specKey] || "") : "";
+                        let m = mgrKey ? (row[mgrKey] || "") : "";
                         return !s.includes("مرفوض") && !m.includes("مرفوض") && m !== "مقبول ومؤرشف";
                     });
                 } else if (status === 'approved') {
                     titleText = "طلبات الإجازات المعتمدة";
-                    currentActiveData = data.filter(row => (row[Object.keys(row)[14]] || "") === "مقبول ومؤرشف");
+                    currentActiveData = data.filter(row => {
+                        let keys = Object.keys(row);
+                        let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
+                        return (mgrKey ? row[mgrKey] : "") === "مقبول ومؤرشف";
+                    });
                 } else if (status === 'rejected') {
                     titleText = "طلبات الإجازات المرفوضة";
                     currentActiveData = data.filter(row => {
-                        let s = row[Object.keys(row)[11]] || "";
-                        let m = row[Object.keys(row)[14]] || "";
+                        let keys = Object.keys(row);
+                        let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص'));
+                        let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير'));
+                        let s = specKey ? (row[specKey] || "") : "";
+                        let m = mgrKey ? (row[mgrKey] || "") : "";
                         return s.includes("مرفوض") || m.includes("مرفوض");
                     });
                 } else {
@@ -453,15 +470,25 @@
                 if (status === 'pending') {
                     titleText = "طلبات المشتريات المعلقة";
                     currentActiveData = data.filter(row => {
-                        let stage = row[Object.keys(row)[13]] || "";
+                        let keys = Object.keys(row);
+                        let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
+                        let stage = stageKey ? (row[stageKey] || "") : "";
                         return !stage.includes("مرفوض") && !stage.includes("معتمد نهائياً");
                     });
                 } else if (status === 'approved') {
                     titleText = "طلبات المشتريات المعتمدة نهائياً";
-                    currentActiveData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("معتمد نهائياً"));
+                    currentActiveData = data.filter(row => {
+                        let keys = Object.keys(row);
+                        let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
+                        return (stageKey ? row[stageKey] : "").includes("معتمد نهائياً");
+                    });
                 } else if (status === 'rejected') {
                     titleText = "طلبات المشتريات المرفوضة";
-                    currentActiveData = data.filter(row => (row[Object.keys(row)[13]] || "").includes("مرفوض"));
+                    currentActiveData = data.filter(row => {
+                        let keys = Object.keys(row);
+                        let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.includes('مرحلة'));
+                        return (stageKey ? row[stageKey] : "").includes("مرفوض");
+                    });
                 } else {
                     titleText = "إجمالي طلبات المشتريات";
                     currentActiveData = data;
@@ -557,22 +584,17 @@
 
             let keys = Object.keys(data[0]);
 
-            // ✅ الأعمدة المسموح بعرضها فقط (تم إلغاء عمود الأصناف نهائياً)
-            let allowedCols = [
-                "Request_ID", "Applicant_Name", "Role", "Parent_Department", 
-                "Total_Cost"
-            ];
-
             let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
             html += '<th>م</th>'; // عمود المسلسل
+
             keys.forEach(key => {
                 let cleanKey = key.trim().replace(/["']/g, '');
-                
-                // لو العمود مش في القائمة، هنخفيه
-                let isAllowed = allowedCols.includes(cleanKey);
-                let thClass = isAllowed ? '' : 'class="hide-col"';
-
                 let arabicHeader = columnTranslations[cleanKey] || cleanKey;
+                
+                // إخفاء عمود الأصناف
+                let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
+                let thClass = isItemsCol ? 'class="col-items"' : '';
+
                 html += `<th ${thClass}>${arabicHeader}</th>`;
             });
             html += '</tr></thead><tbody>';
@@ -583,8 +605,8 @@
                 
                 keys.forEach(key => {
                     let cleanKey = key.trim().replace(/["']/g, '');
-                    let isAllowed = allowedCols.includes(cleanKey);
-                    let tdClass = isAllowed ? '' : 'class="hide-col"';
+                    let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
+                    let tdClass = isItemsCol ? 'class="col-items"' : '';
 
                     html += `<td ${tdClass}>${row[key] || '-'}</td>`;
                 });
