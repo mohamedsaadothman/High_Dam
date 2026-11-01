@@ -278,37 +278,28 @@
             "DaysCount": "عدد الأيام"
         };
 
-        // دالة موحدة لتصنيف حالة الإجازات بدقة
+        // دالة تصنيف حالة الإجازات بناءً على عمود Status الفعلي (صورة 1)
         function getLeaveStatus(row) {
-            let keys = Object.keys(row);
-            let specKey = keys.find(k => k.toLowerCase().includes('specialist') || k.includes('مختص') || k.toLowerCase().includes('spec'));
-            let mgrKey = keys.find(k => k.toLowerCase().includes('manager') || k.includes('مدير') || k.toLowerCase().includes('mgr'));
-            
-            let s = specKey ? (row[specKey] || "").trim().toLowerCase() : "";
-            let m = mgrKey ? (row[mgrKey] || "").trim().toLowerCase() : "";
-            
-            if (s.includes("مرفوض") || m.includes("مرفوض") || s.includes("رفض") || m.includes("رفض") || s.includes("rejected") || m.includes("rejected")) {
+            let statusVal = (row["Status"] || "").trim();
+            if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) {
                 return "rejected";
             }
-            if (m.includes("مقبول ومؤرشف") || m.includes("مؤرشف نهائي") || m.includes("مقبول") || m.includes("معتمد") || m.includes("approved") || m.includes("archived")) {
+            if (statusVal === "مقبول ومؤرشف" || statusVal.includes("مقبول")) {
                 return "approved";
             }
-            return "pending";
+            return "pending"; // في حال كانت "قيد الانتظار" أو أي قيمة أخرى
         }
 
-        // دالة موحدة لتصنيف حالة المشتريات بدقة
+        // دالة تصنيف حالة المشتريات بناءً على عمود Current_Stage الفعلي (صورة 2)
         function getPurchaseStatus(row) {
-            let keys = Object.keys(row);
-            let stageKey = keys.find(k => k.toLowerCase().includes('stage') || k.toLowerCase().includes('status') || k.includes('مرحلة') || k.includes('حالة'));
-            let stage = stageKey ? (row[stageKey] || "").trim().toLowerCase() : "";
-            
-            if (stage.includes("مرفوض") || stage.includes("رفض") || stage.includes("rejected")) {
+            let stageVal = (row["Current_Stage"] || row["Status"] || "").trim();
+            if (stageVal.includes("مرفوض") || stageVal.includes("رفض")) {
                 return "rejected";
             }
-            if (stage.includes("معتمد نهائياً") || stage.includes("معتمد") || stage.includes("مقبول") || stage.includes("مؤرشف") || stage.includes("approved") || stage.includes("completed")) {
+            if (stageVal.includes("معتمد نهائياً") || stageVal.includes("معتمد")) {
                 return "approved";
             }
-            return "pending";
+            return "pending"; // في حال كانت قيد الانتظار أو أي مرحلة أخرى غير معتمدة نهائياً
         }
 
         window.onload = function() {
@@ -403,9 +394,9 @@
                 
                 let lPending = 0, lApproved = 0, lRejected = 0;
                 leaveData.forEach(row => {
-                    let status = getLeaveStatus(row);
-                    if (status === 'rejected') lRejected++;
-                    else if (status === 'approved') lApproved++;
+                    let st = getLeaveStatus(row);
+                    if (st === 'rejected') lRejected++;
+                    else if (st === 'approved') lApproved++;
                     else lPending++;
                 });
 
@@ -416,9 +407,9 @@
 
                 let pPending = 0, pApproved = 0, pRejected = 0;
                 purchaseData.forEach(row => {
-                    let status = getPurchaseStatus(row);
-                    if (status === 'rejected') pRejected++;
-                    else if (status === 'approved') pApproved++;
+                    let st = getPurchaseStatus(row);
+                    if (st === 'rejected') pRejected++;
+                    else if (st === 'approved') pApproved++;
                     else pPending++;
                 });
 
