@@ -104,7 +104,8 @@
         .details-table th { background: #0f172a; color: #fbbf24; }
         .details-table tr:hover { background: rgba(255,255,255,0.02); }
         
-        /* ✅ إخفاء عمود الأصناف فقط */
+        /* ✅ إخفاء الأعمدة */
+        .hide-col { display: none !important; }
         .col-items { display: none !important; }
 
         /* ================= تخصيص الطباعة PDF ================= */
@@ -122,6 +123,7 @@
             .details-table th, .details-table td { border: 1px solid #000; white-space: normal; word-wrap: break-word; color: #000 !important; padding: 4px; text-align: center; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
             
+            .hide-col { display: none !important; }
             .col-items { display: none !important; }
         }
     </style>
@@ -228,6 +230,7 @@
             </div>
         </div>
     </div>
+
 
         <script>
         // ✅ 1. حماية الصفحة (منع النسخ واللصق للرابط)
@@ -584,6 +587,12 @@
 
             let keys = Object.keys(data[0]);
 
+            // ✅ الأعمدة المسموح بيها في المشتريات فقط
+            let purchaseAllowedCols = [
+                "Request_ID", "Applicant_Name", "Role", "Parent_Department", 
+                "Total_Cost"
+            ];
+
             let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
             html += '<th>م</th>'; // عمود المسلسل
 
@@ -591,9 +600,15 @@
                 let cleanKey = key.trim().replace(/["']/g, '');
                 let arabicHeader = columnTranslations[cleanKey] || cleanKey;
                 
-                // إخفاء عمود الأصناف
+                // ✅ الشرط الذكي: لو إحنا في المشتريات نخفي غير المسموح، ولو إجازات نعرض الكل ما عدا الأصناف
                 let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
-                let thClass = isItemsCol ? 'class="col-items"' : '';
+                let hideCol = false;
+                
+                if (currentType === 'purchase') {
+                    hideCol = !purchaseAllowedCols.includes(cleanKey);
+                }
+                
+                let thClass = hideCol ? 'class="hide-col"' : (isItemsCol ? 'class="col-items"' : '');
 
                 html += `<th ${thClass}>${arabicHeader}</th>`;
             });
@@ -606,7 +621,13 @@
                 keys.forEach(key => {
                     let cleanKey = key.trim().replace(/["']/g, '');
                     let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
-                    let tdClass = isItemsCol ? 'class="col-items"' : '';
+                    let hideCol = false;
+                    
+                    if (currentType === 'purchase') {
+                        hideCol = !purchaseAllowedCols.includes(cleanKey);
+                    }
+                    
+                    let tdClass = hideCol ? 'class="hide-col"' : (isItemsCol ? 'class="col-items"' : '');
 
                     html += `<td ${tdClass}>${row[key] || '-'}</td>`;
                 });
