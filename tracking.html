@@ -107,14 +107,14 @@
 
         /* تنسيق النافذة المنبثقة (Modal) */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; padding: 15px; }
-        .modal-content { background: #1e293b; width: 100%; max-width: 900px; border-radius: 12px; border: 1px solid #c59b27; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+        .modal-content { background: #1e293b; width: 100%; max-width: 950px; border-radius: 12px; border: 1px solid #c59b27; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
         .modal-header { background: #0f172a; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
         .modal-header h3 { color: #fbbf24; font-size: 16px; }
         .close-modal { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; }
         .modal-body { padding: 15px; overflow-y: auto; }
         
         /* أدوات الفلترة داخل المودال */
-        .filter-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 15px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; position: relative; }
+        .filter-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 15px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         .filter-group { display: flex; flex-direction: column; gap: 5px; position: relative; }
         .filter-group label { font-size: 12px; color: #fbbf24; font-weight: 700; }
         .filter-group input { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-family: 'Cairo'; font-size: 13px; outline: none; }
@@ -127,7 +127,7 @@
 
         /* جدول عرض التفاصيل */
         .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 13px; }
-        .details-table th, .details-table td { padding: 10px; border-bottom: 1px solid #334155; }
+        .details-table th, .details-table td { padding: 10px; border-bottom: 1px solid #334155; white-space: nowrap; }
         .details-table th { background: #0f172a; color: #fbbf24; }
         .details-table tr:hover { background: rgba(255,255,255,0.02); }
     </style>
@@ -211,7 +211,7 @@
                 <div class="filter-bar">
                     <div class="filter-group" style="position: relative;">
                         <label><i class="fas fa-user"></i> البحث بالاسم:</label>
-                        <input type="text" id="filterName" placeholder="اكتب الاسم أو الحرف الأول..." oninput="handleNameInput()">
+                        <input type="text" id="filterName" placeholder="اكتب الاسم أو الحرف..." oninput="handleNameInput()">
                         <div id="nameSuggestions" class="suggestions-box"></div>
                     </div>
                     <div class="filter-group">
@@ -219,14 +219,16 @@
                         <input type="text" id="filterSerial" placeholder="ابحث برقم السريال..." oninput="applyFilters()">
                     </div>
                     <div class="filter-group">
-                        <label><i class="fas fa-calendar"></i> التاريخ:</label>
-                        <input type="date" id="filterDate" onchange="applyFilters()">
+                        <label><i class="fas fa-calendar-alt"></i> من تاريخ:</label>
+                        <input type="date" id="filterDateFrom" onchange="applyFilters()">
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-check"></i> إلى تاريخ:</label>
+                        <input type="date" id="filterDateTo" onchange="applyFilters()">
                     </div>
                 </div>
 
-                <div id="modalTableContainer">
-                    <!-- سيتم حقن الجدول هنا ديناميكياً -->
-                </div>
+                <div id="modalTableContainer"></div>
             </div>
         </div>
     </div>
@@ -239,36 +241,27 @@
         let currentUserName = "";
         let globalLeaveData = [];
         let globalPurchaseData = [];
-        
-        // متغيرات للفلترة الحالية
         let currentActiveData = [];
         let currentType = "";
 
-        // قاموس ترجمة رؤوس الأعمدة للغة العربية حسب نوع الملف
+        // قاموس ترجمة رؤوس الأعمدة شامل لجميع الاحتمالات واللغات
         const columnTranslations = {
-            leave: {
-                "Timestamp": "وقت الإرسال",
-                "Email Address": "البريد الإلكتروني",
-                "Name": "اسم الموظف",
-                "Serial": "السريال نمبر",
-                "Date": "التاريخ",
-                "Leave Type": "نوع الإجازة",
-                "From Date": "من تاريخ",
-                "To Date": "إلى تاريخ",
-                "Reason": "السبب",
-                "Status": "الحالة",
-                "Manager Status": "حالة المدير"
-            },
-            purchase: {
-                "Timestamp": "وقت الإرسال",
-                "Serial": "السريال نمبر",
-                "Name": "اسم الطالب",
-                "Date": "التاريخ",
-                "Item": "الصنف المطلوب",
-                "Quantity": "الكمية",
-                "Department": "الإدارة",
-                "Stage": "مرحلة الطلب"
-            }
+            "Timestamp": "وقت الإرسال",
+            "Email Address": "البريد الإلكتروني",
+            "Name": "اسم الموظف / الطالب",
+            "Serial": "السريال نمبر",
+            "Serial Number": "السريال نمبر",
+            "Date": "التاريخ",
+            "Leave Type": "نوع الإجازة",
+            "From Date": "من تاريخ",
+            "To Date": "إلى تاريخ",
+            "Reason": "السبب",
+            "Status": "الحالة",
+            "Manager Status": "حالة المدير",
+            "Item": "الصنف المطلوب",
+            "Quantity": "الكمية",
+            "Department": "الإدارة",
+            "Stage": "مرحلة الطلب"
         };
 
         window.onload = function() {
@@ -387,7 +380,6 @@
                 document.getElementById('purApproved').innerText = pApproved;
                 document.getElementById('purRejected').innerText = pRejected;
                 document.getElementById('purTotal').innerText = purchaseData.length;
-
             })
             .catch(err => {
                 console.error(err);
@@ -400,7 +392,6 @@
             });
         }
 
-        // فتح المودال وتخزين البيانات الأساسية للحالة المختارة
         function openDetailsModal(type, status) {
             currentType = type;
             let data = (type === 'leave') ? globalLeaveData : globalPurchaseData;
@@ -450,20 +441,21 @@
             document.getElementById('modalTitle').innerText = titleText;
             document.getElementById('filterName').value = '';
             document.getElementById('filterSerial').value = '';
-            document.getElementById('filterDate').value = '';
+            document.getElementById('filterDateFrom').value = '';
+            document.getElementById('filterDateTo').value = '';
             document.getElementById('nameSuggestions').style.display = 'none';
 
             renderTable(currentActiveData);
             document.getElementById('detailsModal').style.display = 'flex';
         }
 
-        // معالجة كتابة الاسم واظهار المقترحات التلقائية
         function handleNameInput() {
             let query = document.getElementById('filterName').value.trim().toLowerCase();
             let suggestionsBox = document.getElementById('nameSuggestions');
             
-            // استخراج اسم العميل من الأعمدة (نفترض أن العمود الثالث أو الذي يحتوي على الاسم هو المطلوب، سنبحث في كل صف عن قيمة مطابقة أو نبحث بالعمود الخاص بالاسم)
-            let nameKey = Object.keys(currentActiveData[0] || {})[2] || Object.keys(currentActiveData[0] || {})[1];
+            if (currentActiveData.length === 0) return;
+            let keys = Object.keys(currentActiveData[0]);
+            let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2] || keys[1];
             
             if (!query) {
                 suggestionsBox.style.display = 'none';
@@ -471,7 +463,6 @@
                 return;
             }
 
-            // جمع الأسماء الفريدة التي تتطابق مع الحرف أو الكلمة المدخلة
             let uniqueNames = [...new Set(currentActiveData.map(row => row[nameKey]))].filter(name => name && name.toLowerCase().includes(query));
 
             if (uniqueNames.length > 0) {
@@ -494,26 +485,32 @@
             applyFilters();
         }
 
-        // تطبيق الفلاتر (الاسم، السريال، التاريخ)
         function applyFilters() {
             let nameQuery = document.getElementById('filterName').value.trim().toLowerCase();
             let serialQuery = document.getElementById('filterSerial').value.trim().toLowerCase();
-            let dateQuery = document.getElementById('filterDate').value;
+            let dateFrom = document.getElementById('filterDateFrom').value;
+            let dateTo = document.getElementById('filterDateTo').value;
 
-            let nameKey = Object.keys(currentActiveData[0] || {})[2] || Object.keys(currentActiveData[0] || {})[1];
-            // تخمين عمود السريال أو التاريخ من المفاتيح المتاحة
-            let keys = Object.keys(currentActiveData[0] || {});
-            let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.includes('سريال') || k.includes('رقم')) || keys[3];
-            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.includes('تاريخ') || k.includes('time')) || keys[0];
+            if (currentActiveData.length === 0) return;
+            let keys = Object.keys(currentActiveData[0]);
+
+            let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2];
+            let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.toLowerCase().includes('id') || k.includes('سريال') || k.includes('رقم')) || keys[1];
+            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time') || k.includes('تاريخ') || k.includes('وقت')) || keys[0];
 
             let filtered = currentActiveData.filter(row => {
                 let nameVal = (row[nameKey] || "").toLowerCase();
                 let serialVal = (row[serialKey] || "").toLowerCase();
-                let dateVal = (row[dateKey] || "");
+                let dateVal = (row[dateKey] || "").split(' ')[0]; // استخراج التاريخ فقط إذا وجد وقت معه
 
                 let matchName = !nameQuery || nameVal.includes(nameQuery);
                 let matchSerial = !serialQuery || serialVal.includes(serialQuery);
-                let matchDate = !dateQuery || dateVal.includes(dateQuery);
+                
+                let matchDate = true;
+                if (dateVal) {
+                    if (dateFrom && dateVal < dateFrom) matchDate = false;
+                    if (dateTo && dateVal > dateTo) matchDate = false;
+                }
 
                 return matchName && matchSerial && matchDate;
             });
@@ -521,7 +518,6 @@
             renderTable(filtered);
         }
 
-        // رسم الجدول مع ترجمة الأعمدة للعربية
         function renderTable(data) {
             let container = document.getElementById('modalTableContainer');
             if (data.length === 0) {
@@ -530,20 +526,18 @@
             }
 
             let keys = Object.keys(data[0]);
-            let translations = columnTranslations[currentType] || {};
 
             let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
             
-            // عرض رؤوس الأعمدة مترجمة للعربية إذا توفرت، أو استخدام الأصلية
-            keys.slice(0, 7).forEach(key => {
-                let arabicHeader = translations[key] || key;
+            keys.forEach(key => {
+                let arabicHeader = columnTranslations[key.trim()] || key;
                 html += `<th>${arabicHeader}</th>`;
             });
             html += '</tr></thead><tbody>';
 
             data.forEach(row => {
                 html += '<tr>';
-                keys.slice(0, 7).forEach(key => {
+                keys.forEach(key => {
                     html += `<td>${row[key] || '-'}</td>`;
                 });
                 html += '</tr>';
@@ -557,7 +551,6 @@
             document.getElementById('detailsModal').style.display = 'none';
         }
 
-        // إغلاق قائمة المقترحات عند النقر خارجها
         window.onclick = function(event) {
             let modal = document.getElementById('detailsModal');
             if (event.target == modal) {
