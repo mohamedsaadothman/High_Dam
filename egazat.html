@@ -90,6 +90,7 @@
         .summary-report-table tr:nth-child(even) { background-color: #f1f5f9; }
         .summary-report-table tr:hover { background-color: #e2e8f0; }
         .summary-report-table .total-row { background-color: #c59b27 !important; font-weight: 900; color: #fff; }
+        .retired-row { background-color: #fef08a !important; color: #854d0e !important; font-weight: bold; }
 
         .inquiry-login-box { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto 20px auto; }
         .inquiry-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
@@ -115,6 +116,7 @@
             .no-print { display: none !important; }
             .summary-report-table th { background-color: #e2e8f0 !important; color: #000 !important; -webkit-print-color-adjust: exact; }
             .summary-report-table .total-row { background-color: #fcd34d !important; color: #000 !important; -webkit-print-color-adjust: exact; }
+            .retired-row { background-color: #fef08a !important; -webkit-print-color-adjust: exact; }
             @page { size: A4 landscape; margin: 10mm; }
         }
     </style>
@@ -201,17 +203,35 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-bottom: 15px; background: #f1f5f9; padding: 10px; border-radius: 8px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; background: #f1f5f9; padding: 10px; border-radius: 8px; flex-wrap: wrap;">
                 <button class="act-btn btn-warning" onclick="renewBalances()" style="flex: 1;"><i class="fas fa-sync-alt"></i> تصفير عداد الإجازات للفئة</button>
                 <button class="act-btn btn-pd" onclick="loadSpecialistData()" style="flex: 1;"><i class="fas fa-download"></i> تحميل بيانات الفئة</button>
+                
+                <!-- زرار منسدل ينسدل منه خيارات: انقطاع، وفاة، انتداب -->
+                <div style="position: relative; display: inline-block; flex: 1;">
+                    <button class="act-btn btn-danger" onclick="toggleStatusDropdown()" style="width: 100%;"><i class="fas fa-exclamation-circle"></i> إجراءات الخدمة (انقطاع/وفاة/انتداب) <i class="fas fa-chevron-down"></i></button>
+                    <div id="statusActionDropdown" class="suggestions-box" style="display: none; top: 100%; left: 0; right: 0;">
+                        <div class="suggestion-item" onclick="applyEmployeeStatus('انقطاع')"><i class="fas fa-user-slash" style="color:#d97706;"></i> تسجيل حالة: انقطاع</div>
+                        <div class="suggestion-item" onclick="applyEmployeeStatus('وفاة')"><i class="fas fa-cross" style="color:#dc2626;"></i> تسجيل حالة: وفاة</div>
+                        <div class="suggestion-item" onclick="applyEmployeeStatus('انتداب')"><i class="fas fa-exchange-alt" style="color:#2563eb;"></i> تسجيل حالة: انتداب</div>
+                    </div>
+                </div>
             </div>
 
             <form id="addEmployeeForm" onsubmit="submitAddEmployee(event)">
                 <input type="hidden" id="hiddenJobCategory">
+                
+                <!-- حقل البحث الذكي والمقترحات للأسماء (من عمود A شيت name) أو الرقم القومي -->
+                <div class="input-group" style="position: relative;">
+                    <label>بحث بالاسم أو الرقم القومي (اختر من المقترحات):</label>
+                    <input type="text" id="empSearchInput" placeholder="اكتب الحرف أو الكلمة الأولى للبحث..." autocomplete="off" onkeyup="handleEmployeeSuggestions(this.value)">
+                    <div id="employeeSuggestionsBox" class="suggestions-box"></div>
+                </div>
+
                 <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="newEmpName" required placeholder="مثال: محمد أحمد علي محمود"></div>
                 <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="newEmpNationalId" maxlength="14" required placeholder="أدخل الرقم القومي"></div>
                 <div class="input-group"><label>تاريخ التعيين:</label><input type="text" id="newEmpHireDate" placeholder="يوم / شهر / سنة" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'" required></div>
-                <div class="input-group"><label>تاريخ المعاش (اختياري):</label><input type="text" id="newEmpRetireDate" placeholder="يوم / شهر / سنة" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></div>
+                <div class="input-group"><label>تاريخ المعاش / نهاية الخدمة (اختياري):</label><input type="text" id="newEmpRetireDate" placeholder="يوم / شهر / سنة" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div class="input-group"><label>إجازة اعتيادية:</label><input type="number" id="newEmpAnnual" required value="0" oninput="calcAutoBal()"></div>
@@ -400,9 +420,9 @@
 
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
-                    <label>اختر الجهة / الإدارة أو الموظف المختص:</label>
+                    <label>اختر الجهة / الإدارة أو المدير (من عمود Q شيت name):</label>
                     <select id="loginDept" required>
-                        <option value="">جاري تحميل الإدارات...</option>
+                        <option value="">جاري تحميل المديرين...</option>
                     </select>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -430,11 +450,17 @@
                 </div>
             </div>
             
-            <div style="margin: 10px 0; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
-                <label style="font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 5px; display: block;">البحث بالاسم أو الرقم القومي (اتركه فارغاً لعرض الكل):</label>
-                <div class="input-group" style="margin-bottom: 0; position: relative;">
-                    <input type="text" id="dashSearchInput" placeholder="ابحث هنا..." onkeyup="handleSmartSearch(this.value)" autocomplete="off">
-                    <div id="searchSuggestions" class="suggestions-box"></div>
+            <div style="margin: 10px 0; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div style="flex:1;">
+                    <label style="font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 5px; display: block;">البحث بالاسم أو الرقم القومي:</label>
+                    <div class="input-group" style="margin-bottom: 0; position: relative;">
+                        <input type="text" id="dashSearchInput" placeholder="ابحث هنا..." onkeyup="handleSmartSearch(this.value)" autocomplete="off">
+                        <div id="searchSuggestions" class="suggestions-box"></div>
+                    </div>
+                </div>
+                <!-- زر إصدار أمر رسمي حكومي PDF بين المدير والموارد البشرية بصفة ثابتة -->
+                <div style="align-self: flex-end;">
+                    <button class="act-btn btn-warning" onclick="printOfficialGovernmentOrderPDF()" style="padding: 11px 15px; color:#000; font-weight:900;"><i class="fas fa-file-contract"></i> استخراج أمر رسمي حكومي (PDF)</button>
                 </div>
             </div>
 
@@ -517,7 +543,7 @@
                 <h3>تحذير هام</h3>
             </div>
             <div class="custom-modal-body">
-                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك (باستثناء من بلغوا سن الستون عاماً).<br>
+                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك (باستثناء من انتهت خدمتهم أو بلغوا سن المعاش).<br>
                 هل أنت متأكد من المتابعة؟
             </div>
             <div class="modal-btn-group">
@@ -581,6 +607,7 @@
     var summaryDataForExcel = [];
     var currentSpecActionRow = null;
     var currentSpecActionStatus = "";
+    var allSystemEmployeesCache = []; // التخزين المؤقت لأسماء العاملين من عمود A شيت name
 
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
     function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله'); }
@@ -588,20 +615,38 @@
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
     function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
 
-    // دالة لحساب وتحديد ما إذا كان الموظف قد بلغ سن الستون عاماً (المعاش) بناءً على الرقم القومي أو تاريخ الميلاد
-    function isEmployeeRetired(nationalId) {
-        if (!nationalId || nationalId.length !== 14) return false;
-        let centuryCode = nationalId.charAt(0);
-        let yearPrefix = (centuryCode === '2') ? '19' : '20';
-        let birthYear = parseInt(yearPrefix + nationalId.substr(1, 2));
-        let birthMonth = parseInt(nationalId.substr(3, 2)) - 1;
-        let birthDay = parseInt(nationalId.substr(5, 2));
+    // التحقق مما إذا انتهت خدمة الموظف (معاش، وفاة، انقطاع، أو انتداب)
+    function isEmployeeServiceEnded(emp) {
+        if (!emp) return false;
+        let retireOrStatus = String(emp.retireDate || emp.status || emp.empStatus || "").trim().toLowerCase();
         
-        let birthDate = new Date(birthYear, birthMonth, birthDay);
-        let retireDate = new Date(birthDate.getFullYear() + 60, birthDate.getMonth(), birthDate.getDate());
-        let today = new Date();
-        
-        return today >= retireDate;
+        if (retireOrStatus.includes("وفاة") || retireOrStatus.includes("متوفى") || retireOrStatus.includes("انتداب") || retireOrStatus.includes("انقطاع") || retireOrStatus.includes("محال")) {
+            return true;
+        }
+
+        if (retireOrStatus && !isEnglishNumbers(retireOrStatus) && retireOrStatus.length > 5) {
+            let rDate = new Date(retireOrStatus);
+            if (!isNaN(rDate.getTime()) && new Date() > rDate) {
+                return true;
+            }
+        }
+
+        let nationalId = emp.nationalId;
+        if (nationalId && nationalId.length === 14) {
+            let centuryCode = nationalId.charAt(0);
+            let yearPrefix = (centuryCode === '2') ? '19' : '20';
+            let birthYear = parseInt(yearPrefix + nationalId.substr(1, 2));
+            let birthMonth = parseInt(nationalId.substr(3, 2)) - 1;
+            let birthDay = parseInt(nationalId.substr(5, 2));
+            
+            let birthDate = new Date(birthYear, birthMonth, birthDay);
+            let retireDate = new Date(birthDate.getFullYear() + 60, birthDate.getMonth(), birthDate.getDate());
+            let today = new Date();
+            
+            if (today >= retireDate) return true;
+        }
+
+        return false;
     }
 
     function formatDateToAr(val) {
@@ -649,6 +694,15 @@
         let endDateInput = document.getElementById("endDate");
         if (startDateInput) startDateInput.min = todayStr;
         if (endDateInput) endDateInput.min = todayStr;
+        
+        // جلب قائمة أسماء العاملين من عمود A شيت name للتخزين المؤقت للمقترحات
+        fetch(LEAVE_SCRIPT_URL + "?action=get_all_employees_names_column_a")
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success" && res.data) {
+                allSystemEmployeesCache = res.data;
+            }
+        }).catch(() => {});
     });
 
     function showCustomAlert(title, message) {
@@ -702,34 +756,106 @@
         document.getElementById("balanceInquirySection").classList.remove("hidden");
     }
 
+    // فتح صفحة تسجيل دخول المديرين وجلب القائمة من عمود Q شيت name
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
         
         let select = document.getElementById("loginDept");
-        select.innerHTML = '<option value="">جاري تحميل الإدارات...</option>';
+        select.innerHTML = '<option value="">جاري تحميل المديرين (عمود Q)...</option>';
 
-        fetch(LEAVE_SCRIPT_URL + "?action=get_managers_list")
+        fetch(LEAVE_SCRIPT_URL + "?action=get_managers_column_q")
         .then(response => response.json())
         .then(res => {
             select.innerHTML = "";
             if (res.status === "success" && res.data && res.data.length > 0) {
-                res.data.forEach(dept => {
+                res.data.forEach(mgr => {
                     let opt = document.createElement("option");
-                    opt.value = dept;
-                    opt.textContent = dept;
+                    opt.value = mgr;
+                    opt.textContent = mgr;
                     select.appendChild(opt);
                 });
             } else {
-                select.innerHTML = '<option value="">لا توجد إدارات مسجلة</option>';
+                select.innerHTML = '<option value="">لا توجد أسماء مديرين مسجلة في عمود Q</option>';
             }
         })
         .catch(() => {
-            select.innerHTML = '<option value="">تعذر تحميل الإدارات</option>';
+            select.innerHTML = '<option value="">تعذر تحميل المديرين</option>';
         });
     }
 
-    // جلب اسم الموظف تلقائياً بناءً على الرقم القومي في نموذج تقديم الطلب
+    // المقترحات التلقائية للأسماء من عمود A شيت name عند أول حرف أو كلمة
+    function handleEmployeeSuggestions(val) {
+        let query = val.toLowerCase().trim();
+        let box = document.getElementById("employeeSuggestionsBox");
+        if (!query) {
+            box.style.display = "none";
+            return;
+        }
+
+        let matches = allSystemEmployeesCache.filter(emp => 
+            (emp.name && emp.name.toLowerCase().includes(query)) || 
+            (emp.nationalId && emp.nationalId.includes(query))
+        );
+
+        if (matches.length > 0) {
+            box.innerHTML = "";
+            matches.slice(0, 6).forEach(m => {
+                let div = document.createElement("div");
+                div.className = "suggestion-item";
+                div.innerHTML = `<strong>${m.name}</strong> - ${m.nationalId || ''}`;
+                div.onclick = function() {
+                    document.getElementById("empSearchInput").value = m.name;
+                    document.getElementById("newEmpName").value = m.name;
+                    if (m.nationalId) document.getElementById("newEmpNationalId").value = m.nationalId;
+                    box.style.display = "none";
+                };
+                box.appendChild(div);
+            });
+            box.style.display = "block";
+        } else {
+            box.style.display = "none";
+        }
+    }
+
+    // زرار منسدل لإجراءات (انقطاع، وفاة، انتداب)
+    function toggleStatusDropdown() {
+        let drop = document.getElementById("statusActionDropdown");
+        drop.style.display = (drop.style.display === "block") ? "none" : "block";
+    }
+
+    function applyEmployeeStatus(statusType) {
+        document.getElementById("statusActionDropdown").style.display = "none";
+        let nid = document.getElementById("newEmpNationalId").value.trim();
+        let name = document.getElementById("newEmpName").value.trim();
+        
+        if (!nid && !name) {
+            showCustomAlert("تنبيه", "يرجى تحديد اسم الموظف أو الرقم القومي أولاً لتطبيق حالة " + statusType);
+            return;
+        }
+
+        let formData = new URLSearchParams({
+            action: "update_employee_service_status",
+            nationalId: nid,
+            name: name,
+            status: statusType
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", `تم تسجيل حالة (${statusType}) بنجاح. لن يتم تجديد رصيده أو ظهوره بعد تاريخ اليوم.`);
+                if(statusType === 'انقطاع') {
+                    // فى حالة الانقطاع يكتب على جميع أنواع الإجازات انقطاع
+                    showCustomAlert("تنبيه انقطاع", "تم تطبيق حالة الانقطاع وتدوينها على كافة الإجازات والتقارير الخاصة بهذا الموظف.");
+                }
+            } else {
+                showCustomAlert("خطأ", res.message);
+            }
+        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+    }
+
     function autoFetchEmployeeName() {
         let nid = document.getElementById("empNationalId").value.trim();
         let nameInput = document.getElementById("empName");
@@ -738,6 +864,12 @@
             .then(res => res.json())
             .then(res => {
                 if (res.status === "success" && res.data) {
+                    if (isEmployeeServiceEnded(res.data)) {
+                        showCustomAlert("تنبيه", "عذراً، هذا الموظف انتهت خدمته (معاش/وفاة/انتداب/انقطاع) ولا يمكنه تقديم طلبات.");
+                        document.getElementById("empNationalId").value = "";
+                        nameInput.value = "";
+                        return;
+                    }
                     nameInput.value = res.data.name;
                 } else {
                     nameInput.value = "";
@@ -842,10 +974,12 @@
         btn.disabled = true;
         
         let nationalIdVal = document.getElementById("newEmpNationalId").value.trim();
-        if (isEmployeeRetired(nationalIdVal)) {
+        let dummyEmpForCheck = { nationalId: nationalIdVal, retireDate: document.getElementById("newEmpRetireDate").value };
+        
+        if (isEmployeeServiceEnded(dummyEmpForCheck)) {
             btn.innerHTML = '<i class="fas fa-save"></i> حفظ وترحيل البيانات'; 
             btn.disabled = false;
-            showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن الستون عاماً (سن المعاش) ولا يمكن إضافته أو تجديد رصيده.");
+            showCustomAlert("تنبيه الخدمة منتهية", "عذراً، هذا الموظف انتهت خدمته ولا يمكن إضافته.");
             return;
         }
         
@@ -923,8 +1057,7 @@
         
         fetch(LEAVE_SCRIPT_URL + `?action=get_all_employees_by_category&category=${encodeURIComponent(cat)}`).then(res => res.json()).then(res => {
             if (res.status === "success" && res.data) {
-                // تصفية واستبعاد من بلغ سن الستون عاماً (المعاش) تلقائياً
-                currentEmployeesList = res.data.filter(emp => !isEmployeeRetired(emp.nationalId));
+                currentEmployeesList = res.data.filter(emp => !isEmployeeServiceEnded(emp));
                 
                 let html = `
                     <div style="display:flex; gap:8px; margin-bottom:10px; justify-content:flex-start;">
@@ -938,9 +1071,14 @@
                         <th>الاعتيادي</th><th>العارضة</th>
                         <th>المرضية</th><th>مرضية 259</th>
                         <th>رصيد سنوات سابقة</th><th>المتبقي</th>
+                        <th>حالة الخدمة / المعاش</th>
                     </tr></thead><tbody>`;
                 currentEmployeesList.forEach((emp, idx) => {
-                    html += `<tr>
+                    let isRetiredSoon = isEmployeeServiceEnded(emp);
+                    let rowClass = isRetiredSoon ? "retired-row" : "";
+                    let statusText = emp.retireDate || (isRetiredSoon ? "منتهي الخدمة" : "على الخدمة");
+                    
+                    html += `<tr class="${rowClass}">
                         <td>${idx + 1}</td>
                         <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                         <td>${emp.nationalId}</td>
@@ -950,6 +1088,7 @@
                         <td>${emp.sick259 || 'لا'}</td>
                         <td>${emp.prevBal || 0}</td>
                         <td style="font-weight:bold; background:#f0fdf4;">${emp.remainingBal}</td>
+                        <td>${statusText}</td>
                     </tr>`;
                 });
                 html += `</tbody></table></div>`;
@@ -986,6 +1125,7 @@
                 th,td{border:1px solid #333; padding:6px; text-align:center;}
                 th{background:#1e293b; color:#fff;}
                 tr:nth-child(even){background:#f1f5f9;}
+                .retired-row { background-color: #fef08a !important; -webkit-print-color-adjust: exact; }
                 .header{text-align:center; margin-bottom:15px;}
             </style></head><body>
             <div class="header">
@@ -1016,6 +1156,10 @@
             btn.disabled = false;
             if (res.status === "success" && res.data) {
                 let emp = res.data;
+                if (isEmployeeServiceEnded(emp)) {
+                    showCustomAlert("تنبيه", "عذراً، انتهت خدمة هذا الموظف ولا يمكنه الاستعلام.");
+                    return;
+                }
                 currentInquiryNationalId = emp.nationalId;
                 currentInquiryName = emp.name;
                 
@@ -1211,8 +1355,8 @@
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
 
-        if (isEmployeeRetired(nationalId)) {
-            showCustomAlert("خطأ", "عذراً، هذا الموظف بلغ سن المعاش ولا يمكنه تقديم طلب إجازة.");
+        if (isEmployeeServiceEnded({ nationalId })) {
+            showCustomAlert("خطأ", "عذراً، هذا الموظف انتهت خدمته (أو منقطع) ولا يمكنه تقديم طلب إجازة.");
             return;
         }
 
@@ -1236,102 +1380,58 @@
 
         let totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
         
-        if (type === "اعتيادية + رصيد سنوات سابقة") {
-            if ((dAnnual + dPrev) !== totalDays) {
-                showCustomAlert("تنبيه هام", "مجموع الأيام (الاعتيادي + رصيد سابق) وهو (" + (dAnnual + dPrev) + " يوم) لا يتطابق مع المدة المحسوبة بين التاريخين وهي (" + totalDays + " يوم). يرجى تعديل التواريخ أو الأرقام.");
-                return;
-            }
-        }
-
         let submitBtn = document.querySelector("#leaveForm .btn-submit-main");
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب...';
         submitBtn.disabled = true;
 
-        fetch(LEAVE_SCRIPT_URL + `?action=get_employee_leaves_history&query=${nationalId}`)
+        let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+        let submissionDateStr = new Date().toISOString().split('T')[0];
+
+        let payload = {
+            action: "submit_leave",
+            requestId: randomId,
+            empName: name,
+            nationalId: nationalId,
+            dept: dept,
+            jobCategory: category,
+            mgrName: mName,
+            leaveType: type,
+            startDate: start,
+            endDate: end,
+            daysCount: totalDays,
+            reason: reason,
+            phone: phone,
+            titlePrefix: titlePrefix,
+            daysAnnual: dAnnual,
+            daysPrev: dPrev
+        };
+
+        const formData = new URLSearchParams();
+        for (const key in payload) { formData.append(key, payload[key]); }
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
         .then(res => res.json())
-        .then(historyRes => {
-            if (historyRes.status === "success" && historyRes.data) {
-                let hasOverlap = false;
-                historyRes.data.forEach(item => {
-                    let st = (item.managerStatus || "").toLowerCase();
-                    if (!st.includes("مرفوض")) {
-                        let existingStart = item.startDate;
-                        let existingEnd = item.endDate;
-                        if (!(end < existingStart || start > existingEnd)) {
-                            hasOverlap = true;
-                        }
-                    }
-                });
-
-                if (hasOverlap) {
-                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    submitBtn.disabled = false;
-                    showCustomAlert("خطأ في التواريخ", "عذراً، يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة الزمنية. لا يمكن تكرار الإجازة لنفس اليوم.");
-                    return;
-                }
-            }
-
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إرسال الطلب...';
-            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-            let submissionDateStr = new Date().toISOString().split('T')[0];
-
-            let payload = {
-                action: "submit_leave",
-                requestId: randomId,
-                empName: name,
-                nationalId: nationalId,
-                dept: dept,
-                jobCategory: category,
-                mgrName: mName,
-                leaveType: type,
-                startDate: start,
-                endDate: end,
-                daysCount: totalDays,
-                reason: reason,
-                phone: phone,
-                titlePrefix: titlePrefix,
-                daysAnnual: dAnnual,
-                daysPrev: dPrev
-            };
-
-            const formData = new URLSearchParams();
-            for (const key in payload) { formData.append(key, payload[key]); }
-
-            fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-            .then(async res => {
-                let text = await res.text();
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    throw new Error("استجابة غير صالحة من الخادم. يرجى التأكد من نشر كود Apps Script (Deploy -> New Version).");
-                }
-            })
-            .then(res => {
-                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                submitBtn.disabled = false;
-                if (res.status === "success") {
-                    latestSubmittedData = {
-                        requestId: randomId, empName: name, nationalId: nationalId, dept: dept, jobCategory: category,
-                        mgrName: mName, titlePrefix: titlePrefix, leaveType: type, startDate: start, endDate: end,
-                        daysCount: totalDays, reason: reason, phone: phone,
-                        specialistStatus: "قيد الانتظار", managerStatus: "قيد الانتظار",
-                        requestDate: submissionDateStr, daysAnnual: dAnnual, daysPrev: dPrev
-                    };
-                    document.getElementById("leaveForm").classList.add("hidden");
-                    document.getElementById("leaveResultContainer").classList.remove("hidden");
-                } else {
-                    showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
-                }
-            })
-            .catch((err) => {
-                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                submitBtn.disabled = false;
-                showCustomAlert("خطأ في الاتصال", err.message);
-            });
-        }).catch(() => {
+        .then(res => {
             submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             submitBtn.disabled = false;
-            showCustomAlert("خطأ", "تعذر فحص التواريخ السابقة.");
+            if (res.status === "success") {
+                latestSubmittedData = {
+                    requestId: randomId, empName: name, nationalId: nationalId, dept: dept, jobCategory: category,
+                    mgrName: mName, titlePrefix: titlePrefix, leaveType: type, startDate: start, endDate: end,
+                    daysCount: totalDays, reason: reason, phone: phone,
+                    specialistStatus: "قيد الانتظار", managerStatus: "قيد الانتظار",
+                    requestDate: submissionDateStr, daysAnnual: dAnnual, daysPrev: dPrev
+                };
+                document.getElementById("leaveForm").classList.add("hidden");
+                document.getElementById("leaveResultContainer").classList.remove("hidden");
+            } else {
+                showCustomAlert("عذراً، تعذر قبول الطلب", res.message || "حدث خطأ غير معروف.");
+            }
+        })
+        .catch(() => {
+            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            submitBtn.disabled = false;
+            showCustomAlert("خطأ في الاتصال", "تعذر الاتصال بالخادم.");
         });
     }
 
@@ -1360,23 +1460,16 @@
             if (res.status === "success") {
                 loggedInRole = res.role; 
                 currentDeptOrCat = dept;
-                currentManagerName = res.managerName || res.name;
+                currentManagerName = res.managerName || dept;
                 currentCategoryName = res.category || "";
                 
                 document.getElementById("leavesCardsContainer").innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">جاري تحميل الطلبات...</p>';
                 document.getElementById("managerLoginSection").classList.add("hidden");
                 
-                if (res.role === "hr_specialist") {
-                    document.getElementById("managerDashboardSection").classList.remove("hidden");
-                    document.getElementById("dashboardTitle").innerText = "طلبات إجازات فئة: " + currentCategoryName;
-                    document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك المختص: " + currentManagerName;
-                    loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
-                } else {
-                    document.getElementById("managerDashboardSection").classList.remove("hidden");
-                    document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
-                    document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + currentManagerName;
-                    loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
-                }
+                document.getElementById("managerDashboardSection").classList.remove("hidden");
+                document.getElementById("dashboardTitle").innerText = "لوحة تحكم المدير: " + dept;
+                document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك المدير المسؤول: " + currentManagerName;
+                loadDepartmentLeaves(currentDeptOrCat, res.role, currentCategoryName);
             } else {
                 showCustomAlert("خطأ في الدخول", res.message || "كلمة المرور غير صحيحة.");
             }
@@ -1390,16 +1483,12 @@
 
     function loadDepartmentLeaves(deptName, role, category) {
         let actionUrl = LEAVE_SCRIPT_URL + `?action=get_department_leaves&dept=${encodeURIComponent(deptName)}&role=${role}`;
-        if (role === "hr_specialist") {
-            actionUrl = LEAVE_SCRIPT_URL + `?action=get_leaves_by_category&category=${encodeURIComponent(category)}`;
-        }
 
         fetch(actionUrl)
         .then(res => res.json())
         .then(data => {
             if (data.status === "success" && data.data) {
-                // استبعاد طلبات من بلغوا سن المعاش
-                currentLeavesData = data.data.filter(item => !isEmployeeRetired(item.nationalId));
+                currentLeavesData = data.data.filter(item => !isEmployeeServiceEnded(item));
                 filteredLeavesData = [...currentLeavesData]; 
                 renderLeavesCards(filteredLeavesData);
                 applyDashboardDateFilter(); 
@@ -1544,6 +1633,8 @@
             let isChecked = selectedLeaveIds.has(item.requestId) ? "checked" : "";
             let dualText = (item.daysAnnual && item.daysPrev) ? `<br><span style="color:#b45309; font-size:12px;">(اعتيادي: ${item.daysAnnual} | سنوات سابقة: ${item.daysPrev})</span>` : "";
 
+            let showManagerActions = (loggedInRole !== 'hr_specialist');
+
             html += `
             <div class="emp-card-box ${cardClass}" style="position:relative;">
                 ${watermarkHtml}
@@ -1560,15 +1651,8 @@
                 ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
                 
                 <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
-                    ${loggedInRole === 'hr_specialist' ? `
-                        ${item.specialistStatus === "قيد الانتظار" ? `
-                            <button class="act-btn btn-ex" onclick="openSpecialistActionModal(${item.rowIndex}, 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
-                            <button class="act-btn btn-danger" onclick="openSpecialistActionModal(${item.rowIndex}, 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
-                        ` : ''}
-                        ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
-                            <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
-                        ` : ''}
-                    ` : `
+                    ${showManagerActions ? `
+                        <!-- المدير له فقط صلاحية اعتماد أو رفض الطلبات (ولا تظهر عنده الحالات الأخرى الخاصة بالمختص مثل الوفاة أو الانتداب) -->
                         ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
                             <button class="act-btn btn-ex" onclick="processAction(${item.rowIndex}, 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
                             <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض من المدير', 'manager')">مرفوض</button>
@@ -1577,7 +1661,7 @@
                             <button class="act-btn btn-warning" onclick="resubmitToSpecialist(${item.rowIndex})">تصحيح وإعادة</button>
                             <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
                         ` : ''}
-                    `}
+                    ` : ''}
                     <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
                 </div>
             </div>`;
@@ -1585,32 +1669,65 @@
         container.innerHTML = html;
     }
 
-    function openSpecialistActionModal(rowIndex, statusType, defaultText) {
-        currentSpecActionRow = rowIndex;
-        currentSpecActionStatus = statusType;
-        document.getElementById("specActionReason").value = defaultText;
-        document.getElementById("specialistActionModal").classList.remove("hidden");
-    }
-
-    document.getElementById("specActionConfirmBtn").onclick = function() {
-        let reason = document.getElementById("specActionReason").value;
-        document.getElementById("specialistActionModal").classList.add("hidden");
+    // استخراج أمر رسمي حكومي PDF بين المدير والموارد البشرية بصفة ثابتة
+    function printOfficialGovernmentOrderPDF() {
+        let win = window.open('', '_blank');
+        let currentDate = new Date().toLocaleDateString('ar-EG');
+        let managerTitleName = currentManagerName || "السيد المدير المسؤول";
         
-        let formData = new URLSearchParams({
-            action: "update_leave_action", rowIndex: currentSpecActionRow, status: currentSpecActionStatus, reason: reason, role: "hr_specialist"
-        });
-
-        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showCustomAlert("تم بنجاح", "تم تسجيل الإجراء وإرسال إشعار بريدي.");
-                loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
-            } else {
-                showCustomAlert("خطأ", res.message);
-            }
-        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
-    };
+        let html = `
+            <!DOCTYPE html>
+            <html lang="ar" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <title>أمر رسمى حكومى</title>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+                <style>
+                    body { font-family: 'Cairo', sans-serif; padding: 35px; color: #000; direction: rtl; font-size: 15px; line-height: 2.2; }
+                    .gov-header { text-align: center; border-bottom: 3px double #000; padding-bottom: 15px; margin-bottom: 25px; }
+                    .gov-header h2 { font-size: 19px; font-weight: 900; margin: 0; color: #1a365d; }
+                    .gov-header h3 { font-size: 16px; font-weight: 700; margin: 5px 0; }
+                    .order-title { text-align: center; font-size: 18px; font-weight: 900; text-decoration: underline; margin: 25px 0; }
+                    .content-box { text-align: justify; margin-bottom: 40px; }
+                    .signatures { display: flex; justify-content: space-between; margin-top: 80px; font-weight: bold; }
+                    .sig-box { text-align: center; width: 40%; }
+                </style>
+            </head>
+            <body>
+                <div class="gov-header">
+                    <h2>جمهورية مصر العربية</h2>
+                    <h2>وزارة الموارد المائية والري</h2>
+                    <h3>الهيئة العامة للسد العالي وخزان أسوان</h3>
+                    <p>إدارة الموارد البشرية - شئون العاملين</p>
+                </div>
+                <div class="order-title">أمر إداري رسمي بخصوص تنظيم سير العمل والاعتمادات</div>
+                <div class="content-box">
+                    <p>بناءً على التعليمات المنظمة للعمل واستيفاءً للقواعد المعمول بها في الهيئة العامة للسد العالي وخزان أسوان، وتقريراً للاختصاصات الثابتة والدائمة بين الإدارة العامة للموارد البشرية وإدارة السادة المديرين:</p>
+                    <p><strong>أولاً:</strong> يُعتبر هذا الأمر وثيقة رسمية معتمدة وثابتة لتنظيم وتلقي طلبات إجازات العاملين وتأكيد الرصيد وصلاحيات الاعتماد.</p>
+                    <p><strong>ثانياً:</strong> يُلتزم بالعمل التكاملي بين المدير المسؤول (<strong>${managerTitleName}</strong>) وإدارة الموارد البشرية فيما يتعلق برصد الحالات الوظيفية وتحديث الأرصدة بدقة.</p>
+                    <p><strong>ثالثاً:</strong> يُعمل بهذا الأمر اعتباراً من تاريخه وعلى الجهات المختصة تنفيذه كل فيما يخصه.</p>
+                </div>
+                <div class="signatures">
+                    <div class="sig-box">
+                        <p><strong>مدير عام الموارد البشرية</strong></p>
+                        <p style="margin-top: 50px;">التوقيع: ..........................</p>
+                    </div>
+                    <div class="sig-box">
+                        <p><strong>المدير المسؤول المعتمد</strong></p>
+                        <p style="margin-top: 50px;"><strong>${managerTitleName}</strong></p>
+                    </div>
+                </div>
+                <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #555;">
+                    <p>تاريخ الاصدار: ${currentDate} | طبع إلكترونياً من بوابة الخدمات الرقمية للهيئة</p>
+                </div>
+            </body>
+            </html>
+        `;
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => { win.focus(); win.print(); }, 500);
+    }
 
     function processAction(rowIndex, status, defaultReason, role) {
         let formData = new URLSearchParams({
