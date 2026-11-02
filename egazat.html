@@ -412,13 +412,13 @@
                 <button class="card-home-btn" onclick="backToEgazatMenu()"><i class="fas fa-arrow-right"></i> القائمة</button>
                 <div class="service-title-area">
                     <h2>صفحة تلقى طلبات الإجازات</h2>
-                    <p>تسجيل دخول المدير أو المسؤول لمتابعة واعتماد الطلبات</p>
+                    <p>تسجيل دخول المدير أو المسؤول لمتابعة واعتماد الطلبات وحالات الانقطاع / الوفاة</p>
                 </div>
             </div>
 
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
-                    <label>اختر الإدارة (تحميل الإدارات بالطريقة السابقة):</label>
+                    <label>اختر الإدارة:</label>
                     <select id="loginDept" required>
                         <option value="">جاري تحميل الإدارات...</option>
                     </select>
@@ -456,8 +456,38 @@
                         <div id="searchSuggestions" class="suggestions-box"></div>
                     </div>
                 </div>
-                <div style="align-self: flex-end;">
-                    <button class="act-btn btn-warning" onclick="printOfficialGovernmentOrderPDF()" style="padding: 11px 15px; color:#000; font-weight:900;"><i class="fas fa-file-contract"></i> استخراج أمر رسمي حكومي (PDF)</button>
+                <!-- أزرار الإجراءات الخاصة بالمدير (انقطاع، وفاة، والأمر الحكومي) -->
+                <div style="display: flex; gap: 6px; align-self: flex-end; flex-wrap: wrap;">
+                    <div style="position: relative; display: inline-block;">
+                        <button class="act-btn btn-danger" onclick="toggleMgrStatusDropdown()" style="padding: 11px 12px;"><i class="fas fa-exclamation-circle"></i> تسجيل (انقطاع / وفاة) <i class="fas fa-chevron-down"></i></button>
+                        <div id="mgrStatusActionDropdown" class="suggestions-box" style="display: none; top: 100%; right: 0; min-width: 160px;">
+                            <div class="suggestion-item" onclick="applyManagerStatus('انقطاع')"><i class="fas fa-user-slash" style="color:#d97706;"></i> تسجيل: انقطاع</div>
+                            <div class="suggestion-item" onclick="applyManagerStatus('وفاة')"><i class="fas fa-cross" style="color:#dc2626;"></i> تسجيل: وفاة</div>
+                        </div>
+                    </div>
+                    <button class="act-btn btn-warning" onclick="printOfficialGovernmentOrderPDF()" style="padding: 11px 15px; color:#000; font-weight:900;"><i class="fas fa-file-contract"></i> أمر رسمي حكومي (PDF)</button>
+                </div>
+            </div>
+
+            <!-- مودال إدخال تفاصيل الموظف للانقطاع أو الوفاة من صفحة المدير -->
+            <div id="managerActionInputModal" class="custom-modal-overlay hidden">
+                <div class="custom-modal-box">
+                    <div class="custom-modal-header">
+                        <i class="fas fa-shield-alt" style="color: #c59b27;"></i>
+                        <h3 id="mgrModalTitle">تسجيل حالة</h3>
+                    </div>
+                    <div class="input-group" style="text-align: right;">
+                        <label>الرقم القومي أو اسم الموظف:</label>
+                        <input type="text" id="mgrTargetEmpInput" placeholder="أدخل الرقم القومي أو الاسم..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
+                    </div>
+                    <div class="input-group" style="text-align: right;">
+                        <label>تاريخ الواقعة (الانقطاع / الوفاة):</label>
+                        <input type="date" id="mgrTargetDateInput" style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
+                    </div>
+                    <div class="modal-btn-group">
+                        <button class="custom-modal-btn" style="background: #198754;" onclick="submitManagerStatusAction()">تأكيد وإرسال للموارد البشرية</button>
+                        <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('managerActionInputModal').classList.add('hidden')">إلغاء</button>
+                    </div>
                 </div>
             </div>
 
@@ -516,6 +546,24 @@
         </div>
     </section>
 
+    <!-- مودال استلام العمل بعد الانقطاع (للموظف المختص) -->
+    <div id="returnToWorkModal" class="custom-modal-overlay hidden">
+        <div class="custom-modal-box">
+            <div class="custom-modal-header">
+                <i class="fas fa-undo-alt" style="color: #198754;"></i>
+                <h3>إثبات استلام عمل بعد الانقطاع</h3>
+            </div>
+            <div class="input-group" style="text-align: right;">
+                <label>سبب الاستلام / ملاحظات العودة للعمل:</label>
+                <textarea id="returnToWorkReason" rows="3" placeholder="اكتب سبب العودة واستلام العمل بوضوح..." style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px;"></textarea>
+            </div>
+            <div class="modal-btn-group">
+                <button class="custom-modal-btn" style="background: #198754;" onclick="confirmReturnToWork()">تأكيد استلام العمل وتوقيع المختص والموارد البشرية</button>
+                <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('returnToWorkModal').classList.add('hidden')">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
     <!-- مودال تغيير الباسورد -->
     <div id="changePasswordModal" class="custom-modal-overlay hidden">
         <div class="custom-modal-box">
@@ -568,24 +616,6 @@
         </div>
     </div>
 
-    <!-- مودال إجراء المختص -->
-    <div id="specialistActionModal" class="custom-modal-overlay hidden">
-        <div class="custom-modal-box">
-            <div class="custom-modal-header">
-                <i class="fas fa-check-circle" style="color: #198754;"></i>
-                <h3>إجراء المختص</h3>
-            </div>
-            <div class="input-group" style="text-align: right;">
-                <label>ملاحظات / تفاصيل (اختياري):</label>
-                <input type="text" id="specActionReason" placeholder="اكتب ملاحظاتك هنا..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
-            </div>
-            <div class="modal-btn-group">
-                <button class="custom-modal-btn" id="specActionConfirmBtn" style="background: #198754;">تأكيد الإجراء</button>
-                <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('specialistActionModal').classList.add('hidden')">إلغاء</button>
-            </div>
-        </div>
-    </div>
-
 <script>
     const LEAVE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxOiHNWTYk06p-AjRM43gEaWdyX7_J0qjtLg_O75R5An5Mbg0oWvs_GL3Ptr5ClqvM4/exec";
     
@@ -602,9 +632,9 @@
     var currentInquiryHistory = [];
     var currentEmployeesList = [];
     var summaryDataForExcel = [];
-    var currentSpecActionRow = null;
-    var currentSpecActionStatus = "";
     var allSystemEmployeesCache = [];
+    var activeManagerActionType = "";
+    var targetRowForReturnToWork = null;
 
     function isArabicOnly(text) { return /^[\u0600-\u06FF\s]+$/.test(text); }
     function cleanNameForCompare(name) { if (!name) return ""; return name.toString().trim().replace(/\s+/g, ' ').replace(/عبد\s+الرازق/g, 'عبدالرازق').replace(/عبد\s+الرحيم/g, 'عبدالرحيم').replace(/عبد\s+الله/g, 'عبدالله'); }
@@ -751,7 +781,6 @@
         document.getElementById("balanceInquirySection").classList.remove("hidden");
     }
 
-    // فتح صفحة تسجيل دخول المديرين واستخدام الطريقة السابقة تماماً في جلب الإدارات
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -817,6 +846,52 @@
         drop.style.display = (drop.style.display === "block") ? "none" : "block";
     }
 
+    // القائمة المنسدلة لإجراءات المدير (انقطاع / وفاة)
+    function toggleMgrStatusDropdown() {
+        let drop = document.getElementById("mgrStatusActionDropdown");
+        drop.style.display = (drop.style.display === "block") ? "none" : "block";
+    }
+
+    function applyManagerStatus(statusType) {
+        document.getElementById("mgrStatusActionDropdown").style.display = "none";
+        activeManagerActionType = statusType;
+        document.getElementById("mgrModalTitle").innerText = `تسجيل حالة (${statusType})`;
+        document.getElementById("mgrTargetEmpInput").value = "";
+        document.getElementById("mgrTargetDateInput").value = new Date().toISOString().split('T')[0];
+        document.getElementById("managerActionInputModal").classList.remove("hidden");
+    }
+
+    function submitManagerStatusAction() {
+        let target = document.getElementById("mgrTargetEmpInput").value.trim();
+        let dateVal = document.getElementById("mgrTargetDateInput").value;
+
+        if (!target) {
+            showCustomAlert("تنبيه", "يرجى إدخال اسم أو الرقم القومي للموظف.");
+            return;
+        }
+
+        let formData = new URLSearchParams({
+            action: "update_employee_service_status",
+            nationalId: isEnglishNumbers(target) ? target : "",
+            name: !isEnglishNumbers(target) ? target : "",
+            status: activeManagerActionType,
+            date: dateVal,
+            managerDept: currentDeptOrCat
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            document.getElementById("managerActionInputModal").classList.add("hidden");
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", `تم تسجيل حالة (${activeManagerActionType}) وإرسالها للموارد البشرية والموظف المختص مباشرة.`);
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
+            } else {
+                showCustomAlert("خطأ", res.message);
+            }
+        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+    }
+
     function applyEmployeeStatus(statusType) {
         document.getElementById("statusActionDropdown").style.display = "none";
         let nid = document.getElementById("newEmpNationalId").value.trim();
@@ -838,10 +913,39 @@
         .then(res => res.json())
         .then(res => {
             if (res.status === "success") {
-                showCustomAlert("تم بنجاح", `تم تسجيل حالة (${statusType}) بنجاح. لن يتم تجديد رصيده أو ظهوره بعد تاريخ اليوم.`);
-                if(statusType === 'انقطاع') {
-                    showCustomAlert("تنبيه انقطاع", "تم تطبيق حالة الانقطاع وتدوينها على كافة الإجازات والتقارير الخاصة بهذا الموظف.");
-                }
+                showCustomAlert("تم بنجاح", `تم تسجيل حالة (${statusType}) بنجاح.`);
+            } else {
+                showCustomAlert("خطأ", res.message);
+            }
+        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+    }
+
+    function openReturnToWorkModal(rowIndex) {
+        targetRowForReturnToWork = rowIndex;
+        document.getElementById("returnToWorkReason").value = "";
+        document.getElementById("returnToWorkModal").classList.remove("hidden");
+    }
+
+    function confirmReturnToWork() {
+        let reason = document.getElementById("returnToWorkReason").value.trim();
+        if (!reason) {
+            showCustomAlert("تنبيه", "يرجى كتابة سبب استلام العمل.");
+            return;
+        }
+
+        let formData = new URLSearchParams({
+            action: "return_employee_to_work",
+            rowIndex: targetRowForReturnToWork,
+            reason: reason
+        });
+
+        fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(res => {
+            document.getElementById("returnToWorkModal").classList.add("hidden");
+            if (res.status === "success") {
+                showCustomAlert("تم بنجاح", "تم فك الانقطاع وإثبات استلام العمل وتوقيع الموظف المختص والموارد البشرية.");
+                loadDepartmentLeaves(currentDeptOrCat, loggedInRole, currentCategoryName);
             } else {
                 showCustomAlert("خطأ", res.message);
             }
@@ -1473,7 +1577,6 @@
         });
     }
 
-    // مطابقة الصفوف مع الإدارة المطابقة للإدارة التي تم تسجيل الدخول بها (من شيت name عمود Q)
     function loadDepartmentLeaves(deptName, role, category) {
         let actionUrl = LEAVE_SCRIPT_URL + `?action=get_department_leaves&dept=${encodeURIComponent(deptName)}&role=${role}`;
 
@@ -1481,7 +1584,6 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === "success" && data.data) {
-                // فلترة الصفوف بحيث تتطابق الإدارة تماماً مع الإدارة المسجلة فى عمود Q لشيت name
                 currentLeavesData = data.data.filter(item => {
                     let itemDept = normalizeArabicText(item.dept || item.managerDept || "");
                     let loginDeptNorm = normalizeArabicText(deptName);
@@ -1660,6 +1762,10 @@
                             <button class="act-btn btn-danger" onclick="promptAction(${item.rowIndex}, 'مرفوض نهائي', 'manager')">تأكيد الرفض النهائي</button>
                         ` : ''}
                     ` : ''}
+                    <!-- زر استلام العمل للموظف المختص عند الانقطاع -->
+                    ${loggedInRole === 'hr_specialist' ? `
+                        <button class="act-btn btn-ex" onclick="openReturnToWorkModal(${item.rowIndex})"><i class="fas fa-undo"></i> استلام عمل (فك الانقطاع)</button>
+                    ` : ''}
                     <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
                 </div>
             </div>`;
@@ -1667,10 +1773,12 @@
         container.innerHTML = html;
     }
 
+    // أمر رسمي حكومي PDF مطور بالصيغة والنص العريض والترويسة المطلوبة
     function printOfficialGovernmentOrderPDF() {
         let win = window.open('', '_blank');
         let currentDate = new Date().toLocaleDateString('ar-EG');
-        let managerTitleName = currentManagerName || "السيد المدير المسؤول";
+        let managerTitleName = currentManagerName || "السيد مدير الإدارة";
+        let deptName = currentDeptOrCat || "الإدارة التابعة";
         
         let html = `
             <!DOCTYPE html>
@@ -1686,35 +1794,35 @@
                     .gov-header h3 { font-size: 16px; font-weight: 700; margin: 5px 0; }
                     .order-title { text-align: center; font-size: 18px; font-weight: 900; text-decoration: underline; margin: 25px 0; }
                     .content-box { text-align: justify; margin-bottom: 40px; }
-                    .signatures { display: flex; justify-content: space-between; margin-top: 80px; font-weight: bold; }
-                    .sig-box { text-align: center; width: 40%; }
+                    .highlight-notice { font-weight: 900; background: #fef08a; padding: 10px; border: 1px dashed #d97706; margin: 15px 0; text-align: center; }
+                    .signatures { display: flex; justify-content: space-between; margin-top: 60px; font-weight: bold; }
+                    .sig-box { text-align: center; width: 45%; }
                 </style>
             </head>
             <body>
                 <div class="gov-header">
-                    <h2>جمهورية مصر العربية</h2>
-                    <h2>وزارة الموارد المائية والري</h2>
-                    <h3>الهيئة العامة للسد العالي وخزان أسوان</h3>
-                    <p>إدارة الموارد البشرية - شئون العاملين</p>
+                    <h2>الهيئة العامة للسد العالي وخزان أسوان</h2>
+                    <h3>إدارة الموارد البشرية - قسم الإجازات (بصفة ثابتة)</h3>
                 </div>
-                <div class="order-title">أمر إداري رسمي بخصوص تنظيم سير العمل والاعتمادات</div>
+                <div class="order-title">أمر إداري رسمي / بلاغ حالة انقطاع أو وفاة</div>
                 <div class="content-box">
-                    <p>بناءً على التعليمات المنظمة للعمل واستيفاءً للقواعد المعمول بها في الهيئة العامة للسد العالي وخزان أسوان، وتقريراً للاختصاصات الثابتة والدائمة بين الإدارة العامة للموارد البشرية وإدارة السادة المديرين:</p>
-                    <p><strong>أولاً:</strong> يُعتبر هذا الأمر وثيقة رسمية معتمدة وثابتة لتنظيم وتلقي طلبات إجازات العاملين وتأكيد الرصيد وصلاحيات الاعتماد.</p>
-                    <p><strong>ثانياً:</strong> يُلتزم بالعمل التكاملي بين المدير المسؤول (<strong>${managerTitleName}</strong>) وإدارة الموارد البشرية فيما يتعلق برصد الحالات الوظيفية وتحديث الأرصدة بدقة.</p>
-                    <p><strong>ثالثاً:</strong> يُعمل بهذا الأمر اعتباراً من تاريخه وعلى الجهات المختصة تنفيذه كل فيما يخصه.</p>
+                    <p>بناءً على التعليمات المنظمة للعمل واستيفاءً للقواعد المعمول بها في الهيئة، وتقريراً للاختصاصات الثابتة والدائمة:</p>
+                    <div class="highlight-notice">
+                        إشارة انقطاع: يرجى من سيادتكم العلم بأن المذكور منقطع عن العمل بتاريخ ............ وهذه للإفادة ولسيادتكم جزيل الشكر والاعتماد.
+                    </div>
+                    <p>صادر من: <strong>${deptName}</strong> موجه إلى إدارة الموارد البشرية بصفة ثابتة.</p>
                 </div>
                 <div class="signatures">
                     <div class="sig-box">
-                        <p><strong>مدير عام الموارد البشرية</strong></p>
-                        <p style="margin-top: 50px;">التوقيع: ..........................</p>
+                        <p><strong>مدير الإدارة</strong></p>
+                        <p style="margin-top: 45px;">التوقيع: ..........................</p>
                     </div>
                     <div class="sig-box">
-                        <p><strong>المدير المسؤول المعتمد</strong></p>
-                        <p style="margin-top: 50px;"><strong>${managerTitleName}</strong></p>
+                        <p><strong>المدير المسؤول (مدير عام الإدارة)</strong></p>
+                        <p style="margin-top: 45px;"><strong>${managerTitleName}</strong></p>
                     </div>
                 </div>
-                <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #555;">
+                <div style="margin-top: 35px; text-align: center; font-size: 12px; color: #555;">
                     <p>تاريخ الاصدار: ${currentDate} | طبع إلكترونياً من بوابة الخدمات الرقمية للهيئة</p>
                 </div>
             </body>
