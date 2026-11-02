@@ -184,7 +184,7 @@
                 <label>كلمة المرور:</label>
                 <input type="password" id="specAuthPassword" placeholder="أدخل كلمة المرور..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px;">
             </div>
-            <button class="btn-submit-main" style="background: #0d6efd; margin-top: 15px;" onclick="verifySpecPassword()">دخول</button>
+            <button id="specAuthLoginBtn" class="btn-submit-main" style="background: #0d6efd; margin-top: 15px;" onclick="verifySpecPassword()">دخول</button>
             <button class="custom-modal-btn" style="background: #64748b; margin-top: 8px;" onclick="document.getElementById('specialistAuthModal').classList.add('hidden')">إلغاء</button>
         </div>
     </div>
@@ -308,8 +308,8 @@
             </div>
 
             <form id="leaveForm" onsubmit="submitLeaveForm(event)">
-                <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="empName" required placeholder="مثال: عبد الرازق محمد أحمد علي" onblur="validateEmployeeData()"></div>
-                <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="empNationalId" maxlength="14" required placeholder="أدخل الرقم القومي" onblur="validateEmployeeData()"></div>
+                <div class="input-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="empNationalId" maxlength="14" required placeholder="أدخل الرقم القومي أولاً..." oninput="autoFetchEmployeeName()" onblur="validateEmployeeData()"></div>
+                <div class="input-group"><label>اسم الموظف (رباعي):</label><input type="text" id="empName" required placeholder="يتم جلبه تلقائياً بالرقم القومي..." readonly style="background:#e2e8f0; font-weight:bold;"></div>
                 <div class="input-group">
                     <label>إدارة الإجازات:</label>
                     <select id="empDept" required>
@@ -517,7 +517,7 @@
                 <h3>تحذير هام</h3>
             </div>
             <div class="custom-modal-body">
-                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك.<br>
+                سيتم تصفير أرصدة <b>الاعتيادي والعارضة</b> لجميع موظفي الفئة الخاصة بك (باستثناء من بلغوا سن الستون عاماً).<br>
                 هل أنت متأكد من المتابعة؟
             </div>
             <div class="modal-btn-group">
@@ -587,6 +587,22 @@
     function isQuadrupleName(name) { let normalized = cleanNameForCompare(name); let parts = normalized.split(' '); return parts.length >= 4; }
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
     function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
+
+    // دالة لحساب وتحديد ما إذا كان الموظف قد بلغ سن الستون عاماً (المعاش) بناءً على الرقم القومي أو تاريخ الميلاد
+    function isEmployeeRetired(nationalId) {
+        if (!nationalId || nationalId.length !== 14) return false;
+        let centuryCode = nationalId.charAt(0);
+        let yearPrefix = (centuryCode === '2') ? '19' : '20';
+        let birthYear = parseInt(yearPrefix + nationalId.substr(1, 2));
+        let birthMonth = parseInt(nationalId.substr(3, 2)) - 1;
+        let birthDay = parseInt(nationalId.substr(5, 2));
+        
+        let birthDate = new Date(birthYear, birthMonth, birthDay);
+        let retireDate = new Date(birthDate.getFullYear() + 60, birthDate.getMonth(), birthDate.getDate());
+        let today = new Date();
+        
+        return today >= retireDate;
+    }
 
     function formatDateToAr(val) {
         if (!val) return '';
@@ -713,6 +729,25 @@
         });
     }
 
+    // جلب اسم الموظف تلقائياً بناءً على الرقم القومي في نموذج تقديم الطلب
+    function autoFetchEmployeeName() {
+        let nid = document.getElementById("empNationalId").value.trim();
+        let nameInput = document.getElementById("empName");
+        if (nid.length === 14) {
+            fetch(LEAVE_SCRIPT_URL + `?action=check_employee_exists&query=${nid}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success" && res.data) {
+                    nameInput.value = res.data.name;
+                } else {
+                    nameInput.value = "";
+                }
+            }).catch(() => { nameInput.value = ""; });
+        } else {
+            nameInput.value = "";
+        }
+    }
+
     function validateEmployeeData() {
         let nid = document.getElementById("empNationalId").value.trim();
         let name = document.getElementById("empName").value.trim();
@@ -729,10 +764,12 @@
                     if (cleanDbName !== cleanInputName) {
                         showCustomAlert("تنبيه هام", "الاسم المكتوب لا يطابق الاسم المسجل بهذا الرقم القومي.<br><br><b>الاسم المسجل لدينا:</b> " + dbName);
                         document.getElementById("empNationalId").value = "";
+                        document.getElementById("empName").value = "";
                     }
                 } else {
                     showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل في قاعدة البيانات. يرجى مراجعة الموارد البشرية.");
                     document.getElementById("empNationalId").value = "";
+                    document.getElementById("empName").value = "";
                 }
             }).catch(() => {});
         }
@@ -768,8 +805,14 @@
         let pass = document.getElementById('specAuthPassword').value;
         if (!dept || !pass) return showCustomAlert("تنبيه", "اختر الإدارة وأدخل كلمة المرور.");
         
+        let authBtn = document.getElementById('specAuthLoginBtn');
+        authBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+        authBtn.disabled = true;
+
         let formData = new URLSearchParams({ action: "verify_specialist_password", password: pass, dept: dept });
         fetch(LEAVE_SCRIPT_URL, { method: "POST", body: formData }).then(res => res.json()).then(res => {
+            authBtn.innerHTML = 'دخول';
+            authBtn.disabled = false;
             if (res.status === "success") {
                 document.getElementById("specCategoryDisplay").innerText = "الفئة: " + res.category;
                 document.getElementById("hiddenJobCategory").value = res.category;
@@ -779,7 +822,11 @@
             } else {
                 showCustomAlert("خطأ", res.message);
             }
-        }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
+        }).catch(() => {
+            authBtn.innerHTML = 'دخول';
+            authBtn.disabled = false;
+            showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
+        });
     }
 
     function calcAutoBal() {
@@ -794,12 +841,20 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...'; 
         btn.disabled = true;
         
+        let nationalIdVal = document.getElementById("newEmpNationalId").value.trim();
+        if (isEmployeeRetired(nationalIdVal)) {
+            btn.innerHTML = '<i class="fas fa-save"></i> حفظ وترحيل البيانات'; 
+            btn.disabled = false;
+            showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن الستون عاماً (سن المعاش) ولا يمكن إضافته أو تجديد رصيده.");
+            return;
+        }
+        
         setTimeout(() => {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...';
             let formData = new URLSearchParams({
                 action: "add_new_employee", 
                 name: document.getElementById("newEmpName").value.trim(),
-                nationalId: document.getElementById("newEmpNationalId").value.trim(), 
+                nationalId: nationalIdVal, 
                 hireDate: document.getElementById("newEmpHireDate").value,
                 retireDate: document.getElementById("newEmpRetireDate").value,
                 annual: document.getElementById("newEmpAnnual").value, 
@@ -868,7 +923,9 @@
         
         fetch(LEAVE_SCRIPT_URL + `?action=get_all_employees_by_category&category=${encodeURIComponent(cat)}`).then(res => res.json()).then(res => {
             if (res.status === "success" && res.data) {
-                currentEmployeesList = res.data;
+                // تصفية واستبعاد من بلغ سن الستون عاماً (المعاش) تلقائياً
+                currentEmployeesList = res.data.filter(emp => !isEmployeeRetired(emp.nationalId));
+                
                 let html = `
                     <div style="display:flex; gap:8px; margin-bottom:10px; justify-content:flex-start;">
                         <button class="act-btn btn-ex" onclick="exportSpecialistExcel('${cat}')"><i class="fas fa-file-excel"></i> تحميل Excel</button>
@@ -882,7 +939,7 @@
                         <th>المرضية</th><th>مرضية 259</th>
                         <th>رصيد سنوات سابقة</th><th>المتبقي</th>
                     </tr></thead><tbody>`;
-                res.data.forEach((emp, idx) => {
+                currentEmployeesList.forEach((emp, idx) => {
                     html += `<tr>
                         <td>${idx + 1}</td>
                         <td style="text-align:right; font-weight:bold;">${emp.name}</td>
@@ -1154,6 +1211,11 @@
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
 
+        if (isEmployeeRetired(nationalId)) {
+            showCustomAlert("خطأ", "عذراً، هذا الموظف بلغ سن المعاش ولا يمكنه تقديم طلب إجازة.");
+            return;
+        }
+
         let dAnnual = 0, dPrev = 0;
         if (type === "اعتيادية + رصيد سنوات سابقة") {
             dAnnual = parseFloat(document.getElementById("daysAnnual").value);
@@ -1336,7 +1398,8 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === "success" && data.data) {
-                currentLeavesData = data.data;
+                // استبعاد طلبات من بلغوا سن المعاش
+                currentLeavesData = data.data.filter(item => !isEmployeeRetired(item.nationalId));
                 filteredLeavesData = [...currentLeavesData]; 
                 renderLeavesCards(filteredLeavesData);
                 applyDashboardDateFilter(); 
