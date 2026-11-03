@@ -8,6 +8,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <!-- ===== مكتبات Firebase (الدفعة الأولى) ===== -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
         body { background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)), url('./hig.png') no-repeat center center fixed; background-size: cover; color: #fff; min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; width: 100%; }
@@ -241,115 +245,113 @@
                 </div>
             </div>
         </div>
-
-        <!-- مراجعة الطلبات -->
-        <div id="reviewView" class="section-view">
-            <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
-            <div class="form-box" style="max-width: 900px;">
-                <div id="loginBox">
-                    <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">تسجيل دخول المسؤولين</h2>
-                    <div class="form-group">
-                        <label>اسم المستخدم:</label>
-                        <div class="custom-select-wrap" id="reviewUserSelectWrap" data-placeholder="-- اختر اسم المستخدم --">
-                            <div class="custom-select-trigger placeholder" id="reviewUserTrigger" tabindex="0">
-                                <span class="custom-select-label">-- اختر اسم المستخدم --</span>
-                                <i class="fas fa-chevron-down select-arrow"></i>
-                            </div>
-                            <div class="custom-select-menu" id="reviewUserMenu"></div>
-                            <input type="hidden" id="reviewUsername" name="reviewUsername">
+            <!-- مراجعة الطلبات -->
+    <div id="reviewView" class="section-view">
+        <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
+        <div class="form-box" style="max-width: 900px;">
+            <div id="loginBox">
+                <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">تسجيل دخول المسؤولين</h2>
+                <div class="form-group">
+                    <label>اسم المستخدم:</label>
+                    <div class="custom-select-wrap" id="reviewUserSelectWrap" data-placeholder="-- اختر اسم المستخدم --">
+                        <div class="custom-select-trigger placeholder" id="reviewUserTrigger" tabindex="0">
+                            <span class="custom-select-label">-- اختر اسم المستخدم --</span>
+                            <i class="fas fa-chevron-down select-arrow"></i>
                         </div>
+                        <div class="custom-select-menu" id="reviewUserMenu"></div>
+                        <input type="hidden" id="reviewUsername" name="reviewUsername">
                     </div>
-                    <div class="form-group"><label>كلمة المرور:</label><input type="password" id="reviewPassword" placeholder="كلمة المرور"></div>
-                    <button class="main-btn" id="loginBtn" onclick="handleLogin()">دخول</button>
                 </div>
-                <div id="dashboard" style="display: none;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                        <h2 id="welcomeTitle" style="color:#fbbf24; margin:0; font-size: 16px;">لوحة مراجعة الطلبات</h2>
-                        <div style="display:flex; gap:8px;">
-                            <button class="back-btn" onclick="loadReviewRequests()" style="background:#0d6efd;"><i class="fas fa-sync-alt"></i> تحديث</button>
-                            <button class="back-btn" onclick="logoutReviewUser()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
-                        </div>
+                <div class="form-group"><label>كلمة المرور:</label><input type="password" id="reviewPassword" placeholder="كلمة المرور"></div>
+                <button class="main-btn" id="loginBtn" onclick="handleLogin()">دخول</button>
+            </div>
+            <div id="dashboard" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                    <h2 id="welcomeTitle" style="color:#fbbf24; margin:0; font-size: 16px;">لوحة مراجعة الطلبات</h2>
+                    <div style="display:flex; gap:8px;">
+                        <button class="back-btn" onclick="loadReviewRequests()" style="background:#0d6efd;"><i class="fas fa-sync-alt"></i> تحديث</button>
+                        <button class="back-btn" onclick="logoutReviewUser()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
                     </div>
-                    <div class="tabs-container">
-                        <div class="tabs-left">
-                            <button class="tab-btn active" id="tabPending" onclick="switchTab('pending')">
-                                <i class="fas fa-inbox"></i> معلقة
-                                <span class="tab-badge" id="pendingCount">0</span>
-                            </button>
-                            <button class="tab-btn" id="tabArchive" onclick="switchTab('archive')">
-                                <i class="fas fa-archive"></i> أرشيف
-                                <span class="tab-badge" id="archiveCount">0</span>
-                            </button>
-                        </div>
-                        <button class="export-btn" onclick="exportToExcel()">
-                            <i class="fas fa-file-excel"></i> تصدير إكسيل
+                </div>
+                <div class="tabs-container">
+                    <div class="tabs-left">
+                        <button class="tab-btn active" id="tabPending" onclick="switchTab('pending')">
+                            <i class="fas fa-inbox"></i> معلقة
+                            <span class="tab-badge" id="pendingCount">0</span>
+                        </button>
+                        <button class="tab-btn" id="tabArchive" onclick="switchTab('archive')">
+                            <i class="fas fa-archive"></i> أرشيف
+                            <span class="tab-badge" id="archiveCount">0</span>
                         </button>
                     </div>
-                    <div class="filter-bar" id="filterBar">
-                        <div class="filter-group">
-                            <label><i class="fas fa-calendar-alt"></i> من تاريخ</label>
-                            <input type="date" id="filterDateFrom">
-                        </div>
-                        <div class="filter-group">
-                            <label><i class="fas fa-calendar-alt"></i> إلى تاريخ</label>
-                            <input type="date" id="filterDateTo">
-                        </div>
-                        <div class="filter-group">
-                            <label><i class="fas fa-building"></i> الإدارة</label>
-                            <select id="filterDept">
-                                <option value="">-- الكل --</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label><i class="fas fa-flag"></i> الحالة</label>
-                            <select id="filterStatus">
-                                <option value="">-- الكل --</option>
-                                <option value="pending">معلق</option>
-                                <option value="approved">معتمد</option>
-                                <option value="rejected">مرفوض</option>
-                                <option value="transferred">محول</option>
-                            </select>
-                        </div>
-                        <div class="filter-group search-group">
-                            <label><i class="fas fa-search"></i> بحث بالاسم أو رقم الطلب</label>
-                            <input type="text" id="filterSearch" placeholder="اسم الموظف أو REQ..." autocomplete="off">
-                            <div id="searchSuggestions" class="autocomplete-suggestions"></div>
-                        </div>
-                        <div class="filter-actions">
-                            <button class="filter-btn-reset" onclick="resetFilters()">
-                                <i class="fas fa-times"></i> مسح الفلتر
-                            </button>
-                        </div>
-                    </div>
-                    <div id="requestsList"><p class="loading-state">جاري التحميل...</p></div>
+                    <button class="export-btn" onclick="exportToExcel()">
+                        <i class="fas fa-file-excel"></i> تصدير إكسيل
+                    </button>
                 </div>
-            </div>
-        </div>
-
-        <!-- متابعة الطلب -->
-    <div id="trackView" class="section-view">
-        <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
-        <div class="form-box">
-            <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">متابعة حالة الطلب</h2>
-            <div id="trackLoginBox">
-                <p style="font-size:13px; color:#94a3b8; margin-bottom:15px; text-align:center;">أدخل رقمك القومي وكلمة المرور لعرض الطلبات الخاصة بك</p>
-                <div class="form-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="trackNationalId" maxlength="14" placeholder="أدخل الرقم القومي..."></div>
-                <div class="form-group"><label>كلمة المرور:</label><input type="password" id="trackPassword" placeholder="أدخل كلمة المرور..." onkeypress="if(event.key==='Enter') trackLogin()"></div>
-                <button class="main-btn" id="trackLoginBtn" onclick="trackLogin()"><i class="fas fa-sign-in-alt"></i> دخول</button>
-            </div>
-            <div id="trackDashboard" style="display:none;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
-                    <h3 id="trackWelcomeTitle" style="color:#fbbf24; font-size:13px; margin:0;"></h3>
-                    <div style="display:flex; gap:8px;">
-                        <button class="back-btn" onclick="loadTrackRequestsForUser()" style="background:#0d6efd;"><i class="fas fa-sync-alt"></i> تحديث</button>
-                        <button class="back-btn" onclick="trackLogout()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
+                <div class="filter-bar" id="filterBar">
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-alt"></i> من تاريخ</label>
+                        <input type="date" id="filterDateFrom">
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-calendar-alt"></i> إلى تاريخ</label>
+                        <input type="date" id="filterDateTo">
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-building"></i> الإدارة</label>
+                        <select id="filterDept">
+                            <option value="">-- الكل --</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fas fa-flag"></i> الحالة</label>
+                        <select id="filterStatus">
+                            <option value="">-- الكل --</option>
+                            <option value="pending">معلق</option>
+                            <option value="approved">معتمد</option>
+                            <option value="rejected">مرفوض</option>
+                            <option value="transferred">محول</option>
+                        </select>
+                    </div>
+                    <div class="filter-group search-group">
+                        <label><i class="fas fa-search"></i> بحث بالاسم أو رقم الطلب</label>
+                        <input type="text" id="filterSearch" placeholder="اسم الموظف أو REQ..." autocomplete="off">
+                        <div id="searchSuggestions" class="autocomplete-suggestions"></div>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="filter-btn-reset" onclick="resetFilters()">
+                            <i class="fas fa-times"></i> مسح الفلتر
+                        </button>
                     </div>
                 </div>
-                <div id="trackRequestsList"><p class="loading-state">جاري التحميل...</p></div>
+                <div id="requestsList"><p class="loading-state">جاري التحميل...</p></div>
             </div>
         </div>
     </div>
 
+    <!-- متابعة الطلب -->
+<div id="trackView" class="section-view">
+    <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
+    <div class="form-box">
+        <h2 style="color: #fbbf24; text-align: center; margin-bottom: 20px;">متابعة حالة الطلب</h2>
+        <div id="trackLoginBox">
+            <p style="font-size:13px; color:#94a3b8; margin-bottom:15px; text-align:center;">أدخل رقمك القومي وكلمة المرور لعرض الطلبات الخاصة بك</p>
+            <div class="form-group"><label>الرقم القومي (14 رقماً):</label><input type="text" id="trackNationalId" maxlength="14" placeholder="أدخل الرقم القومي..."></div>
+            <div class="form-group"><label>كلمة المرور:</label><input type="password" id="trackPassword" placeholder="أدخل كلمة المرور..." onkeypress="if(event.key==='Enter') trackLogin()"></div>
+            <button class="main-btn" id="trackLoginBtn" onclick="trackLogin()"><i class="fas fa-sign-in-alt"></i> دخول</button>
+        </div>
+        <div id="trackDashboard" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <h3 id="trackWelcomeTitle" style="color:#fbbf24; font-size:13px; margin:0;"></h3>
+                <div style="display:flex; gap:8px;">
+                    <button class="back-btn" onclick="loadTrackRequestsForUser()" style="background:#0d6efd;"><i class="fas fa-sync-alt"></i> تحديث</button>
+                    <button class="back-btn" onclick="trackLogout()" style="background:#dc3545;"><i class="fas fa-sign-out-alt"></i> خروج</button>
+                </div>
+            </div>
+            <div id="trackRequestsList"><p class="loading-state">جاري التحميل...</p></div>
+        </div>
+    </div>
+</div>
     <!-- العقود والمشتريات -->
     <div id="orderView" class="section-view">
         <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
@@ -549,6 +551,18 @@
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx03-8JkBvWCUZxhP5xhyBorY5mbEhwcZG2LNqi7xLza4C7ceIG_szpO5BKwb4eObox6A/exec";
 
+    /* ===== الدفعة الثانية: إعدادات Firebase ===== */
+    const firebaseConfig = {
+        apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
+        authDomain: "dam-purchases-app.firebaseapp.com",
+        projectId: "dam-purchases-app",
+        storageBucket: "dam-purchases-app.appspot.com",
+        messagingSenderId: "123271128649",
+        appId: "1:123271128649:web:1096b95fc97c8575b50198"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
     let lastCreatedReqId = "REQ-000000";
     let loggedInUser = {};
     let currentTrackUser = null;
@@ -697,8 +711,7 @@
         })
         .catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
-
-    function loadReviewUsersList() {
+function loadReviewUsersList() {
         fetch(SCRIPT_URL + "?action=getAllUsersList")
         .then(res => res.json())
         .then(data => {
@@ -842,29 +855,20 @@
             titlePrefix: document.getElementById('managerTitle').value,
             managerName: document.getElementById('managerName').value,
             itemsList: JSON.stringify(items),
-    totalCost: totalCost,
-    printableHtml: generatePrintableHtmlForBackend() // ✅ إرسال الشكل للباك اند
-};
+            totalCost: totalCost,
+            printableHtml: generatePrintableHtmlForBackend()
+        };
 
-        const formData = new URLSearchParams();
-        for (const key in data) formData.append(key, data[key]);
-
-        fetch(SCRIPT_URL, { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                document.getElementById('requestFormContainer').style.display = 'none';
-                document.getElementById('successBox').style.display = 'block';
-            } else {
-                showCustomAlert("خطأ", res.message || "حدث خطأ.");
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                btn.disabled = false;
-            }
+        // ===== الدفعة الثالثة: الحفظ المباشر في Firebase بدلاً من Google Sheets =====
+        const requestData = { ...data, Timestamp: new Date().toISOString() };
+        db.collection("requests").doc(lastCreatedReqId).set(requestData)
+        .then(() => {
+            document.getElementById('requestFormContainer').style.display = 'none';
+            document.getElementById('successBox').style.display = 'block';
         })
-        .catch(() => {
-            showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            btn.disabled = false;
+        .catch((error) => {
+            console.error("خطأ في الحفظ: ", error);
+            showCustomAlert("خطأ", "تعذر حفظ الطلب في قاعدة البيانات.");
         });
     });
 
@@ -1399,7 +1403,7 @@ function handleContractLogin() {
                 document.getElementById('lblContractPending').textContent = 'طلبات جديدة';
                 document.getElementById('lblContractArchive').textContent = 'طلباتي المرتجعة / المعتمدة';
             }
-            loadContractRequests();
+loadContractRequests();
             startAutoRefresh();
         } else showCustomAlert("خطأ", data.message);
     })
