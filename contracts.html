@@ -964,10 +964,26 @@
                 req.Request_ID = doc.id; 
                 
                 const stage = (req.Current_Stage || "").toString();
-                if (stage.includes("معتمد نهائياً") || stage.includes("مرفوض") || (req.Status && req.Status.includes("معتمد"))) {
-                    archiveData.push(req);
+                const myRole = (loggedInUser.role || "").toString().trim();
+                const isGm = myRole.includes("مدير عام") || myRole.includes("رئيس مجلس");
+                const isCentral = myRole.includes("مركزية");
+
+                let showForMe = false;
+
+                if (isGm) {
+                    showForMe = true; 
+                } else if (isCentral) {
+                    if (stage.includes("مراجعة رئيس الإدارة المركزية")) showForMe = true;
                 } else {
-                    pendingData.push(req);
+                    if (stage.includes("مراجعة المدير العام")) showForMe = true;
+                }
+
+                if (showForMe) {
+                    if (stage.includes("معتمد نهائياً") || stage.includes("مرفوض")) {
+                        archiveData.push(req);
+                    } else {
+                        pendingData.push(req);
+                    }
                 }
             });
 
@@ -1093,27 +1109,45 @@
         const nowStr = new Date().toLocaleString();
         let updates = {};
 
+        console.log("Action Triggered:", actionType); // للتأكد من اسم الزرار
+
+        // إجراءات المدير العام
         if (actionType === 'gm_approve') {
             updates = { Current_Stage: "مراجعة رئيس الإدارة المركزية", Gm_Date: nowStr, Status: "موافق" };
         } else if (actionType === 'gm_reject') {
             updates = { Current_Stage: "مرفوض من المدير العام", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
-        } else if (actionType === 'central_approve') {
+        } 
+        // إجراءات الإدارة المركزية
+        else if (actionType === 'central_approve') {
             updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr };
         } else if (actionType === 'central_reject') {
             updates = { Current_Stage: "مرفوض من رئيس الإدارة المركزية", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
+        } 
+        // إجراءات رئيس مجلس الإدارة
+        else if (actionType === 'chairman_direct_approve') {
+            updates = { Current_Stage: "معتمد نهائياً (أمر مباشر)", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
         } else if (actionType === 'chairman_final_approve') {
             updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
+        } else if (actionType === 'reject') {
+            updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
+        } 
+        // إجراءات التحويل والردود
+        else if (actionType === 'chairman_transfer') {
+            updates = { Current_Stage: "بانتظار رد الإدارات", Status: "محول" }; 
         } else if (actionType === 'dept_reply') {
-             updates = { Status: "تم الرد من الإدارة" }; 
-        } else {
-             showCustomAlert("تنبيه", "هذا الإجراء يحتاج إلى برمجة في Firebase.");
+            updates = { Status: "تم الرد من الإدارة" }; 
+        } 
+        // في حالة وجود زرار مش متبرمج
+        else {
+             showCustomAlert("تنبيه", "هذا الإجراء غير معروف: " + actionType);
              return;
         }
 
+        // تنفيذ التحديث في Firebase
         db.collection("requests").doc(requestId).update(updates)
         .then(() => {
             showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب بنجاح.");
-            loadReviewRequests();
+            loadReviewRequests(); // تحديث الشاشة
         }).catch((error) => {
             console.error("Error updating: ", error);
             showCustomAlert("خطأ", "تعذر تحديث الطلب.");
@@ -1288,7 +1322,6 @@
         const deptStateBox = buildDeptStateBox(req.Transfer_State);
         const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
 
-        // ✅ تم تعديل أسماء الحقول هنا لتتطابق مع ما يتم حفظه في Firebase
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span>
@@ -1456,7 +1489,6 @@
         let printBtn = `<button class="print-btn" style="margin-top:10px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`;
         const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
 
-        // ✅ تعديل اسم مقدم الطلب والإدارة
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-signature"></i> ${req.Request_ID}</span>
@@ -1894,7 +1926,6 @@
         return { text: "قيد الانتظار", color: "#b45309" };
     }
 
-    // ✅ تم تعديل أسماء الحقول هنا أيضاً
     function printSpecificRequestFromCard(reqId) {
         let req = activeRequestsData.find(r => r.Request_ID === reqId);
         if (!req) req = activeContractData.find(r => r.Request_ID === reqId);
