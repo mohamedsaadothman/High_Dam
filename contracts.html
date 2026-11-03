@@ -716,11 +716,10 @@
     }
 
     function loadReviewUsersList() {
-        // جلب المستخدمين من Firebase Auth (هنستخدم مجموعة users)
+        // جلب المستخدمين من Firebase
         db.collection("users").get().then((querySnapshot) => {
             let usersList = [];
             querySnapshot.forEach((doc) => {
-                // نفترض إن اسم المستخدم متخزن في خانة username
                 if (doc.data().username) {
                     usersList.push(doc.data().username);
                 }
@@ -751,7 +750,7 @@
         const nationalId = document.getElementById('applicantNationalId').value;
         const password = document.getElementById('userPassword').value;
         if (nationalId.length === 14 && password) {
-            // للتبسيط، سنتركها تعمل على جوجل شيت مؤقتاً لجلب الاسم، أو يمكنك إزالتها
+            // للتبسيط، سنتركها تعمل على جوجل شيت مؤقتاً لجلب الاسم
             fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
             .then(res => res.json())
             .then(data => {
@@ -866,12 +865,11 @@
             managerName: document.getElementById('managerName').value,
             itemsList: JSON.stringify(items),
             totalCost: totalCost,
-            Current_Stage: "مراجعة المدير العام", // إضافة مرحلة افتراضية
+            Current_Stage: "مراجعة المدير العام", 
             Status: "قيد الانتظار",
             printableHtml: generatePrintableHtmlForBackend() 
         };
 
-        // الحفظ في Firebase
         const requestData = { ...data, Timestamp: new Date().toISOString() };
         db.collection("requests").doc(lastCreatedReqId).set(requestData)
         .then(() => {
@@ -899,7 +897,7 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
         // تحويل اسم المستخدم إلى إيميل وهمي
-        const fakeEmail = username.replace(/\s+/g, '') + "@dam-app.com";
+        const fakeEmail = username.replace(/\s+/g, '-') + "@dam-app.com";
 
         auth.signInWithEmailAndPassword(fakeEmail, password)
         .then((userCredential) => {
@@ -911,8 +909,8 @@
                     const userData = doc.data();
                     loggedInUser = {
                         uid: userCredential.user.uid,
-                        name: userData.name,
-                        role: userData.role
+                        name: userData.name, 
+                        role: userData.role  
                     };
                     
                     localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
@@ -924,7 +922,7 @@
                     loadReviewRequests();
                     startAutoRefresh();
                 } else {
-                    showCustomAlert("خطأ", "لا يوجد ملف شخصي لهذا المستخدم.");
+                    showCustomAlert("خطأ", "هذا الحساب غير مسجل في قاعدة البيانات.");
                 }
             });
         })
@@ -973,7 +971,6 @@
                 req.Request_ID = doc.id; 
                 
                 const stage = (req.Current_Stage || "").toString();
-                // توجيه للارشيف لو معتمد او مرفوض نهائياً
                 if (stage.includes("معتمد نهائياً") || stage.includes("مرفوض") || (req.Status && req.Status.includes("معتمد"))) {
                     archiveData.push(req);
                 } else {
@@ -1104,7 +1101,6 @@
         const nowStr = new Date().toLocaleString();
         let updates = {};
 
-        // تحديد التحديثات بناءً على نوع الإجراء (هذا الجزء يحتاج منك التأكد من أسماء الحقول)
         if (actionType === 'gm_approve') {
             updates = { Current_Stage: "مراجعة رئيس الإدارة المركزية", Gm_Date: nowStr, Status: "موافق" };
         } else if (actionType === 'gm_reject') {
@@ -1116,11 +1112,9 @@
         } else if (actionType === 'chairman_final_approve') {
             updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
         } else if (actionType === 'dept_reply') {
-             // نحتاج هنا لتحديث الـ Transfer_State المعقد
-             // (سيتم إضافته إذا أردت)
-             updates = { Status: "تم الرد من الإدارة" }; // مثال
+             updates = { Status: "تم الرد من الإدارة" }; 
         } else {
-             showCustomAlert("تنبيه", "هذا الإجراء (processAction) يحتاج إلى برمجة في Firebase.");
+             showCustomAlert("تنبيه", "هذا الإجراء يحتاج إلى برمجة في Firebase.");
              return;
         }
 
@@ -1134,7 +1128,6 @@
         });
     }
 
-    // دالة الرفض (تستدعي processAction)
     function promptReject(requestId, actionName = "reject", deptName = "") {
         const existing = document.getElementById("rejectModal");
         if (existing) existing.remove();
@@ -1165,7 +1158,6 @@
 
     // دوال مساعدة
     function trackLogin() {
-         // مبدئياً نستخدم جوجل شيت لجلب بيانات التتبع
          const nationalId = document.getElementById('trackNationalId').value.trim();
          const password = document.getElementById('trackPassword').value.trim();
          if (nationalId.length !== 14) return showCustomAlert("تنبيه", "الرقم القومي يجب أن يكون 14 رقماً.");
@@ -1203,7 +1195,7 @@
         if (!currentTrackUser) return;
         const container = document.getElementById('trackRequestsList');
         container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
-        // سيتم جلبها من Firebase لاحقاً
+        
         fetch(SCRIPT_URL + `?action=getMyRequests&nationalId=${currentTrackUser.nationalId}`)
         .then(res => res.json())
         .then(data => {
@@ -1333,7 +1325,7 @@
     }
     
     /* ================== إدارة العقود ================== */
-    // (سنترك دوال العقود كما هي مؤقتاً حتى يتم تزويدنا بتعديلات Firebase الخاصة بها)
+    // (مازالت تتصل بجوجل شيت مؤقتاً)
     function handleContractLogin() {
         const username = document.getElementById('contractUsername').value.trim();
         const password = document.getElementById('contractPassword').value.trim();
@@ -1612,7 +1604,6 @@
     }
 
     function generatePOHtmlForPDF(reqObj, supplier, items, totalCost, tafqitText, notes) {
-        // نفس الكود القديم
         let itemsHtml = "";
         items.forEach((it, idx) => {
             itemsHtml += `<tr>
@@ -1742,7 +1733,6 @@
     }
 
     function promptContractReject(requestId) {
-        // (كما هي)
         const existing = document.getElementById("rejectContractModal");
         if (existing) existing.remove();
         const overlay = document.createElement("div");
@@ -1778,7 +1768,6 @@
     }
 
     function processContractAction(requestId, actionName) {
-         // (كما هي)
         const req = _poReqCache[requestId] || activeContractData.find(r => r.Request_ID === requestId);
         let poHtmlForPDF = "";
         if (req && req.PO_Details) {
@@ -1814,7 +1803,6 @@
     }
 
     function tafqit(number) {
-        // (نفس الكود)
         if (number === 0) return "صفر";
         const str = parseFloat(number).toFixed(2);
         const parts = str.split('.');
