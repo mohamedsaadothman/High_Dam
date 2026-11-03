@@ -329,7 +329,8 @@
                 </div>
             </div>
         </div>
-                <!-- متابعة الطلب -->
+
+        <!-- متابعة الطلب -->
     <div id="trackView" class="section-view">
         <button class="back-btn" style="margin-bottom: 15px;" onclick="switchView('homeView')"><i class="fas fa-arrow-right"></i> القائمة</button>
         <div class="form-box">
@@ -396,7 +397,6 @@
     <div style="width: 210mm; height: 297mm; max-height: 297mm; background: white; color: #000; padding: 12mm 14mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700;">
         <div id="printWatermark" class="print-watermark">قيد الانتظار</div>
         
-        <!-- القسم الأول: طلب الشراء (يظهر فقط في طباعة الطلب) -->
         <div id="printRequestSection">
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; position: relative; z-index: 2;">
                 <tr>
@@ -472,7 +472,6 @@
             </div>
         </div>
 
-        <!-- القسم الثاني: أمر التوريد (يظهر فقط في طباعة أمر التوريد) -->
         <div id="contractPrintSection" style="display: none; position: relative; z-index: 2;">
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
@@ -607,7 +606,7 @@
                     const allData = pendingData.concat(archiveData);
                     const matchedNames = new Set();
                     allData.forEach(r => {
-                        const name = (r.Applicant_Name || "").toString().trim();
+                        const name = (r.applicantName || "").toString().trim();
                         if (name.toLowerCase().includes(query)) matchedNames.add(name);
                     });
                     if (matchedNames.size > 0) {
@@ -703,7 +702,6 @@
     let deptSelect, titleSelect, reviewUserSelect;
 
     function loadDepartments() {
-        // سيتم جلبها من جوجل شيت مؤقتاً
         fetch(SCRIPT_URL + "?action=getDepartments")
         .then(res => res.json())
         .then(data => {
@@ -716,13 +714,10 @@
     }
 
     function loadReviewUsersList() {
-        // جلب المستخدمين من Firebase
         db.collection("users").get().then((querySnapshot) => {
             let usersList = [];
             querySnapshot.forEach((doc) => {
-                if (doc.data().username) {
-                    usersList.push(doc.data().username);
-                }
+                if (doc.data().username) usersList.push(doc.data().username);
             });
             if (usersList.length > 0) {
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
@@ -750,7 +745,6 @@
         const nationalId = document.getElementById('applicantNationalId').value;
         const password = document.getElementById('userPassword').value;
         if (nationalId.length === 14 && password) {
-            // للتبسيط، سنتركها تعمل على جوجل شيت مؤقتاً لجلب الاسم
             fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
             .then(res => res.json())
             .then(data => {
@@ -896,7 +890,6 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        // تحويل اسم المستخدم إلى إيميل وهمي
         const fakeEmail = username.replace(/\s+/g, '-') + "@dam-app.com";
 
         auth.signInWithEmailAndPassword(fakeEmail, password)
@@ -1043,7 +1036,7 @@
             }
             if (searchFilter) {
                 const idMatch = (r.Request_ID || "").toString().toLowerCase().indexOf(searchFilter) !== -1;
-                const nameMatch = (r.Applicant_Name || "").toString().toLowerCase().indexOf(searchFilter) !== -1;
+                const nameMatch = (r.applicantName || "").toString().toLowerCase().indexOf(searchFilter) !== -1;
                 if (!idMatch && !nameMatch) return false;
             }
             return true;
@@ -1078,11 +1071,11 @@
             const excelData = sortedData.map(row => ({
                 "رقم الطلب": row.Request_ID || '',
                 "تاريخ الإنشاء": row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-',
-                "اسم مقدم الطلب": row.Applicant_Name || '',
+                "اسم مقدم الطلب": row.applicantName || '',
                 "الوظيفة": row.role || '',
-                "الإدارة": row.Parent_Department || '',
-                "إجمالي التكلفة": row.Total_Cost || '',
-                "عدد الأصناف": row.Items_List ? JSON.parse(row.Items_List).length : 0,
+                "الإدارة": row.parentDepartment || '',
+                "إجمالي التكلفة": row.totalCost || '',
+                "عدد الأصناف": row.itemsList ? JSON.parse(row.itemsList).length : 0,
                 "المرحلة الحالية": row.Current_Stage || '',
                 "الحالة": row.Status || ''
             }));
@@ -1096,7 +1089,6 @@
         }
     }
 
-   // تحديث الحالة في Firebase
    function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
         let updates = {};
@@ -1156,7 +1148,6 @@
         };
     }
 
-    // دوال مساعدة
     function trackLogin() {
          const nationalId = document.getElementById('trackNationalId').value.trim();
          const password = document.getElementById('trackPassword').value.trim();
@@ -1297,16 +1288,17 @@
         const deptStateBox = buildDeptStateBox(req.Transfer_State);
         const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
 
+        // ✅ تم تعديل أسماء الحقول هنا لتتطابق مع ما يتم حفظه في Firebase
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span>
                 <span class="badge ${badgeClass}">${stage || '-'}</span>
             </div>
             <div class="req-row"><strong>تاريخ الإنشاء:</strong> <span>${dateStr}</span></div>
-            <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.Applicant_Name || '-'} (${req.role || '-'})</span></div>
-            <div class="req-row"><strong>الإدارة:</strong> <span>${req.Parent_Department || '-'}</span></div>
-            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.Total_Cost || '0'} ج.م</span></div>
-            <div class="req-row"><strong>عدد الأصناف:</strong> <span>${req.Items_List ? JSON.parse(req.Items_List).length : 0}</span></div>
+            <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || '-'} (${req.role || '-'})</span></div>
+            <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || '-'}</span></div>
+            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || '0'} ج.م</span></div>
+            <div class="req-row"><strong>عدد الأصناف:</strong> <span>${req.itemsList ? JSON.parse(req.itemsList).length : 0}</span></div>
             <div class="req-row"><strong>الحالة العامة:</strong> <span>${status || '-'}</span></div>
             ${rejectBlock}
             ${deptStateBox}
@@ -1325,7 +1317,6 @@
     }
     
     /* ================== إدارة العقود ================== */
-    // (مازالت تتصل بجوجل شيت مؤقتاً)
     function handleContractLogin() {
         const username = document.getElementById('contractUsername').value.trim();
         const password = document.getElementById('contractPassword').value.trim();
@@ -1465,14 +1456,15 @@
         let printBtn = `<button class="print-btn" style="margin-top:10px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`;
         const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
 
+        // ✅ تعديل اسم مقدم الطلب والإدارة
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-signature"></i> ${req.Request_ID}</span>
                 <span class="badge" style="background:${statusColor}20; color:${statusColor}; border:1px solid ${statusColor}">${statusText}</span>
             </div>
-            <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.Applicant_Name || '-'}</span></div>
-            <div class="req-row"><strong>الإدارة:</strong> <span>${req.Parent_Department || '-'}</span></div>
-            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.Total_Cost || '-'} ج.م</span></div>
+            <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || req.Applicant_Name || '-'}</span></div>
+            <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || req.Parent_Department || '-'}</span></div>
+            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || req.Total_Cost || '-'} ج.م</span></div>
             <div class="req-row"><strong>مسؤول الإصدار:</strong> <span>${req.PO_Issued_By || '-'}</span></div>
             ${detailsHtml}
             ${printBtn}
@@ -1503,9 +1495,9 @@
                 notes = parsed.notes || '';
             } catch(_) {}
         }
-        if (itemsToDisplay.length === 0 && reqObj.Items_List) {
+        if (itemsToDisplay.length === 0 && (reqObj.itemsList || reqObj.Items_List)) {
             try {
-                let reqItems = JSON.parse(reqObj.Items_List);
+                let reqItems = JSON.parse(reqObj.itemsList || reqObj.Items_List);
                 itemsToDisplay = reqItems.map(it => ({
                     item: it.item, unitType: 'كمية', unitValue: it.qty, unitPrice: it.cost, totalCost: it.cost
                 }));
@@ -1902,6 +1894,7 @@
         return { text: "قيد الانتظار", color: "#b45309" };
     }
 
+    // ✅ تم تعديل أسماء الحقول هنا أيضاً
     function printSpecificRequestFromCard(reqId) {
         let req = activeRequestsData.find(r => r.Request_ID === reqId);
         if (!req) req = activeContractData.find(r => r.Request_ID === reqId);
@@ -1914,14 +1907,14 @@
 
         document.getElementById('printReqId').textContent = req.Request_ID;
         document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : new Date().toLocaleDateString('ar-EG');
-        document.getElementById('printParentDept').textContent = req.Parent_Department ? "إدارة " + req.Parent_Department : "إدارة التعاقدات والمشتريات";
-        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / مدير عام إدارة " + (req.Parent_Department || "");
-        document.getElementById('printApplicantName').textContent = req.Applicant_Name || "---";
+        document.getElementById('printParentDept').textContent = req.parentDepartment ? "إدارة " + req.parentDepartment : "إدارة التعاقدات والمشتريات";
+        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / مدير عام إدارة " + (req.parentDepartment || "");
+        document.getElementById('printApplicantName').textContent = req.applicantName || "---";
         document.getElementById('printApplicantRole').textContent = req.role || "---";
-        document.getElementById('printNationalId').textContent = req.National_ID || req.nationalId || "---";
-        document.getElementById('printPhone').textContent = req.Phone || req.phone || "---";
-        document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (req.Parent_Department || "الإدارة");
-        document.getElementById('printManagerSignName').textContent = req.Mgr_Name || req.Manager_Name || req.managerName || "---";
+        document.getElementById('printNationalId').textContent = req.nationalId || "---";
+        document.getElementById('printPhone').textContent = req.phone || "---";
+        document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (req.parentDepartment || "الإدارة");
+        document.getElementById('printManagerSignName').textContent = req.managerName || "---";
         document.getElementById('printGmDate').textContent = req.Gm_Date ? ("تمت الموافقة (" + req.Gm_Date + ")") : "قيد الانتظار";
         document.getElementById('printCentralDate').textContent = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
         document.getElementById('printChairmanDate').textContent = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
@@ -1942,7 +1935,7 @@
 
         let itemsHtml = '';
         try {
-            let items = JSON.parse(req.Items_List || "[]");
+            let items = JSON.parse(req.itemsList || "[]");
             items.forEach(it => {
                 itemsHtml += `<tr>
                     <td style="border: 1px solid #333; padding: 6px 8px;">${it.item}</td>
@@ -1953,7 +1946,7 @@
             });
         } catch(_) {}
         document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
-        document.getElementById('printRequestTotalCost').textContent = (req.Total_Cost || "0") + " ج.م";
+        document.getElementById('printRequestTotalCost').textContent = (req.totalCost || "0") + " ج.م";
         
         window.print();
     }
@@ -1979,10 +1972,10 @@
         document.getElementById('printPODateHeader').textContent = req.PO_Date ? new Date(req.PO_Date).toLocaleDateString('ar-EG') : new Date().toLocaleDateString('ar-EG');
         document.getElementById('printPOChairmanDate').textContent = req.Chairman_Date || "---";
         document.getElementById('printPOSupplier').textContent = details.supplier || "---";
-        document.getElementById('printPOManagerName').textContent = req.Mgr_Name || req.Manager_Name || "---";
+        document.getElementById('printPOManagerName').textContent = req.managerName || "---";
         document.getElementById('printPONotes').textContent = details.notes || "لا توجد ملاحظات";
         document.getElementById('printPOTafqit').textContent = details.tafqit || "---";
-        document.getElementById('printPOTotal').textContent = (details.totalCost || req.Total_Cost || "0") + " ج.م";
+        document.getElementById('printPOTotal').textContent = (details.totalCost || req.totalCost || "0") + " ج.م";
 
         if (req.PO_Status === 'approved') {
             document.getElementById('printWatermark').style.display = 'none'; 
