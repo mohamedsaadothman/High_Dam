@@ -563,8 +563,7 @@
 
     </div>
 </div>
-
-        <script>
+<script>
     /* ===== إعدادات Firebase ===== */
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
@@ -713,7 +712,15 @@
             let deptsList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.username) deptsList.push(data.username.replace(/-/g, ' '));
+                if (data.username) {
+                    let cleanName = data.username.replace(/-/g, ' '); 
+                    cleanName = cleanName.replace(/^مدير عام /, '').trim();
+                    
+                    // استثناء إدارة الميزانية
+                    if (!cleanName.includes("الميزانية")) {
+                        deptsList.push(cleanName);
+                    }
+                }
             });
             deptsList = [...new Set(deptsList)].sort();
             if (deptsList.length > 0) {
@@ -883,7 +890,8 @@
             itemsList: JSON.stringify(items),
             totalCost: totalCost,
             Current_Stage: "مراجعة " + selectedDept, 
-            Status: "قيد الانتظار - موافقة " + selectedDept
+            Status: "قيد الانتظار - موافقة " + selectedDept,
+            History: [] 
         };
 
         const requestData = { ...data, Timestamp: new Date().toISOString() };
@@ -984,31 +992,26 @@
                 req.Request_ID = doc.id; 
                 
                 const stage = (req.Current_Stage || "").toString();
-                const myRole = (loggedInUser.role || "").toString().trim();
+                const myRole = (loggedInUser.role || "").toString().trim().replace(/-/g, ' ');
+                let history = req.History || [];
                 
-                let showForMe = false;
+                let isMyTurnNow = false;
 
-                if (stage.includes(myRole.replace(/-/g, ' '))) {
-                    showForMe = true;
-                }
-                else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
-                     showForMe = true;
-                } 
-                else if (stage.includes("بانتظار رأي") || stage.includes("بانتظار تعديل رأي")) {
-                    if (myRole.includes("الميزانية") && stage.includes("الميزانية")) showForMe = true;
-                    if (myRole.includes("التخطيط") && stage.includes("التخطيط")) showForMe = true;
-                }
-                else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) {
-                    showForMe = true;
-                }
+                // هل الطلب ده في مرحلتي أنا دلوقتي؟
+                if (stage.includes(myRole)) isMyTurnNow = true;
+                else if (myRole.includes("الشئون المالية والإدارية") && stage.includes("الشئون المالية والإدارية")) isMyTurnNow = true;
+                else if (stage.includes("بانتظار") && myRole.includes("الميزانية") && stage.includes("الميزانية")) isMyTurnNow = true;
+                else if (stage.includes("بانتظار") && myRole.includes("التخطيط") && stage.includes("التخطيط")) isMyTurnNow = true;
+                else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) isMyTurnNow = true;
 
-                if (showForMe) {
-                    // بنحط الطلب في الأرشيف لو المرحلة اللي هو فيها مش مرحلتي، أو لو هو معتمد/مرفوض
-                    if (!stage.includes(myRole.replace(/-/g, ' ')) || stage.includes("معتمد نهائياً") || stage.includes("مرفوض")) {
-                        archiveData.push(req);
-                    } else {
-                        pendingData.push(req);
-                    }
+                // هل أنا عديت على الطلب ده قبل كده (في التاريخ بتاعه)؟
+                let passedByMe = history.includes(myRole);
+                
+                if (isMyTurnNow) {
+                    pendingData.push(req);
+                } else if (passedByMe || stage.includes("معتمد") || stage.includes("مرفوض")) {
+                    // لو أنا اللي وافقت عليه أو اترفض، أو هو في مرحلة تانية، يروح الأرشيف
+                    archiveData.push(req);
                 }
             });
 
@@ -1030,7 +1033,6 @@
         const data = currentTab === 'pending' ? pendingData : archiveData;
         const dateFrom = document.getElementById('filterDateFrom').value;
         const dateTo = document.getElementById('filterDateTo').value;
-        const statusFilter = document.getElementById('filterStatus').value;
         const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
         
         let filtered = data.filter(function(r) {
@@ -1059,86 +1061,98 @@
     function resetFilters() {
         document.getElementById('filterDateFrom').value = "";
         document.getElementById('filterDateTo').value = "";
-        document.getElementById('filterStatus').value = "";
         document.getElementById('filterSearch').value = "";
         renderFilteredRequests();
     }
 
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
-        let updates = {};
+        
+        db.collection("requests").doc(requestId).get().then((doc) => {
+            if (!doc.exists) return;
+            let req = doc.data();
+            let updates = {};
+            
+            let history = req.History || [];
+            if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
-        if (actionType === 'gm_approve') {
-            db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
-                let centralName = "رئيس الإدارة المركزية";
-                if(!querySnapshot.empty) {
-                    centralName = querySnapshot.docs[0].data().centralManager;
+            if (actionType === 'gm_approve') {
+                db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
+                    let centralName = "رئيس الإدارة المركزية";
+                    if(!querySnapshot.empty) centralName = querySnapshot.docs[0].data().centralManager;
+                    
+                    updates = { 
+                        Current_Stage: "مراجعة " + centralName, 
+                        Gm_Date: nowStr, 
+                        Status: "قيد الانتظار - موافقة " + centralName,
+                        Central_Manager_Name: centralName,
+                        History: history
+                    };
+                    executeUpdate(requestId, updates);
+                });
+                return;
+            } 
+            else if (actionType === 'central_approve') {
+                const dept = req.parentDepartment || "";
+                if (dept.includes("موارد بشرية") || dept.includes("مالية") || dept.includes("إدارية") || dept.includes("عقود ومشتريات")) {
+                    updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr, Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة", History: history };
+                } else {
+                    updates = { Current_Stage: "مراجعة رئيس الإدارة المركزية للشئون المالية والإدارية", Central_Date: nowStr, Status: "قيد الانتظار - موافقة الشئون المالية والإدارية", History: history };
                 }
+            } 
+            else if (actionType === 'finance_approve') {
+                updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Finance_Date: nowStr, Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة", History: history };
+            }
+            else if (actionType === 'chairman_direct_approve') {
+                updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
+            } 
+            else if (actionType === 'reject') {
+                let rejecterName = loggedInUser.name || loggedInUser.role;
+                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
+            }
+            else if (actionType === 'central_transfer') {
                 updates = { 
-                    Current_Stage: "مراجعة " + centralName, 
-                    Gm_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة " + centralName,
-                    Central_Manager_Name: centralName
+                    Current_Stage: "بانتظار رأي " + extraData.targetDepts, 
+                    Transfer_State: JSON.stringify({ [extraData.targetDepts]: { decision: "pending", date: nowStr } }),
+                    Status: "قيد الانتظار - أخذ رأي " + extraData.targetDepts,
+                    History: history
                 };
-                executeUpdate(requestId, updates);
-            });
-            return;
-        } 
-        else if (actionType === 'central_approve') {
-            // بنغير الحالة لرئيس مجلس الإدارة
-            updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr, Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة" };
-        } 
-        else if (actionType === 'chairman_direct_approve') {
-            updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
-        } 
-        else if (actionType === 'reject') {
-            let rejecterName = loggedInUser.name || loggedInUser.role;
-            updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName };
-        }
-        else if (actionType === 'central_transfer') {
-            updates = { 
-                Current_Stage: "بانتظار رأي " + extraData.targetDepts, 
-                Transfer_State: JSON.stringify({ [extraData.targetDepts]: { decision: "pending", date: nowStr } }),
-                Status: "قيد الانتظار - أخذ رأي " + extraData.targetDepts
-            };
-        }
-        else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
-            let currentState = {};
-            try { currentState = JSON.parse(extraData.reqState || "{}"); } catch(e) {}
-            
-            let updatedState = { ...currentState };
-            const myRole = loggedInUser.role;
-            
-            // تحديث حالة الإدارة اللي ردت
-            for (let key in updatedState) {
-                if (key.includes(myRole) || myRole.includes(key)) {
-                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                    updatedState[key].date = nowStr;
-                    if (actionType === 'dept_reject' && extraData.rejectReason) {
-                        updatedState[key].reason = extraData.rejectReason;
+            }
+            else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
+                let currentState = {};
+                try { currentState = JSON.parse(extraData.reqState || "{}"); } catch(e) {}
+                
+                let updatedState = { ...currentState };
+                const myRole = loggedInUser.role;
+                for (let key in updatedState) {
+                    if (key.includes(myRole) || myRole.includes(key)) {
+                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                        updatedState[key].date = nowStr;
+                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                     }
                 }
+                
+                let centralName = extraData.centralName || "رئيس الإدارة المركزية";
+                let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
+                
+                updates = { 
+                    Current_Stage: "مراجعة " + centralName + " (تم أخذ الرأي)", 
+                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole,
+                    Transfer_State: JSON.stringify(updatedState),
+                    History: history
+                };
+            }
+            else if (actionType === 'request_revision') {
+                updates = { 
+                    Current_Stage: "بانتظار تعديل رأي " + extraData.targetDepts, 
+                    Status: "مطلوب تعديل الرأي",
+                    Reject_Reason: extraData.revisionReason,
+                    History: history
+                };
             }
             
-            // بعد ما الإدارة ردت، بنرجع الطلب لرئيس الإدارة المركزية
-            let centralName = extraData.centralName || "رئيس الإدارة المركزية";
-            let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-            
-            updates = { 
-                Current_Stage: "مراجعة " + centralName + " (تم أخذ الرأي)", 
-                Status: "تم أخذ الرأي - " + decisionText + " من " + myRole,
-                Transfer_State: JSON.stringify(updatedState)
-            };
-        }
-        else if (actionType === 'request_revision') {
-            updates = { 
-                Current_Stage: "بانتظار تعديل رأي " + extraData.targetDepts, 
-                Status: "مطلوب تعديل الرأي",
-                Reject_Reason: extraData.revisionReason 
-            };
-        }
-        
-        executeUpdate(requestId, updates);
+            executeUpdate(requestId, updates);
+        });
     }
 
     function executeUpdate(requestId, updates) {
@@ -1225,7 +1239,7 @@
           <div class="custom-modal-box" style="max-width:520px;">
             <div class="custom-modal-header"><i class="fas fa-redo" style="color:#6f42c1;"></i><h3 style="color:#1a365d;">طلب تعديل الرأي</h3></div>
             <div class="custom-modal-body" style="text-align:right;">
-              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة المطلوب منها التعديل، واكتب سبب التعديل:</p>
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة:</p>
               <label class="transfer-option"><input type="checkbox" id="chkBudgetRev" value="إدارة الميزانية"><span>إدارة الميزانية</span></label>
               <label class="transfer-option"><input type="checkbox" id="chkPlanningRev" value="إدارة التخطيط والمتابعة"><span>إدارة التخطيط والمتابعة</span></label>
               <textarea id="revisionReasonInput" placeholder="اكتب سبب التعديل..." style="width:100%; margin-top:10px; padding:10px; border-radius:6px;"></textarea>
@@ -1263,44 +1277,44 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            const myRole = (loggedInUser.role || "").toString().trim();
-            const isMyTurn = stage.includes(myRole.replace(/-/g, ' ')) || 
+            const myRole = (loggedInUser.role || "").toString().trim().replace(/-/g, ' ');
+            const isMyTurn = stage.includes(myRole) || 
                              (stage.includes("بانتظار") && (
                                  (myRole.includes("الميزانية") && stage.includes("الميزانية")) ||
                                  (myRole.includes("التخطيط") && stage.includes("التخطيط"))
-                             ));
+                             )) ||
+                             (myRole.includes("الشئون المالية والإدارية") && stage.includes("الشئون المالية والإدارية")) ||
+                             (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة"));
 
             if (isMyTurn) {
-                // لو الطلب محول لأخذ الرأي
                 if (stage.includes("بانتظار رأي") || stage.includes("بانتظار تعديل رأي")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
                     </div>`;
                 } 
-                // لو رئيس الإدارة المركزية وردت الإدارات
                 else if (stage.includes("تم أخذ الرأي")) {
-                    // التحقق من أن كل الإدارات ردت
                     let state = {};
                     try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                     let allReplied = true;
-                    for (let k in state) {
-                        if (state[k].decision === "pending") { allReplied = false; break; }
-                    }
+                    for (let k in state) { if (state[k].decision === "pending") { allReplied = false; break; } }
 
                     if (allReplied) {
                         buttonsHtml = `<div class="req-actions">
-                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد نهائي وتحويل لرئيس مجلس الإدارة</button>
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
                             <button class="main-btn" style="background:#ffc107; color:#000;" onclick="promptRevision('${req.Request_ID}')"><i class="fas fa-redo"></i> طلب تعديل الرأي</button>
                             <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض نهائي</button>
                         </div>`;
                     } else {
-                        buttonsHtml = `<div class="req-actions">
-                            <p style="text-align:center; color:#fbbf24;">⏳ بانتظار رد باقي الإدارات...</p>
-                        </div>`;
+                        buttonsHtml = `<div class="req-actions"><p style="text-align:center; color:#fbbf24;">⏳ بانتظار رد باقي الإدارات...</p></div>`;
                     }
                 }
-                // لو رئيس الإدارة المركزية (المرة الأولى)
+                else if (stage.includes("الشئون المالية والإدارية")) {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                }
                 else if (stage.includes("مركزية")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
@@ -1308,14 +1322,12 @@
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 }
-                // لو رئيس مجلس الإدارة
                 else if (stage.includes("رئيس مجلس الإدارة")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
                     </div>`;
                 }
-                // المدير العام
                 else {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
@@ -1389,7 +1401,6 @@
             rejectBox.style.display = "none";
         }
 
-        // العلامة المائية الديناميكية
         const wm = document.getElementById('printWatermark');
         const statusText = req.Status || "";
         if (statusText.includes("مرفوض")) {
@@ -1400,7 +1411,6 @@
             wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; 
         }
 
-        // تعبئة جدول ردود الإدارات
         const deptRepliesBox = document.getElementById('printDeptRepliesBox');
         const deptRepliesBody = document.getElementById('printDeptRepliesBody');
         
@@ -1453,7 +1463,7 @@
     function printReport() {
         document.getElementById('printRequestSection').style.display = 'block';
         document.getElementById('contractPrintSection').style.display = 'none';
-        document.getElementById('printDeptRepliesBox').style.display = 'none'; // إخفاء جدول الإدارات في الطباعة الأولى
+        document.getElementById('printDeptRepliesBox').style.display = 'none';
         
         document.getElementById('printReqId').textContent = lastCreatedReqId;
         document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
