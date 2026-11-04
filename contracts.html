@@ -112,7 +112,6 @@
         .filter-bar label { font-size: 11px; color: #94a3b8; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
         .filter-bar input, .filter-bar select { padding: 8px 10px; font-size: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #fff; width: 100%; }
         
-        /* 💡 تم ضبط اتجاه وعرض خانات التاريخ لتظهر بانتظام وتمنع تداخل الكلمات على الهواتف */
         .filter-bar input[type="date"] { direction: ltr; text-align: right; font-family: 'Cairo', sans-serif; }
         .filter-bar input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; opacity: 0.9; margin-left: 5px; }
 
@@ -226,7 +225,7 @@
                     <h3>تم تقديم الطلب بنجاح</h3>
                     <p>تم إرسال الطلب ومعالجته في قاعدة البيانات بنجاح.</p>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <button class="print-btn" onclick="printReport()"><i class="fas fa-print"></i> حفظ الطلب كـ PDF</button>
+                        <button class="print-btn" onclick="printSpecificRequestFromCard(lastCreatedReqId)"><i class="fas fa-print"></i> حفظ الطلب كـ PDF</button>
                         <button class="back-btn" onclick="resetCreateForm()" style="background: #2563eb; justify-content: center; padding: 10px;"><i class="fas fa-plus"></i> تقديم طلب جديد</button>
                     </div>
                 </div>
@@ -643,6 +642,7 @@
         }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
 
+    // 💡 تم استبعاد وتصفية "مدير عام التخطيط" من قائمة المسؤولين بناءً على طلبك
     function loadReviewUsersList() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let usersList = [];
@@ -650,6 +650,7 @@
                 const data = doc.data();
                 if (data.username) {
                     let displayName = data.displayName || data.username;
+                    if (displayName.includes("مدير عام التخطيط")) return; // استبعاد التخطيط المفرد
                     usersList.push(displayName);
                 }
             });
@@ -818,6 +819,8 @@
         .then(() => {
             document.getElementById('requestFormContainer').style.display = 'none';
             document.getElementById('successBox').style.display = 'block';
+            // تحديث مصفوفة الطلبات ليتمكن زر الطباعة الفورية من إيجاد الطلب وعرضه
+            activeRequestsData.push({ Request_ID: lastCreatedReqId, ...requestData });
         })
         .catch((error) => {
             console.error("خطأ: ", error);
@@ -907,7 +910,6 @@
         renderFilteredRequests();
     }
 
-    // 💡 دالة تحميل ومراجعة الطلبات المحدثة لتظهر الطلبات القديمة والجديدة بمرونة لكل مسؤول
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -1023,7 +1025,6 @@
         renderFilteredRequests();
     }
 
-    // 💡 إدارة الدورة المستندية والتحويلات الكاملة بين الإدارات ورئيس الإدارة المركزية والمالية
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
         
@@ -1035,7 +1036,6 @@
             let history = req.History || [];
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
-            // 1. اعتماد مدير عام الإدارة وتحويله إلى رئيس الإدارة المركزية التابع لها
             if (actionType === 'gm_approve') {
                 db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
                     let centralName = "رئيس الإدارة المركزية";
@@ -1052,7 +1052,6 @@
                 });
                 return;
             } 
-            // 2. اعتماد رئيس الإدارة المركزية وتحويله إلى الإدارة المركزية للشئون المالية والإدارية
             else if (actionType === 'central_approve') {
                 updates = { 
                     Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية", 
@@ -1061,7 +1060,6 @@
                     History: history 
                 };
             } 
-            // 3. الشئون المالية والإدارية تقوم بالتحويل (أخذ الرأي) إلى الميزانية أو التخطيط أو كلاهما
             else if (actionType === 'finance_transfer') {
                 updates = { 
                     Current_Stage: "بانتظار رأي " + extraData.targetDepts, 
@@ -1070,24 +1068,25 @@
                     History: history
                 };
             }
-            // 4. رد إدارات أخذ الرأي (ميزانية / تخطيط) بالموافقة أو الرفض
+            // 💡 معالجة استجابة إدارات الرأي (الميزانية / التخطيط والمتابعة) بالموافقة أو الرفض
             else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
                 let currentState = {};
-                try { currentState = JSON.parse(extraData.reqState || "{}"); } catch(e) {}
+                try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                 
                 let updatedState = { ...currentState };
                 const myRole = loggedInUser.role;
+                
                 for (let key in updatedState) {
-                    if (key.includes(myRole) || myRole.includes(key)) {
+                    if (key.includes(myRole) || myRole.includes(key) || key.includes("إدارة الميزانية") || key.includes("إدارة التخطيط والمتابعة")) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
-                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+                        if (actionType === 'dept_reject' && extraData.rejectReason) {
+                            updatedState[key].reason = extraData.rejectReason;
+                        }
                     }
                 }
                 
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-                
-                // بعد انتهاء الرأي، يعود الطلب إلى رئيس الإدارة المركزية الذي حوله سابقاً
                 let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
 
                 updates = { 
@@ -1097,7 +1096,6 @@
                     History: history
                 };
             }
-            // 5. موافقة الشئون المالية مباشرة (إذا لم يتطلب تحويل رأي) وتحويله لرئيس الإدارة المركزية السابق ثم رئيس مجلس الإدارة
             else if (actionType === 'finance_approve') {
                 let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
                 updates = { 
@@ -1107,7 +1105,6 @@
                     History: history 
                 };
             }
-            // 6. اعتماد رئيس الإدارة المركزية بعد عودة الطلب له وتحويله نهائياً لرئيس مجلس الإدارة
             else if (actionType === 'central_final_approve') {
                 updates = { 
                     Current_Stage: "مراجعة رئيس مجلس الإدارة", 
@@ -1116,11 +1113,9 @@
                     History: history 
                 };
             }
-            // 7. الموافقة النهائية من رئيس مجلس الإدارة (السلطة المختصة)
             else if (actionType === 'chairman_direct_approve') {
                 updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
             } 
-            // 8. الرفض العام
             else if (actionType === 'reject') {
                 let rejecterName = loggedInUser.name || loggedInUser.role;
                 updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
@@ -1165,11 +1160,9 @@
             if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
             overlay.remove();
             
-            let req = activeRequestsData.find(r => r.Request_ID === requestId);
-            let centralName = req && req.Central_Manager_Name ? req.Central_Manager_Name : "رئيس الإدارة المركزية";
-            let reqState = req && req.Transfer_State ? req.Transfer_State : "{}";
-            
-            processAction(requestId, actionName, { rejectReason: reason, centralName: centralName, reqState: reqState });
+            // 💡 تصحيح تمرير المعاملات لتعمل أزرار الرفض المسبب في كل الحالات بسلاسة
+            let actionToUse = actionName === 'dept_reject' ? 'dept_reject' : 'reject';
+            processAction(requestId, actionToUse, { rejectReason: reason });
         };
     }
 
@@ -1249,7 +1242,7 @@
                 }
                 else if (stage.includes("بانتظار رأي")) {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
                     </div>`;
                 }
@@ -1351,7 +1344,6 @@
             wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; 
         }
 
-        // تعبئة جدول آراء الإدارات في الطباعة
         const deptRepliesBox = document.getElementById('printDeptRepliesBox');
         const deptRepliesBody = document.getElementById('printDeptRepliesBody');
         if (req.Transfer_State) {
