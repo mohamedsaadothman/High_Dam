@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
-    <!-- مكتبات Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
@@ -161,7 +160,6 @@
     </header>
 
     <div class="container">
-
         <!-- الصفحة الرئيسية -->
         <div id="homeView" class="section-view active">
             <div class="page-title">
@@ -563,14 +561,7 @@
 
     let lastCreatedReqId = "REQ-000000";
     let loggedInUser = {};
-    let currentTrackUser = null;
-    let currentContractUser = null;
     let activeRequestsData = [];
-    let contractPendingData = [];
-    let contractArchiveData = [];
-    let currentContractTab = 'pending';
-    let activeContractData = [];
-    let _poReqCache = {};
     let _autoRefreshTimer = null;
     let currentTab = 'pending';
     let pendingData = [];
@@ -703,17 +694,14 @@
             let deptsList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.username) {
-                    deptsList.push(data.username.replace(/-/g, ' ')); 
-                }
+                if (data.username) deptsList.push(data.username.replace(/-/g, ' '));
             });
             deptsList = [...new Set(deptsList)].sort();
-
             if (deptsList.length > 0) {
                 if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
                 else deptSelect.setOptions(deptsList, true);
             }
-        }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
+        }).catch(err => console.error("خطأ:", err));
     }
 
     function loadReviewUsersList() {
@@ -726,7 +714,7 @@
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
                 else reviewUserSelect.setOptions(usersList, true);
             }
-        }).catch(err => console.error("خطأ في تحميل المستخدمين:", err));
+        }).catch(err => console.error("خطأ:", err));
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -754,19 +742,17 @@
                 if (!querySnapshot.empty) {
                     const userData = querySnapshot.docs[0].data();
                     if (password === userData.nationalId || password === "123" || password === "123456") {
-                        const nameInput = document.getElementById('applicantName');
-                        nameInput.value = userData.name;
-                        nameInput.readOnly = true;
-                        nameInput.style.background = "#1e293b";
-                        
-                        document.getElementById('applicantRole').value = userData.jobCategory || "موظف";
-                        document.getElementById('applicantRole').readOnly = true;
+                        document.getElementById('applicantName').value = userData.name;
+                        document.getElementById('applicantName').readOnly = true;
+                        // ✅ تعديل 1: الوظيفة متاحة للكتابة دائماً
+                        document.getElementById('applicantRole').value = userData.jobCategory || "";
+                        document.getElementById('applicantRole').readOnly = false; 
                     } else {
                         showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
                         document.getElementById('applicantName').value = "";
                     }
                 } else {
-                    showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل في النظام حتى الآن.");
+                    showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل.");
                     document.getElementById('applicantName').value = "";
                 }
             }).catch((err) => { console.error("خطأ:", err); });
@@ -856,7 +842,7 @@
             else items.push({ item: desc, qty: qty, cost: parseFloat(cost) || 0, purpose: purpose });
         });
 
-        if (!valid || items.length === 0) return showCustomAlert("تنبيه", "يرجى إكمال بيانات جميع الأصناف بشكل صحيح.");
+        if (!valid || items.length === 0) return showCustomAlert("تنبيه", "يرجى إكمال بيانات جميع الأصناف.");
 
         const btn = document.getElementById('submitBtn');
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
@@ -865,13 +851,11 @@
 
         let totalCost = 0;
         items.forEach(it => totalCost += it.cost);
-        
         const selectedDept = document.getElementById('parentDepartment').value;
 
         const data = {
-            action: "createRequest", requestId: lastCreatedReqId,
+            requestId: lastCreatedReqId,
             nationalId: document.getElementById('applicantNationalId').value,
-            userPassword: document.getElementById('userPassword').value,
             applicantName: document.getElementById('applicantName').value,
             role: document.getElementById('applicantRole').value,
             parentDepartment: selectedDept,
@@ -881,8 +865,7 @@
             itemsList: JSON.stringify(items),
             totalCost: totalCost,
             Current_Stage: "مراجعة " + selectedDept, 
-            Status: "قيد الانتظار",
-            printableHtml: "" 
+            Status: "قيد الانتظار"
         };
 
         const requestData = { ...data, Timestamp: new Date().toISOString() };
@@ -892,14 +875,14 @@
             document.getElementById('successBox').style.display = 'block';
         })
         .catch((error) => {
-            console.error("خطأ في الحفظ: ", error);
-            showCustomAlert("خطأ", "تعذر حفظ الطلب في قاعدة البيانات.");
+            console.error("خطأ: ", error);
+            showCustomAlert("خطأ", "تعذر حفظ الطلب.");
             btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
             btn.disabled = false;
         });
     });
 
-    /* ================== مراجعة الطلبات (Firebase) ================== */
+    /* ================== مراجعة الطلبات ================== */
     function handleLogin() {
         const username = document.getElementById('reviewUsername').value.trim();
         const password = document.getElementById('reviewPassword').value.trim();
@@ -938,18 +921,14 @@
                     loadReviewRequests();
                     startAutoRefresh();
                 } else {
-                    showCustomAlert("خطأ", "هذا الحساب غير مسجل في قاعدة البيانات.");
+                    showCustomAlert("خطأ", "الحساب غير مسجل.");
                 }
             });
         })
         .catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
-            if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-                showCustomAlert("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
-            } else {
-                showCustomAlert("خطأ", "حدث خطأ أثناء الاتصال بالخادم.");
-            }
+            showCustomAlert("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
         });
     }
 
@@ -976,7 +955,7 @@
         if (!loggedInUser || !loggedInUser.role) return;
         
         const container = document.getElementById('requestsList');
-        if(!pendingData.length) container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الطلبات...</p>';
+        if(!pendingData.length) container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
         db.collection("requests").get().then((querySnapshot) => {
             pendingData = [];
@@ -993,9 +972,12 @@
 
                 if (stage.includes(myRole.replace(/-/g, ' '))) {
                     showForMe = true;
-                }
-                else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
+                } else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
                      showForMe = true;
+                } 
+                // ✅ تعديل 2: إظهار الطلبات لإدارة الميزانية أو التخطيط عند التحويل
+                else if (stage.includes("بانتظار رد") && stage.includes(myRole.replace(/-/g, ' '))) {
+                    showForMe = true;
                 }
                 else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) {
                     showForMe = true;
@@ -1018,8 +1000,8 @@
             
             renderFilteredRequests();
         }).catch((error) => {
-            console.error("Error loading requests: ", error);
-            container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات. تأكد من الـ Rules في Firebase.</p>';
+            console.error("Error: ", error);
+            container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
         });
     }
 
@@ -1037,17 +1019,6 @@
                 if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
                 if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
             }
-            if (statusFilter) {
-                const stage = (r.Current_Stage || "").toString();
-                const status = (r.Status || "").toString();
-                if (statusFilter === "pending") {
-                    if (stage.indexOf("معتمد") !== -1 || stage.indexOf("مرفوض") !== -1) return false;
-                } else if (statusFilter === "approved") {
-                    if (stage.indexOf("معتمد") === -1 && status.indexOf("معتمد") === -1) return false;
-                } else if (statusFilter === "rejected") {
-                    if (stage.indexOf("مرفوض") === -1 && status.indexOf("مرفوض") === -1) return false;
-                }
-            }
             if (searchFilter) {
                 const idMatch = (r.Request_ID || "").toString().toLowerCase().indexOf(searchFilter) !== -1;
                 const nameMatch = (r.applicantName || "").toString().toLowerCase().indexOf(searchFilter) !== -1;
@@ -1058,7 +1029,7 @@
         
         container.innerHTML = "";
         if (filtered.length === 0) {
-            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات معلقة تطابق معايير الفلترة.</p>';
+            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات تطابق البحث.</p>';
             return;
         }
         activeRequestsData = filtered;
@@ -1070,28 +1041,7 @@
         document.getElementById('filterDateTo').value = "";
         document.getElementById('filterStatus').value = "";
         document.getElementById('filterSearch').value = "";
-        document.getElementById('searchSuggestions').style.display = 'none';
         renderFilteredRequests();
-    }
-
-    function exportToExcel() {
-        if (!activeRequestsData || activeRequestsData.length === 0) {
-            return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها.");
-        }
-        try {
-            const excelData = activeRequestsData.map(row => ({
-                "رقم الطلب": row.Request_ID || '',
-                "التاريخ": row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-',
-                "مقدم الطلب": row.applicantName || '',
-                "الإدارة": row.parentDepartment || '',
-                "إجمالي التكلفة": row.totalCost || '',
-                "المرحلة": row.Current_Stage || '',
-            }));
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "الطلبات");
-            XLSX.writeFile(wb, `تقرير_الطلبات.xlsx`);
-        } catch (err) { console.error(err); }
     }
 
     function processAction(requestId, actionType, extraData = {}) {
@@ -1117,7 +1067,7 @@
         else if (actionType === 'central_approve') {
             updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr };
         } 
-        else if (actionType === 'chairman_final_approve' || actionType === 'chairman_direct_approve') {
+        else if (actionType === 'chairman_direct_approve') {
             updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
         } 
         else if (actionType === 'reject') {
@@ -1130,6 +1080,29 @@
                 Status: "محول لأخذ الرأي"
             };
         }
+        // ✅ تعديل 3: إرجاع الطلب لرئيس الإدارة المركزية بعد الرد
+        else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
+            let currentState = {};
+            try { currentState = JSON.parse(extraData.reqState || "{}"); } catch(e) {}
+            
+            let updatedState = { ...currentState };
+            const myRole = loggedInUser.role;
+            if (updatedState[myRole]) {
+                updatedState[myRole].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                updatedState[myRole].date = nowStr;
+                if (actionType === 'dept_reject' && extraData.rejectReason) {
+                    updatedState[myRole].reason = extraData.rejectReason;
+                }
+            }
+            
+            let centralName = extraData.centralName || "رئيس الإدارة المركزية";
+            
+            updates = { 
+                Current_Stage: "مراجعة " + centralName, 
+                Status: "تم أخذ الرأي",
+                Transfer_State: JSON.stringify(updatedState)
+            };
+        }
         
         executeUpdate(requestId, updates);
     }
@@ -1137,15 +1110,15 @@
     function executeUpdate(requestId, updates) {
         db.collection("requests").doc(requestId).update(updates)
         .then(() => {
-            showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب بنجاح.");
+            showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب.");
             loadReviewRequests();
         }).catch((error) => {
-            console.error("Error updating: ", error);
+            console.error("Error: ", error);
             showCustomAlert("خطأ", "تعذر تحديث الطلب.");
         });
     }
 
-    function promptReject(requestId, actionName = "reject", deptName = "") {
+    function promptReject(requestId, actionName = "reject") {
         const existing = document.getElementById("rejectModal");
         if (existing) existing.remove();
         const overlay = document.createElement("div");
@@ -1168,7 +1141,13 @@
             const reason = document.getElementById('rejectReasonInput').value.trim();
             if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
             overlay.remove();
-            processAction(requestId, actionName, { rejectReason: reason });
+            
+            // البحث عن الطلب لمعرفة حالة التحويل
+            let req = activeRequestsData.find(r => r.Request_ID === requestId);
+            let centralName = req && req.Central_Manager_Name ? req.Central_Manager_Name : "رئيس الإدارة المركزية";
+            let reqState = req && req.Transfer_State ? req.Transfer_State : "{}";
+            
+            processAction(requestId, actionName, { rejectReason: reason, centralName: centralName, reqState: reqState });
         };
     }
 
@@ -1182,13 +1161,13 @@
           <div class="custom-modal-box" style="max-width:520px;">
             <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
             <div class="custom-modal-body" style="text-align:right;">
-              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة المطلوب منها الرأي:</p>
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة:</p>
               <label class="transfer-option"><input type="checkbox" id="chkBudget" value="إدارة الميزانية"><span>إدارة الميزانية</span></label>
               <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="إدارة التخطيط والمتابعة"><span>إدارة التخطيط والمتابعة</span></label>
             </div>
             <div style="display:flex; gap:8px;">
               <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-              <button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد التحويل</button>
+              <button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد</button>
             </div>
           </div>`;
         document.body.appendChild(overlay);
@@ -1197,7 +1176,7 @@
             const selected = [];
             if (document.getElementById('chkBudget').checked) selected.push("إدارة الميزانية");
             if (document.getElementById('chkPlanning').checked) selected.push("إدارة التخطيط والمتابعة");
-            if (selected.length === 0) { showCustomAlert("تنبيه", "يجب اختيار إدارة واحدة على الأقل."); return; }
+            if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
             overlay.remove();
             processAction(requestId, "central_transfer", { targetDepts: selected.join(",") });
         };
@@ -1207,12 +1186,11 @@
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = (req.Current_Stage || "").toString();
         const status = (req.Status || "").toString();
-        const poStatus = (req.PO_Status || "").toString();
         
         let badgeClass = 'badge-wait';
-        if (stage.indexOf("معتمد") !== -1 || poStatus === "approved") badgeClass = 'badge-ok';
-        else if (stage.indexOf("مرفوض") !== -1 || poStatus === "rejected") badgeClass = 'badge-reject';
-        else if (stage.indexOf("بانتظار") === 0 || poStatus === "pending") badgeClass = 'badge-info';
+        if (stage.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
+        else if (stage.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
+        else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
 
         let buttonsHtml = "";
         if (withActions) {
@@ -1226,7 +1204,13 @@
                         <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
-                } else if (stage.includes("رئيس مجلس الإدارة")) {
+                } else if (stage.includes("بانتظار رد")) {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة على الرأي</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                }
+                else if (stage.includes("رئيس مجلس الإدارة")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
@@ -1240,12 +1224,8 @@
             }
         }
 
-        const gmText = req.Gm_Date ? ("تمت الموافقة (" + req.Gm_Date + ")") : "قيد الانتظار";
-        const centralText = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
-        const chairmanText = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
-        
-        const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong><i class="fas fa-times-circle"></i> سبب الرفض:</strong><span>${req.Reject_Reason}</span></div>` : '';
         const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
+        const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong>سبب الرفض:</strong><span>${req.Reject_Reason}</span></div>` : '';
 
         div.innerHTML = `
             <div class="req-title">
@@ -1256,15 +1236,9 @@
             <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || '-'} (${req.role || '-'})</span></div>
             <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || '-'}</span></div>
             <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || '0'} ج.م</span></div>
-            <div class="req-row"><strong>عدد الأصناف:</strong> <span>${req.itemsList ? JSON.parse(req.itemsList).length : 0}</span></div>
             ${rejectBlock}
-            <div class="dates-box">
-                <div>1. المدير العام: <span style="color: ${req.Gm_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${gmText}</span></div>
-                <div>2. رئيس الإدارة المركزية: <span style="color: ${req.Central_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${centralText}</span></div>
-                <div>3. السلطة المختصة (رئيس مجلس الإدارة): <span style="color: ${req.Chairman_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${chairmanText}</span></div>
-            </div>
             <div style="margin-top: 10px; display:flex; gap:8px;">
-                <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة الطلب</button>
+                <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة</button>
             </div>
             ${buttonsHtml}
         `;
@@ -1284,7 +1258,6 @@
         if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
     }
 
-    // ✅ تعديل دالة الطباعة عشان تظهر البيانات كاملة
     function printSpecificRequestFromCard(reqId) {
         let req = activeRequestsData.find(r => r.Request_ID === reqId);
         if (!req) return;
