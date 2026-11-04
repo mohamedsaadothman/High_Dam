@@ -744,24 +744,46 @@
         document.getElementById('managerTitle').value = deptName ? (prefix + " مدير عام إدارة " + deptName) : "";
     }
 
+    // ✅ التعديل الجديد: البحث عن الموظف بالرقم القومي
     function fetchEmployeeData() {
-        const nationalId = document.getElementById('applicantNationalId').value;
-        const password = document.getElementById('userPassword').value;
+        const nationalId = document.getElementById('applicantNationalId').value.trim();
+        const password = document.getElementById('userPassword').value.trim();
         
-        if (nationalId && password) {
+        if (nationalId.length === 14 && password.length > 0) {
+            // بنبحث في فايربيز عن الموظف بالرقم القومي
             db.collection("users").where("nationalId", "==", nationalId).get()
             .then((querySnapshot) => {
                 if (!querySnapshot.empty) {
+                    // لقينا الموظف
                     const userData = querySnapshot.docs[0].data();
-                    document.getElementById('applicantName').value = userData.name;
-                    document.getElementById('applicantRole').value = userData.jobCategory || "موظف";
+                    
+                    // نتأكد إن الباسورد صح (لو الباسورد في الشيت هو الرقم القومي أو 123)
+                    if (password === userData.nationalId || password === "123" || password === "123456") {
+                        const nameInput = document.getElementById('applicantName');
+                        nameInput.value = userData.name;
+                        nameInput.readOnly = true; // نقفل الخانة عشان محدش يعدلها
+                        nameInput.style.background = "#1e293b"; // لون مقفول
+                        
+                        document.getElementById('applicantRole').value = userData.jobCategory || "موظف";
+                        document.getElementById('applicantRole').readOnly = true;
+                        
+                        // ممكن نعبي الإدارة التابع لها لو حابب (لو خزناها)
+                        // document.getElementById('parentDepartment').value = userData.department;
+                    } else {
+                        showCustomAlert("خطأ", "كلمة المرور غير صحيحة. يرجى التأكد من الرقم السري.");
+                        document.getElementById('applicantName').value = "";
+                        document.getElementById('applicantRole').value = "";
+                    }
                 } else {
-                    const nameInput = document.getElementById('applicantName');
-                    nameInput.readOnly = false;
-                    nameInput.placeholder = "اكتب اسمك هنا...";
-                    nameInput.style.background = "#0f172a"; 
+                    // مش موجود
+                    showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل في النظام حتى الآن. يرجى التواصل مع شؤون العاملين.");
+                    document.getElementById('applicantName').value = "";
+                    document.getElementById('applicantRole').value = "";
                 }
-            }).catch((err) => console.error("خطأ:", err));
+            }).catch((err) => {
+                console.error("خطأ:", err);
+                showCustomAlert("خطأ", "حدث خطأ أثناء الاتصال بقاعدة البيانات.");
+            });
         }
     }
 
@@ -874,7 +896,7 @@
             totalCost: totalCost,
             Current_Stage: "مراجعة " + selectedDept, 
             Status: "قيد الانتظار",
-            printableHtml: generatePrintableHtmlForBackend() 
+            printableHtml: "" 
         };
 
         const requestData = { ...data, Timestamp: new Date().toISOString() };
@@ -983,15 +1005,12 @@
                 
                 let showForMe = false;
 
-                // لو أنا مدير الإدارة اللي اتبعتلها الطلب
                 if (stage.includes(myRole.replace(/-/g, ' '))) {
                     showForMe = true;
                 }
-                // لو أنا الإدارة المركزية
                 else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
                      showForMe = true;
                 }
-                // لو أنا رئيس مجلس الإدارة
                 else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) {
                     showForMe = true;
                 }
