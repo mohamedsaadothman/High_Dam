@@ -642,7 +642,7 @@
         }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
 
-    // 💡 تم استبعاد "مدير عام التخطيط" تماماً بناءً على طلبك
+    // 💡 إزالة "مدير عام التخطيط" نهائياً من قائمة المسؤولين
     function loadReviewUsersList() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let usersList = [];
@@ -650,8 +650,13 @@
                 const data = doc.data();
                 if (data.username) {
                     let displayName = data.displayName || data.username;
-                    if (displayName.includes("مدير عام التخطيط")) return; 
-                    usersList.push(displayName);
+                    if (displayName.includes("مدير عام التخطيط") || displayName.includes("التخطيط") && !displayName.includes("المتابعة")) {
+                        // استبعاد أي اسم تخطيط غير إدارة التخطيط والمتابعة
+                        if (displayName === "مدير عام التخطيط") return;
+                    }
+                    if (displayName !== "مدير عام التخطيط") {
+                        usersList.push(displayName);
+                    }
                 }
             });
             usersList = [...new Set(usersList)].sort();
@@ -909,7 +914,7 @@
         renderFilteredRequests();
     }
 
-    // 💡 تم تحديث منطق توزيع وظهور الطلبات لكي تظهر فقط لدى صاحب الدور الفعلي ولا تظهر بصفحات باقي المسؤولين بالخطأ
+    // 💡 تصحيح دالة تحميل الطلبات لتظهر في حسابات الميزانية والتخطيط بشكل صحيح عند أخذ الرأي
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -941,12 +946,12 @@
                     }
                 }
                 else if (myRole.includes("مالية") || myRole.includes("إدارية")) {
-                    if ((stage.includes("مالية") || stage.includes("الشئون المالية") || stage.includes("مراجعة رئيس الإدارة المركزية للشئون المالية")) && !status.includes("معتمد نهائياً") && !status.includes("مرفوض")) {
+                    if ((stage.includes("مالية") || stage.includes("الشئون المالية") || stage.includes("مراجعة رئيس الإدارة المركزية للشئون المالية")) && !status.includes("معتمد نهائياً") && !status.includes("مرفوض") && !stage.includes("بانتظار رأي")) {
                         isMyTurnNow = true;
                     }
                 }
                 else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                    if (stage.includes("بانتظار رأي") && stage.includes(myRole)) {
+                    if (stage.includes("بانتظار رأي") && (stage.includes(myRole) || (myRole.includes("ميزانية") && stage.includes("الميزانية")) || (myRole.includes("تخطيط") && stage.includes("التخطيط")))) {
                         isMyTurnNow = true;
                     }
                 }
@@ -1069,7 +1074,6 @@
                     History: history
                 };
             }
-            // 💡 تصحيح دالة اعتماد أو رفض إدارات الرأي (الميزانية والتخطيط) لتعمل الأزرار بسلاسة
             else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
                 let currentState = {};
                 try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
@@ -1078,20 +1082,19 @@
                 const myRole = loggedInUser.role;
                 
                 for (let key in updatedState) {
-                    if (key.includes(myRole) || myRole.includes(key) || key.includes("الميزانية") || key.includes("التخطيط")) {
-                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr;
-                        if (actionType === 'dept_reject' && extraData.rejectReason) {
-                            updatedState[key].reason = extraData.rejectReason;
-                        }
+                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                    updatedState[key].date = nowStr;
+                    if (actionType === 'dept_reject' && extraData.rejectReason) {
+                        updatedState[key].reason = extraData.rejectReason;
                     }
                 }
                 
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
                 let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
 
+                // بعد رد الميزانية/التخطيط، يعود الطلب إلى رئيس الإدارة المركزية للشئون المالية والإدارية (أو المركزية التابع لها حسب الطلب)
                 updates = { 
-                    Current_Stage: "مراجعة " + originalCentral + " (بعد أخذ الرأي)", 
+                    Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية (بعد أخذ الرأي)", 
                     Status: "تم أخذ الرأي - " + decisionText + " من " + myRole,
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
@@ -1222,7 +1225,7 @@
                 if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية")) isMyTurn = true;
             }
             else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                if (stage.toLowerCase().includes("بانتظار رأي") && stage.toLowerCase().includes(myRole)) isMyTurn = true;
+                if (stage.toLowerCase().includes("بانتظار رأي") && (stage.toLowerCase().includes(myRole) || (myRole.includes("ميزانية") && stage.toLowerCase().includes("الميزانية")) || (myRole.includes("تخطيط") && stage.toLowerCase().includes("التخطيط")))) isMyTurn = true;
             }
             else if (centralName && myRole.includes(centralName)) {
                 if (stage.toLowerCase().includes(centralName) || stage.toLowerCase().includes("رئيس الإدارة المركزية")) isMyTurn = true;
