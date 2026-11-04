@@ -563,7 +563,8 @@
 
     </div>
 </div>
-<script>
+
+        <script>
     /* ===== إعدادات Firebase ===== */
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
@@ -710,24 +711,39 @@
     function loadDepartments() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsList = [];
+            
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 if (data.username) {
-                    let cleanName = data.username.replace(/-/g, ' '); 
-                    cleanName = cleanName.replace(/^مدير عام /, '').trim();
+                    // 1. بنجيب الاسم من فايربيز ونشيل أي شرطات
+                    let cleanName = data.username.replace(/-/g, ' ').trim();
                     
-                    // استثناء إدارة الميزانية
+                    // 2. بنشيل أي كلمة زيادة من الأول (مدير عام، مدير، رئيس الإدارة المركزية، إلخ)
+                    cleanName = cleanName.replace(/^(مدير\s+عام|مدير|رئيس\s+الإدارة\s+المركزية|رئيس\s+مجلس\s+الإدارة)\s*/, '');
+                    
+                    // 3. بنشيل كلمة "إدارة" لو موجودة في الأول عشان منكررهاش
+                    cleanName = cleanName.replace(/^إدارة\s+/, '');
+                    
+                    // 4. لو الاسم فضل فيه حاجة، بنضيف قبله "إدارة"
+                    if (cleanName.length > 0 && !cleanName.includes("مجلس الإدارة")) {
+                        cleanName = "إدارة " + cleanName;
+                    }
+                    
+                    // 5. بنستثني إدارة الميزانية من القائمة
                     if (!cleanName.includes("الميزانية")) {
                         deptsList.push(cleanName);
                     }
                 }
             });
+
+            // 6. بنشيل أي تكرار (زي التخطيط لو كانت متكررة) وبنرتب
             deptsList = [...new Set(deptsList)].sort();
+
             if (deptsList.length > 0) {
                 if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
                 else deptSelect.setOptions(deptsList, true);
             }
-        }).catch(err => console.error("خطأ:", err));
+        }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
 
     function loadReviewUsersList() {
@@ -755,7 +771,7 @@
     function updateManagerTitle() {
         const prefix = document.getElementById('managerTitlePrefix').value;
         const deptName = document.getElementById('parentDepartment').value;
-        document.getElementById('managerTitle').value = deptName ? (prefix + " مدير عام إدارة " + deptName) : "";
+        document.getElementById('managerTitle').value = deptName ? (prefix + " مدير عام " + deptName) : "";
     }
 
     function fetchEmployeeData() {
@@ -997,20 +1013,17 @@
                 
                 let isMyTurnNow = false;
 
-                // هل الطلب ده في مرحلتي أنا دلوقتي؟
                 if (stage.includes(myRole)) isMyTurnNow = true;
                 else if (myRole.includes("الشئون المالية والإدارية") && stage.includes("الشئون المالية والإدارية")) isMyTurnNow = true;
                 else if (stage.includes("بانتظار") && myRole.includes("الميزانية") && stage.includes("الميزانية")) isMyTurnNow = true;
                 else if (stage.includes("بانتظار") && myRole.includes("التخطيط") && stage.includes("التخطيط")) isMyTurnNow = true;
                 else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) isMyTurnNow = true;
 
-                // هل أنا عديت على الطلب ده قبل كده (في التاريخ بتاعه)؟
                 let passedByMe = history.includes(myRole);
                 
                 if (isMyTurnNow) {
                     pendingData.push(req);
                 } else if (passedByMe || stage.includes("معتمد") || stage.includes("مرفوض")) {
-                    // لو أنا اللي وافقت عليه أو اترفض، أو هو في مرحلة تانية، يروح الأرشيف
                     archiveData.push(req);
                 }
             });
