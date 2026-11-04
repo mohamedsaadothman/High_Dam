@@ -2,26 +2,14 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>رفع شامل لجميع البيانات إلى Firebase</title>
+    <title>مسح الحسابات</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <style>
-        body { font-family: Arial; background: #1e293b; color: #fff; text-align: center; padding: 50px; }
-        button { padding: 15px 30px; font-size: 20px; background: #198754; color: white; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 20px; }
-        button:disabled { background: #64748b; cursor: not-allowed; }
-        #log { background: #0f172a; padding: 20px; border-radius: 8px; text-align: right; max-width: 800px; margin: 0 auto; min-height: 200px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; }
-        .success { color: #4ade80; } .error { color: #f87171; } .info { color: #fbbf24; }
-    </style>
 </head>
-<body>
-    <h1>أداة الرفع الشاملة (مرة واحدة)</h1>
-    <p>اضغط على الزر لبدء رفع حسابات المسؤولين، العقود، والموظفين إلى Firebase</p>
-    
-    <button id="uploadBtn" onclick="startUpload()">🚀 بدء الرفع الشامل</button>
-    
-    <div id="log">في انتظار البدء...</div>
-
+<body style="background:#1e293b; color:white; font-family:Arial; text-align:center; padding:50px;">
+    <h2>مسح كل الحسابات من Firebase</h2>
+    <button onclick="deleteUsers()" style="padding:15px 30px; font-size:20px; background:#dc3545; color:white; border:none; border-radius:8px; cursor:pointer;">🗑️ ابدأ المسح</button>
+    <div id="msg" style="margin-top:20px; font-size:18px; color:yellow;">في انتظار البدء...</div>
     <script>
         const firebaseConfig = {
             apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
@@ -32,115 +20,54 @@
             appId: "1:123271128649:web:1096b95fc97c8575b50198"
         };
         firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
         const auth = firebase.auth();
-
-        // 1. بيانات المسؤولين (Users)
-        const usersData = [
-            { username: "رئيس مجلس الادارة", name: "الدكتور محمد رشدى", password: "123", role: "رئيس مجلس الإدارة" },
-            { username: "مدير ادارة الاستحقاقات", name: "عبدالحليم فتحى", password: "123", role: "مدير إدارة" },
-            { username: "مدير ادارة العقود", name: "عمرو الامين", password: "123", role: "مدير إدارة" },
-            { username: "مدير ادارة الميزانية", name: "محمد فاروق", password: "123", role: "مدير إدارة" },
-            { username: "مدير ادارة المشتريات", name: "لمياء احمد حسن", password: "123", role: "مدير إدارة" },
-            { username: "مدير ادارة المخازن", name: "محمد محمود عبدالموجود", password: "123", role: "مدير إدارة" },
-            { username: "مدير الادارة المركزية للتصنيع", name: "ابراهيم فايز", password: "123", role: "مدير إدارة" },
-            { username: "رئيس الادارة المركزية لصيانة السد", name: "محمد عبدالحميد", password: "123", role: "رئيس إدارة مركزية" },
-            { username: "رئيس الادارة المركزية للتخطيط", name: "حمده عبدالجابر", password: "123", role: "رئيس إدارة مركزية" },
-            { username: "رئيس الادارة المركزية للبحوث", name: "مجمد سعد", password: "123", role: "رئيس إدارة مركزية" },
-            { username: "رئيس الادارة المركزية للمالية", name: "احمد محمود", password: "123", role: "رئيس إدارة مركزية" }
-        ];
-
-        // 2. بيانات العقود (Users_contract)
-        const contractUsersData = [
-            { username: "1", name: "محمود جمد", password: "1", role: "موظف" },
-            { username: "2", name: "احمد عبد الظاهر", password: "2", role: "مدير" }
-        ];
-
-        // 3. بيانات الموظفين (Employees) - زدت العينة لـ 20 موظف
-        const employeesData = [
-            { username: "91871", password: "2860712280179", name: "ابشوى ابراهيم عبد السيد خليل", role: "موظف" },
-            { username: "206186", password: "26707102800138", name: "ابوالعز شعبان على ابراهيم", role: "موظف" },
-            { username: "601440", password: "27308252800375", name: "ابوالعزام احمد عبدالباسط خليفة", role: "موظف" },
-            { username: "5633721", password: "26705012800497", name: "ابوالقاسم عبد الحكيم احمد يونس", role: "موظف" },
-            { username: "365877", password: "26907062800431", name: "ابوالقاسم عبدالراضى همام محمود", role: "موظف" },
-            { username: "921490", password: "27206222800039", name: "ابوالقاسم عبد محمد على", role: "موظف" },
-            { username: "6564236", password: "26704042800436", name: "ابوبكر مرسى محمود عبيد", role: "موظف" },
-            { username: "47677", password: "27606152800638", name: "ابوبكر يوسف عبد الغنى على", role: "موظف" },
-            { username: "408087", password: "27012102700911", name: "ابوزيد محمد احمد ابوزيد", role: "موظف" },
-            { username: "273818", password: "27210052800371", name: "ابوعبيدة بدرى عبدالكريم مصرى", role: "موظف" },
-            { username: "6317498", password: "26809162800622", name: "أحلام أحمد شحات محمد", role: "موظف" },
-            { username: "6892000", password: "27203042800546", name: "أحلام إسماعيل أحمد حسن", role: "موظف" },
-            { username: "7002", password: "26810122800661", name: "أحلام سيدى أحمد على", role: "موظف" },
-            { username: "718084", password: "27101152800072", name: "احمد ابوالفضل ابوبكر أحمد", role: "موظف" },
-            { username: "480550", password: "27102012801032", name: "احمد ابوالوفا حسن على", role: "موظف" },
-            { username: "615678", password: "28501292800571", name: "احمد ابوبكر محمود محمد", role: "موظف" }
-        ];
-
-        async function createUserAndDoc(email, originalPassword, userData, type) {
-            const log = document.getElementById('log');
-            
-            // حل مشكلة الباسورد القصير: تحويل 123 أو 1 أو 2 إلى 123456
-            let finalPassword = originalPassword;
-            if (originalPassword === "123" || originalPassword === "1" || originalPassword === "2") {
-                finalPassword = "123456";
-            }
-            // لو الباسورد لسه قصير (زي 7002)، هنضيف له أصفار
-            if (finalPassword.length < 6) {
-                finalPassword = finalPassword.padEnd(6, '0');
-            }
-
+        
+        // هنستخدم إيميل الأدمن عشان نمسح الحسابات
+        async function deleteUsers() {
+            document.getElementById('msg').innerText = "جاري تسجيل الدخول...";
             try {
-                const userCredential = await auth.createUserWithEmailAndPassword(email, finalPassword);
-                const uid = userCredential.user.uid;
-                
-                await db.collection("users").doc(uid).set({
-                    username: userData.username,
-                    name: userData.name,
-                    role: userData.role,
-                    type: type,
-                    nationalId: userData.username // في شيت الموظفين اليوزر هو نفسه الرقم القومي
+                // تسجيل دخول بحساب الأدمن عشان ناخد صلاحية المسح
+                await auth.signInWithEmailAndPassword("admin@dam-app.com", "123456").catch(e => {
+                    // لو مفيش أدمن، هنعمل حساب مؤقت
+                    return auth.createUserWithEmailAndPassword("admin@dam-app.com", "123456");
                 });
+                
+                document.getElementById('msg').innerText = "جاري المسح...";
+                const idToken = await auth.currentUser.getIdToken();
+                const apiKey = firebaseConfig.apiKey;
+                
+                let totalDeleted = 0;
+                let hasMore = true;
 
-                log.innerHTML += `<span class="success">✅ تم إضافة: ${userData.name}</span>\n`;
-            } catch (error) {
-                if (error.code === 'auth/email-already-in-use') {
-                    log.innerHTML += `<span class="info">⚠️ موجود بالفعل: ${userData.name}</span>\n`;
-                } else {
-                    log.innerHTML += `<span class="error">❌ خطأ في ${userData.name}: ${error.message}</span>\n`;
+                while (hasMore) {
+                    // جلب قائمة المستخدمين (أقصى حد 1000 في المرة)
+                    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${firebaseConfig.projectId}/accounts:batchGet?key=${apiKey}&maxResults=1000`, {
+                        headers: { 'Authorization': 'Bearer ' + idToken }
+                    });
+                    const data = await res.json();
+                    
+                    if (data.users && data.users.length > 0) {
+                        const uids = data.users.map(u => u.localId);
+                        // مسح الدفعة دي
+                        await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${firebaseConfig.projectId}/accounts:batchDelete?key=${apiKey}`, {
+                            method: 'POST',
+                            headers: { 'Authorization': 'Bearer ' + idToken, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ localIds: uids })
+                        });
+                        totalDeleted += uids.length;
+                        document.getElementById('msg').innerText = `تم مسح ${totalDeleted} حساب...`;
+                    } else {
+                        hasMore = false;
+                    }
                 }
+                
+                document.getElementById('msg').innerText = `✅ تم مسح ${totalDeleted} حساب بنجاح!`;
+                document.getElementById('msg').style.color = "#4ade80";
+                
+            } catch (e) {
+                document.getElementById('msg').innerText = "❌ خطأ: " + e.message;
+                document.getElementById('msg').style.color = "#f87171";
             }
-        }
-
-        async function startUpload() {
-            const btn = document.getElementById('uploadBtn');
-            btn.disabled = true;
-            btn.innerText = "جاري الرفع...";
-            const log = document.getElementById('log');
-            log.innerHTML = "بدء العملية...\n";
-
-            // 1. رفع المراجعين
-            log.innerHTML += "\n--- رفع مستخدمي المراجعة (Users) ---\n";
-            for (let u of usersData) {
-                let email = u.username.replace(/\s+/g, '-') + "@dam-app.com";
-                await createUserAndDoc(email, u.password, u, 'review');
-            }
-
-            // 2. رفع العقود
-            log.innerHTML += "\n--- رفع مستخدمي العقود (Users_contract) ---\n";
-            for (let c of contractUsersData) {
-                let email = c.username + "@contract.dam-app.com";
-                await createUserAndDoc(email, c.password, c, 'contract');
-            }
-
-            // 3. رفع الموظفين
-            log.innerHTML += "\n--- رفع الموظفين (Employees) ---\n";
-            for (let e of employeesData) {
-                let email = e.username + "@employee.dam-app.com";
-                await createUserAndDoc(email, e.password, e, 'employee');
-            }
-
-            log.innerHTML += "\n🎉 اكتملت العملية بنجاح!";
-            btn.innerText = "تم الرفع";
         }
     </script>
 </body>
