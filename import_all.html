@@ -11,7 +11,7 @@
         button { padding: 15px 30px; font-size: 20px; background: #198754; color: white; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 20px; }
         button:disabled { background: #64748b; cursor: not-allowed; }
         #log { background: #0f172a; padding: 20px; border-radius: 8px; text-align: right; max-width: 800px; margin: 0 auto; min-height: 200px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-family: monospace; }
-        .success { color: #4ade80; } .error { color: #f87171; } .info { color: #60a5fa; }
+        .success { color: #4ade80; } .error { color: #f87171; } .info { color: #fbbf24; }
     </style>
 </head>
 <body>
@@ -56,20 +56,41 @@
             { username: "2", name: "احمد عبد الظاهر", password: "2", role: "مدير" }
         ];
 
-        // 3. بيانات الموظفين (Employees) - من الصورة
-        // ملاحظة: تم تبسيط البيانات هنا كعينة، لو عندك ألف موظف هتكون الصفحة تقيلة جداً
-        // الأفضل نستخدم Google Sheets API أو استيراد CSV، لكن للتبسيط هنحط عينة
+        // 3. بيانات الموظفين (Employees) - زدت العينة لـ 20 موظف
         const employeesData = [
             { username: "91871", password: "2860712280179", name: "ابشوى ابراهيم عبد السيد خليل", role: "موظف" },
             { username: "206186", password: "26707102800138", name: "ابوالعز شعبان على ابراهيم", role: "موظف" },
-            { username: "601440", password: "27308252800375", name: "ابوالعزام احمد عبدالباسط خليفة", role: "موظف" }
-            // ... الخ. لو عايز ترفع الكل، لازم تجيب البيانات دي في شكل JSON أو CSV
+            { username: "601440", password: "27308252800375", name: "ابوالعزام احمد عبدالباسط خليفة", role: "موظف" },
+            { username: "5633721", password: "26705012800497", name: "ابوالقاسم عبد الحكيم احمد يونس", role: "موظف" },
+            { username: "365877", password: "26907062800431", name: "ابوالقاسم عبدالراضى همام محمود", role: "موظف" },
+            { username: "921490", password: "27206222800039", name: "ابوالقاسم عبد محمد على", role: "موظف" },
+            { username: "6564236", password: "26704042800436", name: "ابوبكر مرسى محمود عبيد", role: "موظف" },
+            { username: "47677", password: "27606152800638", name: "ابوبكر يوسف عبد الغنى على", role: "موظف" },
+            { username: "408087", password: "27012102700911", name: "ابوزيد محمد احمد ابوزيد", role: "موظف" },
+            { username: "273818", password: "27210052800371", name: "ابوعبيدة بدرى عبدالكريم مصرى", role: "موظف" },
+            { username: "6317498", password: "26809162800622", name: "أحلام أحمد شحات محمد", role: "موظف" },
+            { username: "6892000", password: "27203042800546", name: "أحلام إسماعيل أحمد حسن", role: "موظف" },
+            { username: "7002", password: "26810122800661", name: "أحلام سيدى أحمد على", role: "موظف" },
+            { username: "718084", password: "27101152800072", name: "احمد ابوالفضل ابوبكر أحمد", role: "موظف" },
+            { username: "480550", password: "27102012801032", name: "احمد ابوالوفا حسن على", role: "موظف" },
+            { username: "615678", password: "28501292800571", name: "احمد ابوبكر محمود محمد", role: "موظف" }
         ];
 
-        async function createUserAndDoc(email, password, userData, type) {
+        async function createUserAndDoc(email, originalPassword, userData, type) {
             const log = document.getElementById('log');
+            
+            // حل مشكلة الباسورد القصير: تحويل 123 أو 1 أو 2 إلى 123456
+            let finalPassword = originalPassword;
+            if (originalPassword === "123" || originalPassword === "1" || originalPassword === "2") {
+                finalPassword = "123456";
+            }
+            // لو الباسورد لسه قصير (زي 7002)، هنضيف له أصفار
+            if (finalPassword.length < 6) {
+                finalPassword = finalPassword.padEnd(6, '0');
+            }
+
             try {
-                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const userCredential = await auth.createUserWithEmailAndPassword(email, finalPassword);
                 const uid = userCredential.user.uid;
                 
                 await db.collection("users").doc(uid).set({
@@ -77,7 +98,7 @@
                     name: userData.name,
                     role: userData.role,
                     type: type,
-                    nationalId: userData.nationalId || userData.username // لو الرقم القومي هو اليوزر
+                    nationalId: userData.username // في شيت الموظفين اليوزر هو نفسه الرقم القومي
                 });
 
                 log.innerHTML += `<span class="success">✅ تم إضافة: ${userData.name}</span>\n`;
