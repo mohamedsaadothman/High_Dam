@@ -107,9 +107,10 @@
         .filter-bar label { font-size: 11px; color: #94a3b8; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
         .filter-bar input, .filter-bar select { padding: 8px 10px; font-size: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #fff; width: 100%; }
         
-        /* ضبط وتعديل اتجاه خانات التاريخ لتظهر بانتظام على الموبايل */
-        .filter-bar input[type="date"] { direction: ltr; text-align: right; font-family: 'Cairo', sans-serif; }
+        /* تعديل اتجاه حقول التاريخ لإصلاح مشكلة الشكل المعكوس */
+        .filter-bar input[type="date"] { direction: ltr; text-align: right; font-family: 'Cairo', sans-serif; padding-right: 8px; }
         .filter-bar input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; opacity: 0.9; margin-left: 5px; }
+        .filter-bar input[type="date"]::-webkit-datetime-edit { direction: rtl; } /* لضبط اتجاه النص داخل الحقل */
 
         .filter-bar input:focus, .filter-bar select:focus { border-color: #fbbf24; outline: none; }
         .filter-bar .filter-actions { display: flex; gap: 8px; width: 100%; margin-top: 4px; }
@@ -627,7 +628,7 @@
                 const data = doc.data();
                 if (data.displayName && data.displayName.trim() !== "") {
                     let cleanName = data.displayName.trim();
-                    if (cleanName.includes("مجلس الإدارة") || cleanName.includes("المالية والإدارية") || cleanName.includes("الشئون المالية")) return; 
+                    if (cleanName.includes("مجلس الإدارة")) return; 
                     if (!cleanName.startsWith("إدارة")) {
                         cleanName = "إدارة " + cleanName;
                     }
@@ -1051,7 +1052,9 @@
             } 
             else if (actionType === 'central_approve') {
                 const dept = req.parentDepartment || "";
-                if (dept.includes("موارد بشرية") || dept.includes("مالية") || dept.includes("إدارية") || dept.includes("عقود ومشتريات")) {
+                // التعديل هنا: إزالة استثناء التعاقدات والموارد البشرية والمالية 
+                // ليتم تحويلهم جميعاً للشئون المالية والإدارية ثم مجلس الإدارة
+                if (dept.includes("مالية") || dept.includes("إدارية")) {
                     updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr, Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة", History: history };
                 } else {
                     updates = { Current_Stage: "مراجعة رئيس الإدارة المركزية للشئون المالية والإدارية", Central_Date: nowStr, Status: "قيد الانتظار - موافقة الشئون المالية والإدارية", History: history };
@@ -1168,7 +1171,7 @@
                     </div>`;
                 }
                 else {
-                    // دور المدير العام للإدارة المنشئة
+                    // دور المدير العام للإدارة المنشئة (يشمل العقود والموارد البشرية الآن)
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
