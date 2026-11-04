@@ -601,17 +601,24 @@ function loadDepartments() {
     db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
         let deptsList = [];
         deptNameMap = {}; 
+        
         querySnapshot.forEach((doc) => {
             const data = doc.data();
+            // 🌟 التعديل: لا نحذف أي إدارة، ونأخذ الاسم كما هو من الفايربيز
             if (data.displayName && data.displayName.trim() !== "") {
                 let cleanName = data.displayName.trim();
-                if (cleanName.includes("مجلس الإدارة") || cleanName.includes("المالية والإدارية") || cleanName.includes("الشئون المالية")) return; 
-                if (!cleanName.startsWith("إدارة")) cleanName = "إدارة " + cleanName;
-                deptsList.push(cleanName);
-                deptNameMap[cleanName] = data.username; 
+                if (!cleanName.startsWith("إدارة")) {
+                    cleanName = "إدارة " + cleanName;
+                }
+                // التأكد من عدم التكرار
+                if (!deptsList.includes(cleanName)) {
+                    deptsList.push(cleanName);
+                    deptNameMap[cleanName] = { username: data.username, displayName: data.displayName.trim() }; 
+                }
             }
         });
-        deptsList = [...new Set(deptsList)].sort();
+
+        deptsList = deptsList.sort();
         if (deptsList.length > 0) {
             if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
             else deptSelect.setOptions(deptsList, true);
@@ -772,7 +779,7 @@ document.getElementById('requestForm').addEventListener('submit', function(e) {
     items.forEach(it => totalCost += it.cost);
     
     const selectedDeptDisplay = document.getElementById('parentDepartment').value;
-    const selectedDeptKey = deptNameMap[selectedDeptDisplay] || selectedDeptDisplay;
+    const selectedDeptKey = deptNameMap[selectedDeptDisplay]?.username || selectedDeptDisplay;
 
     const data = {
         requestId: lastCreatedReqId,
@@ -800,6 +807,10 @@ document.getElementById('requestForm').addEventListener('submit', function(e) {
     .then(() => {
         document.getElementById('requestFormContainer').style.display = 'none';
         document.getElementById('successBox').style.display = 'block';
+        
+        // 🌟 الإصلاح: إضافة الطلب فوراً للذاكرة المؤقتة لكي تعمل الطباعة
+        activeRequestsData = activeRequestsData || [];
+        activeRequestsData.push({ Request_ID: lastCreatedReqId, ...data });
     })
     .catch((error) => {
         console.error("خطأ: ", error);
@@ -1033,9 +1044,16 @@ function processAction(requestId, actionType, extraData = {}) {
             updates = { Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية", Central_Date: nowStr, Status: "قيد الانتظار - الشئون المالية والإدارية", History: history };
         } 
         else if (actionType === 'finance_transfer') {
+            // 🌟 التعديل: دعم تعدد الإدارات بشكل صحيح
+            let deptsArray = extraData.targetDepts.split(",");
+            let stateObj = {};
+            deptsArray.forEach(d => {
+                stateObj[d] = { decision: "pending", date: nowStr };
+            });
+
             updates = { 
                 Current_Stage: "بانتظار رأي " + extraData.targetDepts, 
-                Transfer_State: JSON.stringify({ [extraData.targetDepts]: { decision: "pending", date: nowStr } }),
+                Transfer_State: JSON.stringify(stateObj),
                 Status: "قيد الانتظار - أخذ رأي " + extraData.targetDepts,
                 History: history
             };
@@ -1126,13 +1144,13 @@ function promptFinanceTransfer(requestId) {
     const overlay = document.createElement("div");
     overlay.id = "transferModal";
     overlay.className = "custom-modal-overlay";
+    
     overlay.innerHTML = `
       <div class="custom-modal-box" style="max-width:520px;">
         <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
         <div class="custom-modal-body" style="text-align:right;">
-          <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة:</p>
-          <label class="transfer-option"><input type="checkbox" id="chkBudget" value="إدارة الميزانية"><span>إدارة الميزانية</span></label>
-          <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="إدارة التخطيط والمتابعة"><span>إدارة التخطيط والمتابعة</span></label>
+          <p style="margin-bottom:12px; font-size:13px; color:#475569;">جاري تحميل الإدارات...</p>
+          <div id="transferOptionsContainer"></div>
         </div>
         <div style="display:flex; gap:8px;">
           <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
@@ -1140,15 +1158,46 @@ function promptFinanceTransfer(requestId) {
         </div>
       </div>`;
     document.body.appendChild(overlay);
+    
     document.getElementById('transferCancel').onclick = () => overlay.remove();
-    document.getElementById('transferConfirm').onclick = () => {
-        const selected = [];
-        if (document.getElementById('chkBudget').checked) selected.push("إدارة الميزانية");
-        if (document.getElementById('chkPlanning').checked) selected.push("إدارة التخطيط والمتابعة");
-        if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
-        overlay.remove();
-        processAction(requestId, "finance_transfer", { targetDepts: selected.join(",") });
-    };
+
+    db.collection("users").where("type", "==", "review").get().then(qs => {
+        let container = document.getElementById('transferOptionsContainer');
+        container.innerHTML = "";
+        let found = 0;
+        
+        qs.forEach(doc => {
+            const data = doc.data();
+            const name = data.displayName || "";
+            if (name.includes("ميزانية") || name.includes("تخطيط")) {
+                found++;
+                let cleanName = name.startsWith("إدارة") ? name : "إدارة " + name;
+                container.innerHTML += `
+                    <label class="transfer-option">
+                        <input type="checkbox" class="dept-checkbox" value="${cleanName}">
+                        <span>${cleanName}</span>
+                    </label>`;
+            }
+        });
+        
+        if(found === 0) {
+            container.innerHTML = '<p style="color:red; font-size:12px;">لم يتم العثور على إدارة الميزانية أو التخطيط في قاعدة البيانات. تأكد من أسمائهم في Firestore.</p>';
+        }
+
+        document.getElementById('transferConfirm').onclick = () => {
+            const selected = [];
+            document.querySelectorAll('.dept-checkbox:checked').forEach(cb => {
+                selected.push(cb.value);
+            });
+            
+            if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
+            overlay.remove();
+            processAction(requestId, "finance_transfer", { targetDepts: selected.join(",") });
+        };
+    }).catch(err => {
+        console.error(err);
+        document.getElementById('transferOptionsContainer').innerHTML = '<p style="color:red; font-size:12px;">خطأ في جلب الإدارات.</p>';
+    });
 }
 
 /* ===== Build Request Card ===== */
