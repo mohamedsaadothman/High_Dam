@@ -562,9 +562,7 @@
         </div>
 
     </div>
-</div>
-
-        <script>
+    <script>
     /* ===== إعدادات Firebase ===== */
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
@@ -714,15 +712,13 @@
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                // ✅ بنقرأ من displayName، ولو مش موجود بنرجع للـ username
-                let displayName = data.displayName || data.username;
                 
-                if (displayName) {
-                    let cleanName = displayName.replace(/-/g, ' ').trim();
+                // ✅ الشرط الجديد: لازم يكون فيه displayName أصلاً
+                if (data.displayName && data.displayName.trim() !== "") {
+                    let cleanName = data.displayName.trim();
                     
-                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة
+                    // بنستبعد الشئون المالية والإدارية لأنها بتروح لمكان تاني
                     if (
-                        cleanName.includes("رئيس") || 
                         cleanName.includes("مجلس الإدارة") || 
                         cleanName.includes("المالية والإدارية") || 
                         cleanName.includes("الشئون المالية")
@@ -753,8 +749,15 @@
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let usersList = [];
             querySnapshot.forEach((doc) => {
-                if (doc.data().username) usersList.push(doc.data().username);
+                const data = doc.data();
+                if (data.username) {
+                    let displayName = data.displayName || data.username;
+                    usersList.push(displayName);
+                }
             });
+            
+            usersList = [...new Set(usersList)].sort();
+
             if (usersList.length > 0) {
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
                 else reviewUserSelect.setOptions(usersList, true);
@@ -929,51 +932,63 @@
 
     /* ================== مراجعة الطلبات ================== */
     function handleLogin() {
-        const username = document.getElementById('reviewUsername').value.trim();
+        const selectedName = document.getElementById('reviewUsername').value.trim();
         const password = document.getElementById('reviewPassword').value.trim();
         
-        if (!username) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
+        if (!selectedName) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
         if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
         
         const btn = document.getElementById('loginBtn');
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        const fakeEmail = username.replace(/\s+/g, '-') + "@dam-app.com";
-        const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
+        db.collection("users").where("displayName", "==", selectedName).get().then((querySnapshot) => {
+            let actualUsername = selectedName; 
+            
+            if (!querySnapshot.empty) {
+                actualUsername = querySnapshot.docs[0].data().username;
+            }
 
-        auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
-        .then((userCredential) => {
-            db.collection("users").doc(userCredential.user.uid).get().then((doc) => {
+            const fakeEmail = actualUsername.replace(/\s+/g, '-') + "@dam-app.com";
+            const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
+
+            auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
+            .then((userCredential) => {
+                db.collection("users").doc(userCredential.user.uid).get().then((doc) => {
+                    btn.disabled = false;
+                    btn.innerHTML = 'دخول';
+
+                    if (doc.exists) {
+                        const userData = doc.data();
+                        loggedInUser = {
+                            uid: userCredential.user.uid,
+                            name: userData.name, 
+                            role: userData.username,
+                            centralManager: userData.centralManager
+                        };
+                        
+                        localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
+                        
+                        document.getElementById('loginBox').style.display = 'none';
+                        document.getElementById('dashboard').style.display = 'block';
+                        document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + " (" + loggedInUser.role + ")";
+                        
+                        loadReviewRequests();
+                        startAutoRefresh();
+                    } else {
+                        showCustomAlert("خطأ", "الحساب غير مسجل.");
+                    }
+                });
+            })
+            .catch((error) => {
                 btn.disabled = false;
                 btn.innerHTML = 'دخول';
-
-                if (doc.exists) {
-                    const userData = doc.data();
-                    loggedInUser = {
-                        uid: userCredential.user.uid,
-                        name: userData.name, 
-                        role: userData.username,
-                        centralManager: userData.centralManager
-                    };
-                    
-                    localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
-                    
-                    document.getElementById('loginBox').style.display = 'none';
-                    document.getElementById('dashboard').style.display = 'block';
-                    document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + " (" + loggedInUser.role + ")";
-                    
-                    loadReviewRequests();
-                    startAutoRefresh();
-                } else {
-                    showCustomAlert("خطأ", "الحساب غير مسجل.");
-                }
+                showCustomAlert("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
             });
-        })
-        .catch((error) => {
+        }).catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
-            showCustomAlert("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
         });
     }
 
@@ -1526,3 +1541,4 @@
 </script>
 </body>
 </html>
+</div>
