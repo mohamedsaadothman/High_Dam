@@ -642,7 +642,7 @@
         }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
 
-    // 💡 تم استبعاد وتصفية "مدير عام التخطيط" من قائمة المسؤولين بناءً على طلبك
+    // 💡 تم استبعاد "مدير عام التخطيط" تماماً بناءً على طلبك
     function loadReviewUsersList() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let usersList = [];
@@ -650,7 +650,7 @@
                 const data = doc.data();
                 if (data.username) {
                     let displayName = data.displayName || data.username;
-                    if (displayName.includes("مدير عام التخطيط")) return; // استبعاد التخطيط المفرد
+                    if (displayName.includes("مدير عام التخطيط")) return; 
                     usersList.push(displayName);
                 }
             });
@@ -819,7 +819,6 @@
         .then(() => {
             document.getElementById('requestFormContainer').style.display = 'none';
             document.getElementById('successBox').style.display = 'block';
-            // تحديث مصفوفة الطلبات ليتمكن زر الطباعة الفورية من إيجاد الطلب وعرضه
             activeRequestsData.push({ Request_ID: lastCreatedReqId, ...requestData });
         })
         .catch((error) => {
@@ -910,6 +909,7 @@
         renderFilteredRequests();
     }
 
+    // 💡 تم تحديث منطق توزيع وظهور الطلبات لكي تظهر فقط لدى صاحب الدور الفعلي ولا تظهر بصفحات باقي المسؤولين بالخطأ
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -946,7 +946,7 @@
                     }
                 }
                 else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                    if (stage.includes(myRole) || stage.includes("بانتظار رأي")) {
+                    if (stage.includes("بانتظار رأي") && stage.includes(myRole)) {
                         isMyTurnNow = true;
                     }
                 }
@@ -956,7 +956,8 @@
                         !status.includes("معتمد نهائياً") && 
                         !status.includes("مرفوض") &&
                         !stage.includes("رئيس مجلس الإدارة") &&
-                        !stage.includes("الشئون المالية")
+                        !stage.includes("الشئون المالية") &&
+                        !stage.includes("بانتظار رأي")
                     ) {
                         isMyTurnNow = true;
                     }
@@ -970,7 +971,7 @@
 
                 if (isMyTurnNow) {
                     pendingData.push(req);
-                } else if (isArchivedForMe || !isMyTurnNow) {
+                } else if (isArchivedForMe) {
                     archiveData.push(req);
                 }
             });
@@ -1068,7 +1069,7 @@
                     History: history
                 };
             }
-            // 💡 معالجة استجابة إدارات الرأي (الميزانية / التخطيط والمتابعة) بالموافقة أو الرفض
+            // 💡 تصحيح دالة اعتماد أو رفض إدارات الرأي (الميزانية والتخطيط) لتعمل الأزرار بسلاسة
             else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
                 let currentState = {};
                 try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
@@ -1077,7 +1078,7 @@
                 const myRole = loggedInUser.role;
                 
                 for (let key in updatedState) {
-                    if (key.includes(myRole) || myRole.includes(key) || key.includes("إدارة الميزانية") || key.includes("إدارة التخطيط والمتابعة")) {
+                    if (key.includes(myRole) || myRole.includes(key) || key.includes("الميزانية") || key.includes("التخطيط")) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) {
@@ -1160,7 +1161,6 @@
             if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
             overlay.remove();
             
-            // 💡 تصحيح تمرير المعاملات لتعمل أزرار الرفض المسبب في كل الحالات بسلاسة
             let actionToUse = actionName === 'dept_reject' ? 'dept_reject' : 'reject';
             processAction(requestId, actionToUse, { rejectReason: reason });
         };
@@ -1222,7 +1222,7 @@
                 if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية")) isMyTurn = true;
             }
             else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                if (stage.toLowerCase().includes(myRole) || stage.toLowerCase().includes("بانتظار رأي")) isMyTurn = true;
+                if (stage.toLowerCase().includes("بانتظار رأي") && stage.toLowerCase().includes(myRole)) isMyTurn = true;
             }
             else if (centralName && myRole.includes(centralName)) {
                 if (stage.toLowerCase().includes(centralName) || stage.toLowerCase().includes("رئيس الإدارة المركزية")) isMyTurn = true;
