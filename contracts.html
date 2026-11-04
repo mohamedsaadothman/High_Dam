@@ -54,7 +54,7 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         #printableArea { display: none; }
-        .print-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%) rotate(-22deg); transform-origin: center; font-size: 55px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.20; color: #b45309; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; }
+        .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 45px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.15; color: #b45309; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; width: 100%; overflow: hidden; }
         @media print {
             body * { visibility: hidden; }
             #printableArea, #printableArea * { visibility: visible; }
@@ -460,6 +460,23 @@
                     </td>
                 </tr>
             </table>
+            
+            <div id="printDeptRepliesBox" style="display:none; border: 1px solid #000; padding: 8px 10px; border-radius: 4px; margin-top: 12px; background: transparent; font-weight: 700; position: relative; z-index: 2;">
+                <h4 style="font-size: 11px; font-weight: 900; margin-bottom: 4px; text-align: center; text-decoration: underline;">آراء الإدارات (لأخذ الرأي)</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-weight: 700; margin-top: 5px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #333;">
+                            <th style="text-align: right; padding: 4px;">الإدارة</th>
+                            <th style="text-align: center; padding: 4px;">القرار</th>
+                            <th style="text-align: right; padding: 4px;">السبب / التعليق</th>
+                        </tr>
+                    </thead>
+                    <tbody id="printDeptRepliesBody">
+                        <!-- سيتم تعبئته بالديناميكية -->
+                    </tbody>
+                </table>
+            </div>
+
             <div id="printAccreditationBox" style="border: 1px solid #000; padding: 8px 10px; border-radius: 4px; margin-top: 12px; background: transparent; font-weight: 700; position: relative; z-index: 2;">
                 <h4 style="font-size: 11px; font-weight: 900; margin-bottom: 4px; text-align: center; text-decoration: underline;">موقف الاعتمادات والدورة المستندية</h4>
                 <div style="font-size: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; text-align: right; font-weight: 700;">
@@ -866,7 +883,7 @@
             itemsList: JSON.stringify(items),
             totalCost: totalCost,
             Current_Stage: "مراجعة " + selectedDept, 
-            Status: "قيد الانتظار"
+            Status: "قيد الانتظار - موافقة " + selectedDept
         };
 
         const requestData = { ...data, Timestamp: new Date().toISOString() };
@@ -977,7 +994,7 @@
                 else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
                      showForMe = true;
                 } 
-                else if (stage.includes("بانتظار")) {
+                else if (stage.includes("بانتظار رأي") || stage.includes("بانتظار تعديل رأي")) {
                     if (myRole.includes("الميزانية") && stage.includes("الميزانية")) showForMe = true;
                     if (myRole.includes("التخطيط") && stage.includes("التخطيط")) showForMe = true;
                 }
@@ -986,7 +1003,8 @@
                 }
 
                 if (showForMe) {
-                    if (stage.includes("معتمد نهائياً") || stage.includes("مرفوض")) {
+                    // بنحط الطلب في الأرشيف لو المرحلة اللي هو فيها مش مرحلتي، أو لو هو معتمد/مرفوض
+                    if (!stage.includes(myRole.replace(/-/g, ' ')) || stage.includes("معتمد نهائياً") || stage.includes("مرفوض")) {
                         archiveData.push(req);
                     } else {
                         pendingData.push(req);
@@ -1059,7 +1077,7 @@
                 updates = { 
                     Current_Stage: "مراجعة " + centralName, 
                     Gm_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة رئيس الإدارة المركزية",
+                    Status: "قيد الانتظار - موافقة " + centralName,
                     Central_Manager_Name: centralName
                 };
                 executeUpdate(requestId, updates);
@@ -1067,6 +1085,7 @@
             return;
         } 
         else if (actionType === 'central_approve') {
+            // بنغير الحالة لرئيس مجلس الإدارة
             updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr, Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة" };
         } 
         else if (actionType === 'chairman_direct_approve') {
@@ -1089,6 +1108,8 @@
             
             let updatedState = { ...currentState };
             const myRole = loggedInUser.role;
+            
+            // تحديث حالة الإدارة اللي ردت
             for (let key in updatedState) {
                 if (key.includes(myRole) || myRole.includes(key)) {
                     updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
@@ -1099,6 +1120,7 @@
                 }
             }
             
+            // بعد ما الإدارة ردت، بنرجع الطلب لرئيس الإدارة المركزية
             let centralName = extraData.centralName || "رئيس الإدارة المركزية";
             let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
             
@@ -1235,8 +1257,8 @@
         const status = (req.Status || "").toString();
         
         let badgeClass = 'badge-wait';
-        if (stage.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
-        else if (stage.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
+        if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
+        else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
         else if (stage.indexOf("بانتظار") !== -1 || stage.indexOf("تعديل") !== -1) badgeClass = 'badge-info';
 
         let buttonsHtml = "";
@@ -1249,19 +1271,36 @@
                              ));
 
             if (isMyTurn) {
+                // لو الطلب محول لأخذ الرأي
                 if (stage.includes("بانتظار رأي") || stage.includes("بانتظار تعديل رأي")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
                     </div>`;
                 } 
+                // لو رئيس الإدارة المركزية وردت الإدارات
                 else if (stage.includes("تم أخذ الرأي")) {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد نهائي وتحويل لرئيس مجلس الإدارة</button>
-                        <button class="main-btn" style="background:#ffc107; color:#000;" onclick="promptRevision('${req.Request_ID}')"><i class="fas fa-redo"></i> طلب تعديل الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض نهائي</button>
-                    </div>`;
+                    // التحقق من أن كل الإدارات ردت
+                    let state = {};
+                    try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+                    let allReplied = true;
+                    for (let k in state) {
+                        if (state[k].decision === "pending") { allReplied = false; break; }
+                    }
+
+                    if (allReplied) {
+                        buttonsHtml = `<div class="req-actions">
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد نهائي وتحويل لرئيس مجلس الإدارة</button>
+                            <button class="main-btn" style="background:#ffc107; color:#000;" onclick="promptRevision('${req.Request_ID}')"><i class="fas fa-redo"></i> طلب تعديل الرأي</button>
+                            <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض نهائي</button>
+                        </div>`;
+                    } else {
+                        buttonsHtml = `<div class="req-actions">
+                            <p style="text-align:center; color:#fbbf24;">⏳ بانتظار رد باقي الإدارات...</p>
+                        </div>`;
+                    }
                 }
+                // لو رئيس الإدارة المركزية (المرة الأولى)
                 else if (stage.includes("مركزية")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
@@ -1269,12 +1308,14 @@
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 }
+                // لو رئيس مجلس الإدارة
                 else if (stage.includes("رئيس مجلس الإدارة")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
                     </div>`;
                 }
+                // المدير العام
                 else {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
@@ -1290,7 +1331,7 @@
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span>
-                <span class="badge ${badgeClass}">${stage || '-'}</span>
+                <span class="badge ${badgeClass}">${status || stage || '-'}</span>
             </div>
             <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
             <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || '-'} (${req.role || '-'})</span></div>
@@ -1348,7 +1389,7 @@
             rejectBox.style.display = "none";
         }
 
-        // ✅ العلامة المائية الديناميكية
+        // العلامة المائية الديناميكية
         const wm = document.getElementById('printWatermark');
         const statusText = req.Status || "";
         if (statusText.includes("مرفوض")) {
@@ -1357,6 +1398,37 @@
             wm.style.display = 'none'; 
         } else {
             wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; 
+        }
+
+        // تعبئة جدول ردود الإدارات
+        const deptRepliesBox = document.getElementById('printDeptRepliesBox');
+        const deptRepliesBody = document.getElementById('printDeptRepliesBody');
+        
+        if (req.Transfer_State) {
+            try {
+                let state = JSON.parse(req.Transfer_State);
+                let rowsHtml = "";
+                for (let key in state) {
+                    let s = state[key];
+                    let decisionText = s.decision === 'approved' ? 'موافقة' : (s.decision === 'rejected' ? 'رفض' : 'قيد الانتظار');
+                    let color = s.decision === 'approved' ? '#198754' : (s.decision === 'rejected' ? '#dc3545' : '#fbbf24');
+                    rowsHtml += `<tr>
+                        <td style="border: 1px solid #333; padding: 4px;">${key}</td>
+                        <td style="border: 1px solid #333; padding: 4px; text-align: center; color: ${color}; font-weight: 900;">${decisionText}</td>
+                        <td style="border: 1px solid #333; padding: 4px; color: #dc3545;">${s.reason || '-'}</td>
+                    </tr>`;
+                }
+                if (rowsHtml !== "") {
+                    deptRepliesBody.innerHTML = rowsHtml;
+                    deptRepliesBox.style.display = 'block';
+                } else {
+                    deptRepliesBox.style.display = 'none';
+                }
+            } catch(e) {
+                deptRepliesBox.style.display = 'none';
+            }
+        } else {
+            deptRepliesBox.style.display = 'none';
         }
 
         let itemsHtml = '';
@@ -1381,6 +1453,7 @@
     function printReport() {
         document.getElementById('printRequestSection').style.display = 'block';
         document.getElementById('contractPrintSection').style.display = 'none';
+        document.getElementById('printDeptRepliesBox').style.display = 'none'; // إخفاء جدول الإدارات في الطباعة الأولى
         
         document.getElementById('printReqId').textContent = lastCreatedReqId;
         document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
