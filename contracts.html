@@ -564,6 +564,7 @@
     </div>
 </div>
 
+
         <script>
     /* ===== إعدادات Firebase ===== */
     const firebaseConfig = {
@@ -714,31 +715,32 @@
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.username) {
-                    // 1. بنجيب الاسم من فايربيز ونشيل أي شرطات
-                    let cleanName = data.username.replace(/-/g, ' ').trim();
+                // ✅ بنقرأ من displayName، ولو مش موجود بنرجع للـ username
+                let displayName = data.displayName || data.username;
+                
+                if (displayName) {
+                    let cleanName = displayName.replace(/-/g, ' ').trim();
                     
-                    // 2. بنستبعد أي إدارة فيها كلمات معينة (رئيس - مجلس - مالية وإدارية - الشئون المالية)
+                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة
                     if (
                         cleanName.includes("رئيس") || 
                         cleanName.includes("مجلس الإدارة") || 
                         cleanName.includes("المالية والإدارية") || 
                         cleanName.includes("الشئون المالية")
                     ) {
-                        return; // تخطي الإدارة دي
+                        return; 
                     }
                     
-                    // 3. بنشيل كلمة "مدير عام" أو "مدير" أو "إدارة" من الأول
-                    cleanName = cleanName.replace(/^(مدير\s+عام|مدير|إدارة)\s*/, '');
-                    
-                    // 4. لو الاسم فضل فيه حاجة، بنضيف قبله "إدارة"
-                    if (cleanName.length > 0) {
-                        deptsList.push("إدارة " + cleanName);
+                    // لو الاسم مش مبدوء بكلمة "إدارة"، نضيفها
+                    if (!cleanName.startsWith("إدارة")) {
+                        cleanName = "إدارة " + cleanName;
                     }
+                    
+                    deptsList.push(cleanName);
                 }
             });
 
-            // 5. بنشيل أي تكرار (زي التخطيط لو كانت متكررة) وبنرتب
+            // إزالة التكرار وترتيب
             deptsList = [...new Set(deptsList)].sort();
 
             if (deptsList.length > 0) {
