@@ -744,46 +744,32 @@
         document.getElementById('managerTitle').value = deptName ? (prefix + " مدير عام إدارة " + deptName) : "";
     }
 
-    // ✅ التعديل الجديد: البحث عن الموظف بالرقم القومي
     function fetchEmployeeData() {
         const nationalId = document.getElementById('applicantNationalId').value.trim();
         const password = document.getElementById('userPassword').value.trim();
         
         if (nationalId.length === 14 && password.length > 0) {
-            // بنبحث في فايربيز عن الموظف بالرقم القومي
             db.collection("users").where("nationalId", "==", nationalId).get()
             .then((querySnapshot) => {
                 if (!querySnapshot.empty) {
-                    // لقينا الموظف
                     const userData = querySnapshot.docs[0].data();
-                    
-                    // نتأكد إن الباسورد صح (لو الباسورد في الشيت هو الرقم القومي أو 123)
                     if (password === userData.nationalId || password === "123" || password === "123456") {
                         const nameInput = document.getElementById('applicantName');
                         nameInput.value = userData.name;
-                        nameInput.readOnly = true; // نقفل الخانة عشان محدش يعدلها
-                        nameInput.style.background = "#1e293b"; // لون مقفول
+                        nameInput.readOnly = true;
+                        nameInput.style.background = "#1e293b";
                         
                         document.getElementById('applicantRole').value = userData.jobCategory || "موظف";
                         document.getElementById('applicantRole').readOnly = true;
-                        
-                        // ممكن نعبي الإدارة التابع لها لو حابب (لو خزناها)
-                        // document.getElementById('parentDepartment').value = userData.department;
                     } else {
-                        showCustomAlert("خطأ", "كلمة المرور غير صحيحة. يرجى التأكد من الرقم السري.");
+                        showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
                         document.getElementById('applicantName').value = "";
-                        document.getElementById('applicantRole').value = "";
                     }
                 } else {
-                    // مش موجود
-                    showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل في النظام حتى الآن. يرجى التواصل مع شؤون العاملين.");
+                    showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل في النظام حتى الآن.");
                     document.getElementById('applicantName').value = "";
-                    document.getElementById('applicantRole').value = "";
                 }
-            }).catch((err) => {
-                console.error("خطأ:", err);
-                showCustomAlert("خطأ", "حدث خطأ أثناء الاتصال بقاعدة البيانات.");
-            });
+            }).catch((err) => { console.error("خطأ:", err); });
         }
     }
 
@@ -1137,6 +1123,13 @@
         else if (actionType === 'reject') {
             updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
         }
+        else if (actionType === 'central_transfer') {
+            updates = { 
+                Current_Stage: "بانتظار رد " + extraData.targetDepts, 
+                Transfer_State: JSON.stringify({ [extraData.targetDepts]: { decision: "pending", date: nowStr } }),
+                Status: "محول لأخذ الرأي"
+            };
+        }
         
         executeUpdate(requestId, updates);
     }
@@ -1179,6 +1172,37 @@
         };
     }
 
+    function promptTransfer(requestId) {
+        const existing = document.getElementById("transferModal");
+        if (existing) existing.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "transferModal";
+        overlay.className = "custom-modal-overlay";
+        overlay.innerHTML = `
+          <div class="custom-modal-box" style="max-width:520px;">
+            <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
+            <div class="custom-modal-body" style="text-align:right;">
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة المطلوب منها الرأي:</p>
+              <label class="transfer-option"><input type="checkbox" id="chkBudget" value="إدارة الميزانية"><span>إدارة الميزانية</span></label>
+              <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="إدارة التخطيط والمتابعة"><span>إدارة التخطيط والمتابعة</span></label>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+              <button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد التحويل</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('transferCancel').onclick = () => overlay.remove();
+        document.getElementById('transferConfirm').onclick = () => {
+            const selected = [];
+            if (document.getElementById('chkBudget').checked) selected.push("إدارة الميزانية");
+            if (document.getElementById('chkPlanning').checked) selected.push("إدارة التخطيط والمتابعة");
+            if (selected.length === 0) { showCustomAlert("تنبيه", "يجب اختيار إدارة واحدة على الأقل."); return; }
+            overlay.remove();
+            processAction(requestId, "central_transfer", { targetDepts: selected.join(",") });
+        };
+    }
+
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = (req.Current_Stage || "").toString();
@@ -1196,15 +1220,16 @@
             const isMyTurn = stage.includes(myRole.replace(/-/g, ' '));
 
             if (isMyTurn) {
-                if (stage.includes("مراجعة رئيس مجلس الإدارة") || stage.includes("بانتظار قرار رئيس مجلس")) {
+                if (stage.includes("مركزية")) {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
+                        <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                } else if (stage.includes("رئيس مجلس الإدارة")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
-                    </div>`;
-                } else if (stage.includes("رئيس الإدارة المركزية")) {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 } else {
                     buttonsHtml = `<div class="req-actions">
@@ -1259,9 +1284,11 @@
         if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
     }
 
+    // ✅ تعديل دالة الطباعة عشان تظهر البيانات كاملة
     function printSpecificRequestFromCard(reqId) {
         let req = activeRequestsData.find(r => r.Request_ID === reqId);
         if (!req) return;
+
         document.getElementById('printRequestSection').style.display = 'block';
         document.getElementById('contractPrintSection').style.display = 'none';
 
@@ -1276,10 +1303,26 @@
         document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (req.parentDepartment || "الإدارة");
         document.getElementById('printManagerSignName').textContent = req.managerName || "---";
         
+        document.getElementById('printGmDate').textContent = req.Gm_Date ? ("تمت الموافقة (" + req.Gm_Date + ")") : "قيد الانتظار";
+        document.getElementById('printCentralDate').textContent = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
+        document.getElementById('printChairmanDate').textContent = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
+
+        const rejectBox = document.getElementById('printRejectBox');
+        if (req.Reject_Reason) {
+            rejectBox.style.display = "block";
+            document.getElementById('printRejectReason').textContent = req.Reject_Reason;
+        } else {
+            rejectBox.style.display = "none";
+        }
+
         const wm = document.getElementById('printWatermark');
-        if (req.Status === "معتمد نهائياً") { wm.style.display = 'none'; }
-        else if (req.Status === "مرفوض") { wm.style.display = 'block'; wm.textContent = "مرفوض"; wm.style.color = "#dc3545"; }
-        else { wm.style.display = 'block'; wm.textContent = "قيد الانتظار"; wm.style.color = "#b45309"; }
+        if (req.Status === "معتمد نهائياً" || req.Current_Stage.includes("معتمد")) { 
+            wm.style.display = 'none'; 
+        } else if (req.Status === "مرفوض" || req.Current_Stage.includes("مرفوض")) { 
+            wm.style.display = 'block'; wm.textContent = "مرفوض"; wm.style.color = "#dc3545"; 
+        } else { 
+            wm.style.display = 'block'; wm.textContent = "قيد الانتظار"; wm.style.color = "#b45309"; 
+        }
 
         let itemsHtml = '';
         try {
@@ -1293,13 +1336,59 @@
                 </tr>`;
             });
         } catch(_) {}
+        
         document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
         document.getElementById('printRequestTotalCost').textContent = (req.totalCost || "0") + " ج.م";
+        
         window.print();
     }
 
-    function generatePrintableHtmlForBackend() { return ""; }
-    function printReport() { window.print(); }
+    function printReport() {
+        document.getElementById('printRequestSection').style.display = 'block';
+        document.getElementById('contractPrintSection').style.display = 'none';
+        
+        document.getElementById('printReqId').textContent = lastCreatedReqId;
+        document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
+        document.getElementById('printParentDept').textContent = document.getElementById('parentDepartment').value ? "إدارة " + document.getElementById('parentDepartment').value : "";
+        document.getElementById('printManagerTitle').textContent = document.getElementById('managerTitle').value || "";
+        document.getElementById('printApplicantName').textContent = document.getElementById('applicantName').value || "---";
+        document.getElementById('printApplicantRole').textContent = document.getElementById('applicantRole').value || "---";
+        document.getElementById('printNationalId').textContent = document.getElementById('applicantNationalId').value || "---";
+        document.getElementById('printPhone').textContent = document.getElementById('applicantPhone').value || "---";
+        document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (document.getElementById('parentDepartment').value || "الإدارة");
+        document.getElementById('printManagerSignName').textContent = document.getElementById('managerName').value || "---";
+        
+        document.getElementById('printGmDate').textContent = "قيد الانتظار";
+        document.getElementById('printCentralDate').textContent = "قيد الانتظار";
+        document.getElementById('printChairmanDate').textContent = "قيد الانتظار";
+        document.getElementById('printRejectBox').style.display = "none";
+        
+        const watermarkEl = document.getElementById('printWatermark');
+        watermarkEl.style.display = 'block';
+        watermarkEl.textContent = "قيد الانتظار";
+        watermarkEl.style.color = "#b45309";
+
+        let itemsHtml = '';
+        let total = 0;
+        document.querySelectorAll('#itemsTableBody tr').forEach(tr => {
+            const desc = tr.querySelector('.item-desc').value;
+            const qty = tr.querySelector('.item-qty').value;
+            const cost = parseFloat(tr.querySelector('.item-cost').value) || 0;
+            const purpose = tr.querySelector('.item-purpose').value;
+            total += cost;
+            itemsHtml += `<tr>
+                <td style="border: 1px solid #333; padding: 6px 8px;">${desc}</td>
+                <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${qty}</td>
+                <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${cost.toFixed(2)}</td>
+                <td style="border: 1px solid #333; padding: 6px 8px;">${purpose}</td>
+            </tr>`;
+        });
+        
+        document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
+        document.getElementById('printRequestTotalCost').textContent = total.toFixed(2) + " ج.م";
+        
+        window.print();
+    }
 </script>
 </body>
 </html>
