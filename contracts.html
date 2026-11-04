@@ -547,10 +547,7 @@
         </div>
 
     </div>
-</div>
-<script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx03-8JkBvWCUZxhP5xhyBorY5mbEhwcZG2LNqi7xLza4C7ceIG_szpO5BKwb4eObox6A/exec";
-
+    <script>
     /* ===== إعدادات Firebase ===== */
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
@@ -702,19 +699,25 @@
     let deptSelect, titleSelect, reviewUserSelect;
 
     function loadDepartments() {
-        fetch(SCRIPT_URL + "?action=getDepartments")
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === "success" && Array.isArray(data.data)) {
-                if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', data.data, "");
-                else deptSelect.setOptions(data.data, true);
+        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
+            let deptsList = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.username) {
+                    deptsList.push(data.username.replace(/-/g, ' ')); 
+                }
+            });
+            deptsList = [...new Set(deptsList)].sort();
+
+            if (deptsList.length > 0) {
+                if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
+                else deptSelect.setOptions(deptsList, true);
             }
-        })
-        .catch(err => console.error("خطأ في تحميل الإدارات:", err));
+        }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
 
     function loadReviewUsersList() {
-        db.collection("users").get().then((querySnapshot) => {
+        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let usersList = [];
             querySnapshot.forEach((doc) => {
                 if (doc.data().username) usersList.push(doc.data().username);
@@ -744,13 +747,21 @@
     function fetchEmployeeData() {
         const nationalId = document.getElementById('applicantNationalId').value;
         const password = document.getElementById('userPassword').value;
-        if (nationalId.length === 14 && password) {
-            fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === "success") document.getElementById('applicantName').value = data.employeeName;
-                else showCustomAlert("تنبيه", data.message);
-            });
+        
+        if (nationalId && password) {
+            db.collection("users").where("nationalId", "==", nationalId).get()
+            .then((querySnapshot) => {
+                if (!querySnapshot.empty) {
+                    const userData = querySnapshot.docs[0].data();
+                    document.getElementById('applicantName').value = userData.name;
+                    document.getElementById('applicantRole').value = userData.jobCategory || "موظف";
+                } else {
+                    const nameInput = document.getElementById('applicantName');
+                    nameInput.readOnly = false;
+                    nameInput.placeholder = "اكتب اسمك هنا...";
+                    nameInput.style.background = "#0f172a"; 
+                }
+            }).catch((err) => console.error("خطأ:", err));
         }
     }
 
@@ -846,6 +857,8 @@
 
         let totalCost = 0;
         items.forEach(it => totalCost += it.cost);
+        
+        const selectedDept = document.getElementById('parentDepartment').value;
 
         const data = {
             action: "createRequest", requestId: lastCreatedReqId,
@@ -853,13 +866,13 @@
             userPassword: document.getElementById('userPassword').value,
             applicantName: document.getElementById('applicantName').value,
             role: document.getElementById('applicantRole').value,
-            parentDepartment: document.getElementById('parentDepartment').value,
+            parentDepartment: selectedDept,
             phone: document.getElementById('applicantPhone').value,
             titlePrefix: document.getElementById('managerTitle').value,
             managerName: document.getElementById('managerName').value,
             itemsList: JSON.stringify(items),
             totalCost: totalCost,
-            Current_Stage: "مراجعة المدير العام", 
+            Current_Stage: "مراجعة " + selectedDept, 
             Status: "قيد الانتظار",
             printableHtml: generatePrintableHtmlForBackend() 
         };
@@ -891,8 +904,9 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
         const fakeEmail = username.replace(/\s+/g, '-') + "@dam-app.com";
+        const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
 
-        auth.signInWithEmailAndPassword(fakeEmail, password)
+        auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
         .then((userCredential) => {
             db.collection("users").doc(userCredential.user.uid).get().then((doc) => {
                 btn.disabled = false;
@@ -903,7 +917,8 @@
                     loggedInUser = {
                         uid: userCredential.user.uid,
                         name: userData.name, 
-                        role: userData.role  
+                        role: userData.username,
+                        centralManager: userData.centralManager
                     };
                     
                     localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
@@ -965,17 +980,20 @@
                 
                 const stage = (req.Current_Stage || "").toString();
                 const myRole = (loggedInUser.role || "").toString().trim();
-                const isGm = myRole.includes("مدير عام") || myRole.includes("رئيس مجلس");
-                const isCentral = myRole.includes("مركزية");
-
+                
                 let showForMe = false;
 
-                if (isGm) {
-                    showForMe = true; 
-                } else if (isCentral) {
-                    if (stage.includes("مراجعة رئيس الإدارة المركزية")) showForMe = true;
-                } else {
-                    if (stage.includes("مراجعة المدير العام")) showForMe = true;
+                // لو أنا مدير الإدارة اللي اتبعتلها الطلب
+                if (stage.includes(myRole.replace(/-/g, ' '))) {
+                    showForMe = true;
+                }
+                // لو أنا الإدارة المركزية
+                else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
+                     showForMe = true;
+                }
+                // لو أنا رئيس مجلس الإدارة
+                else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) {
+                    showForMe = true;
                 }
 
                 if (showForMe) {
@@ -993,24 +1011,6 @@
             document.getElementById('pendingCount').textContent = pendingData.length;
             document.getElementById('archiveCount').textContent = archiveData.length;
             
-            availableDepts = [];
-            const allData = pendingData.concat(archiveData);
-            allData.forEach(r => {
-                let d = (r.role || "").toString().trim().replace(/^مدير\s+/, ''); 
-                if (d && availableDepts.indexOf(d) === -1) availableDepts.push(d);
-            });
-            availableDepts.sort();
-            
-            const deptSelectFilter = document.getElementById('filterDept');
-            const currentVal = deptSelectFilter.value;
-            deptSelectFilter.innerHTML = '<option value="">-- الكل --</option>';
-            availableDepts.forEach(d => {
-                const opt = document.createElement('option');
-                opt.value = d; opt.textContent = d;
-                deptSelectFilter.appendChild(opt);
-            });
-            if (currentVal) deptSelectFilter.value = currentVal;
-            
             renderFilteredRequests();
         }).catch((error) => {
             console.error("Error loading requests: ", error);
@@ -1023,31 +1023,24 @@
         const data = currentTab === 'pending' ? pendingData : archiveData;
         const dateFrom = document.getElementById('filterDateFrom').value;
         const dateTo = document.getElementById('filterDateTo').value;
-        const deptFilter = document.getElementById('filterDept').value;
         const statusFilter = document.getElementById('filterStatus').value;
         const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
+        
         let filtered = data.filter(function(r) {
             if (dateFrom || dateTo) {
                 const ts = new Date(r.Timestamp || 0);
                 if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
                 if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
             }
-            if (deptFilter) {
-                let rowDept = (r.role || "").toString().trim().replace(/^مدير\s+/, '');
-                if (rowDept !== deptFilter) return false;
-            }
             if (statusFilter) {
                 const stage = (r.Current_Stage || "").toString();
                 const status = (r.Status || "").toString();
                 if (statusFilter === "pending") {
                     if (stage.indexOf("معتمد") !== -1 || stage.indexOf("مرفوض") !== -1) return false;
-                    if (!(stage.indexOf("قيد الانتظار") !== -1 || stage.indexOf("مراجعة") !== -1 || stage.indexOf("بانتظار") !== -1)) return false;
                 } else if (statusFilter === "approved") {
-                    if (stage.indexOf("معتمد") === -1 && status.indexOf("معتمد") === -1 && status.indexOf("موافق") === -1) return false;
+                    if (stage.indexOf("معتمد") === -1 && status.indexOf("معتمد") === -1) return false;
                 } else if (statusFilter === "rejected") {
                     if (stage.indexOf("مرفوض") === -1 && status.indexOf("مرفوض") === -1) return false;
-                } else if (statusFilter === "transferred") {
-                    if (stage.indexOf("بانتظار رد") === -1) return false;
                 }
             }
             if (searchFilter) {
@@ -1057,11 +1050,10 @@
             }
             return true;
         });
+        
         container.innerHTML = "";
         if (filtered.length === 0) {
-            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>' + 
-                (currentTab === 'pending' ? 'لا توجد طلبات معلقة' : 'لا توجد طلبات في الأرشيف') + 
-                ' تطابق معايير الفلترة.</p>';
+            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات معلقة تطابق معايير الفلترة.</p>';
             return;
         }
         activeRequestsData = filtered;
@@ -1071,7 +1063,6 @@
     function resetFilters() {
         document.getElementById('filterDateFrom').value = "";
         document.getElementById('filterDateTo').value = "";
-        document.getElementById('filterDept').value = "";
         document.getElementById('filterStatus').value = "";
         document.getElementById('filterSearch').value = "";
         document.getElementById('searchSuggestions').style.display = 'none';
@@ -1080,74 +1071,62 @@
 
     function exportToExcel() {
         if (!activeRequestsData || activeRequestsData.length === 0) {
-            return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها في العرض الحالي.");
+            return showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها.");
         }
         try {
-            const sortedData = [...activeRequestsData].sort((a, b) => new Date(a.Timestamp || 0) - new Date(b.Timestamp || 0));
-            const excelData = sortedData.map(row => ({
+            const excelData = activeRequestsData.map(row => ({
                 "رقم الطلب": row.Request_ID || '',
-                "تاريخ الإنشاء": row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-',
-                "اسم مقدم الطلب": row.applicantName || '',
-                "الوظيفة": row.role || '',
+                "التاريخ": row.Timestamp ? new Date(row.Timestamp).toLocaleDateString('ar-EG') : '-',
+                "مقدم الطلب": row.applicantName || '',
                 "الإدارة": row.parentDepartment || '',
                 "إجمالي التكلفة": row.totalCost || '',
-                "عدد الأصناف": row.itemsList ? JSON.parse(row.itemsList).length : 0,
-                "المرحلة الحالية": row.Current_Stage || '',
-                "الحالة": row.Status || ''
+                "المرحلة": row.Current_Stage || '',
             }));
             const ws = XLSX.utils.json_to_sheet(excelData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "الطلبات");
-            XLSX.writeFile(wb, `تقرير_الطلبات_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.xlsx`);
-        } catch (err) {
-            console.error(err);
-            showCustomAlert("خطأ", "تعذر إنشاء ملف الإكسيل. يرجى المحاولة مرة أخرى.");
-        }
+            XLSX.writeFile(wb, `تقرير_الطلبات.xlsx`);
+        } catch (err) { console.error(err); }
     }
 
-   function processAction(requestId, actionType, extraData = {}) {
+    function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
         let updates = {};
 
-        console.log("Action Triggered:", actionType); // للتأكد من اسم الزرار
-
-        // إجراءات المدير العام
         if (actionType === 'gm_approve') {
-            updates = { Current_Stage: "مراجعة رئيس الإدارة المركزية", Gm_Date: nowStr, Status: "موافق" };
-        } else if (actionType === 'gm_reject') {
-            updates = { Current_Stage: "مرفوض من المدير العام", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
+            db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
+                let centralName = "رئيس الإدارة المركزية";
+                if(!querySnapshot.empty) {
+                    centralName = querySnapshot.docs[0].data().centralManager;
+                }
+                updates = { 
+                    Current_Stage: "مراجعة " + centralName, 
+                    Gm_Date: nowStr, 
+                    Status: "موافق",
+                    Central_Manager_Name: centralName
+                };
+                executeUpdate(requestId, updates);
+            });
+            return;
         } 
-        // إجراءات الإدارة المركزية
         else if (actionType === 'central_approve') {
             updates = { Current_Stage: "مراجعة رئيس مجلس الإدارة", Central_Date: nowStr };
-        } else if (actionType === 'central_reject') {
-            updates = { Current_Stage: "مرفوض من رئيس الإدارة المركزية", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
         } 
-        // إجراءات رئيس مجلس الإدارة
-        else if (actionType === 'chairman_direct_approve') {
-            updates = { Current_Stage: "معتمد نهائياً (أمر مباشر)", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
-        } else if (actionType === 'chairman_final_approve') {
+        else if (actionType === 'chairman_final_approve' || actionType === 'chairman_direct_approve') {
             updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً" };
-        } else if (actionType === 'reject') {
-            updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
         } 
-        // إجراءات التحويل والردود
-        else if (actionType === 'chairman_transfer') {
-            updates = { Current_Stage: "بانتظار رد الإدارات", Status: "محول" }; 
-        } else if (actionType === 'dept_reply') {
-            updates = { Status: "تم الرد من الإدارة" }; 
-        } 
-        // في حالة وجود زرار مش متبرمج
-        else {
-             showCustomAlert("تنبيه", "هذا الإجراء غير معروف: " + actionType);
-             return;
+        else if (actionType === 'reject') {
+            updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض" };
         }
+        
+        executeUpdate(requestId, updates);
+    }
 
-        // تنفيذ التحديث في Firebase
+    function executeUpdate(requestId, updates) {
         db.collection("requests").doc(requestId).update(updates)
         .then(() => {
             showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب بنجاح.");
-            loadReviewRequests(); // تحديث الشاشة
+            loadReviewRequests();
         }).catch((error) => {
             console.error("Error updating: ", error);
             showCustomAlert("خطأ", "تعذر تحديث الطلب.");
@@ -1162,9 +1141,9 @@
         overlay.className = "custom-modal-overlay";
         overlay.innerHTML = `
           <div class="custom-modal-box" style="max-width:500px;">
-            <div class="custom-modal-header"><i class="fas fa-times-circle" style="color:#dc3545;"></i><h3 style="color:#b91c1c;">سبب الرفض ${deptName ? '— ' + deptName : ''}</h3></div>
+            <div class="custom-modal-header"><i class="fas fa-times-circle" style="color:#dc3545;"></i><h3 style="color:#b91c1c;">سبب الرفض</h3></div>
             <div class="custom-modal-body" style="text-align:right;">
-              <textarea id="rejectReasonInput" placeholder="اكتب سبب الرفض بوضوح..." style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff;"></textarea>
+              <textarea id="rejectReasonInput" placeholder="اكتب سبب الرفض..." style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff;"></textarea>
             </div>
             <div style="display:flex; gap:8px;">
               <button id="rejectCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
@@ -1177,99 +1156,8 @@
             const reason = document.getElementById('rejectReasonInput').value.trim();
             if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
             overlay.remove();
-            const extra = { rejectReason: reason };
-            processAction(requestId, actionName, extra);
+            processAction(requestId, actionName, { rejectReason: reason });
         };
-    }
-
-    function trackLogin() {
-         const nationalId = document.getElementById('trackNationalId').value.trim();
-         const password = document.getElementById('trackPassword').value.trim();
-         if (nationalId.length !== 14) return showCustomAlert("تنبيه", "الرقم القومي يجب أن يكون 14 رقماً.");
-         if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
-         const btn = document.getElementById('trackLoginBtn');
-         btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الدخول...';
-         
-         fetch(SCRIPT_URL + `?action=getEmployeeDetails&nationalId=${nationalId}&userPassword=${password}`)
-         .then(res => res.json())
-         .then(data => {
-             btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-             if (data.status === "success") {
-                 currentTrackUser = { name: data.employeeName, nationalId: nationalId };
-                 document.getElementById('trackLoginBox').style.display = 'none';
-                 document.getElementById('trackDashboard').style.display = 'block';
-                 document.getElementById('trackWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.employeeName}`;
-                 loadTrackRequestsForUser();
-             } else showCustomAlert("خطأ", data.message);
-         })
-         .catch(() => {
-             btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-             showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
-         });
-    }
-
-    function trackLogout() {
-        currentTrackUser = null;
-        document.getElementById('trackNationalId').value = "";
-        document.getElementById('trackPassword').value = "";
-        document.getElementById('trackLoginBox').style.display = 'block';
-        document.getElementById('trackDashboard').style.display = 'none';
-    }
-
-    function loadTrackRequestsForUser() {
-        if (!currentTrackUser) return;
-        const container = document.getElementById('trackRequestsList');
-        container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
-        
-        fetch(SCRIPT_URL + `?action=getMyRequests&nationalId=${currentTrackUser.nationalId}`)
-        .then(res => res.json())
-        .then(data => {
-            container.innerHTML = "";
-            if (!Array.isArray(data) || data.length === 0) {
-                container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات مسجلة لهذا الرقم.</p>';
-                return;
-            }
-            activeRequestsData = data;
-            data.forEach(req => container.appendChild(buildRequestCard(req, false)));
-        })
-        .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
-    }
-
-    function buildDeptStateBox(transferStateJson) {
-        let state = {};
-        try { state = JSON.parse(transferStateJson || "{}"); } catch(_) { return ""; }
-        const keys = Object.keys(state);
-        if (keys.length === 0) return "";
-        let html = '<div class="dept-state-box"><strong><i class="fas fa-sitemap"></i> حالة ردود الإدارات:</strong>';
-        keys.forEach(function(k) {
-            const key = (k || "").toString().trim();
-            if (!key) return;
-            const s = state[k] || {};
-            let cls = "dept-state-pending", label = "⏳ قيد الانتظار";
-            let dateHtml = "";
-            
-            if (s.decision === "approved") { 
-                cls = "dept-state-approved"; 
-                label = "✅ موافقة"; 
-                if (s.date) dateHtml = `<div style="font-size:11px; color:#94a3b8; margin-top:2px;"><i class="far fa-clock"></i> ${s.date}</div>`;
-            }
-            else if (s.decision === "rejected") { 
-                cls = "dept-state-rejected"; 
-                label = "❌ رفض"; 
-                if (s.date) dateHtml = `<div style="font-size:11px; color:#94a3b8; margin-top:2px;"><i class="far fa-clock"></i> ${s.date}</div>`;
-            }
-
-            html += `<div class="dept-state-item" style="flex-direction:column; align-items:flex-start; border-bottom:1px dashed #334155; padding-bottom:8px; margin-bottom:8px;">
-                <div style="display:flex; justify-content:space-between; width:100%; margin-bottom:4px;">
-                    <span style="font-weight:bold; color:#cbd5e1;">${key}</span>
-                    <span class="${cls}">${label}</span>
-                </div>
-                ${s.reason && s.decision === 'rejected' ? `<div style="font-size:11px; color:#fca5a5; margin-top:4px; background:rgba(220,53,69,0.1); padding:4px; border-radius:4px;">سبب الرفض: ${s.reason}</div>` : ''}
-                ${dateHtml}
-            </div>`;
-        });
-        html += '</div>';
-        return html;
     }
 
     function buildRequestCard(req, withActions) {
@@ -1277,36 +1165,34 @@
         const stage = (req.Current_Stage || "").toString();
         const status = (req.Status || "").toString();
         const poStatus = (req.PO_Status || "").toString();
+        
         let badgeClass = 'badge-wait';
         if (stage.indexOf("معتمد") !== -1 || poStatus === "approved") badgeClass = 'badge-ok';
         else if (stage.indexOf("مرفوض") !== -1 || poStatus === "rejected") badgeClass = 'badge-reject';
-        else if (stage.indexOf("بانتظار رد") === 0 || stage.indexOf("بانتظار قرار") === 0 || poStatus === "pending") badgeClass = 'badge-info';
+        else if (stage.indexOf("بانتظار") === 0 || poStatus === "pending") badgeClass = 'badge-info';
 
         let buttonsHtml = "";
         if (withActions) {
-            if (poStatus === "rejected") {
-                 buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_final_approve')"><i class="fas fa-check-double"></i> اعتماد قرار العقود (نهائي)</button>
-                 </div>`;
-            }
-            else if (stage === "مراجعة المدير العام") {
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'gm_reject')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>
-                </div>`;
-            } else if (stage === "مراجعة رئيس الإدارة المركزية") {
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'central_reject')"><i class="fas fa-times"></i> رفض مع ذكر السبب</button>
-                </div>`;
-            } 
-            else if (stage === "مراجعة رئيس مجلس الإدارة" || stage.indexOf("بانتظار قرار رئيس مجلس") === 0) {
-                const canFinalApprove = stage.indexOf("بانتظار قرار رئيس مجلس") === 0;
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> 1. الموافقة بالأمر المباشر</button>
-                    ${canFinalApprove ? `<button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_final_approve')"><i class="fas fa-check-double"></i> 5. اعتماد قرارات الإدارات (نهائي)</button>` : ''}
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> الرفض النهائي مع ذكر السبب</button>
-                </div>`;
+            const myRole = (loggedInUser.role || "").toString().trim();
+            const isMyTurn = stage.includes(myRole.replace(/-/g, ' '));
+
+            if (isMyTurn) {
+                if (stage.includes("مراجعة رئيس مجلس الإدارة") || stage.includes("بانتظار قرار رئيس مجلس")) {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
+                    </div>`;
+                } else if (stage.includes("رئيس الإدارة المركزية")) {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                } else {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                }
             }
         }
 
@@ -1314,12 +1200,7 @@
         const centralText = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
         const chairmanText = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
         
-        const rejectBlock = (req.Reject_Reason && !stage.includes("بانتظار")) ? `
-            <div class="reject-block">
-                <strong><i class="fas fa-times-circle"></i> سبب الرفض:</strong>
-                <span>${req.Reject_Reason}</span>
-            </div>` : '';
-        const deptStateBox = buildDeptStateBox(req.Transfer_State);
+        const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong><i class="fas fa-times-circle"></i> سبب الرفض:</strong><span>${req.Reject_Reason}</span></div>` : '';
         const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
 
         div.innerHTML = `
@@ -1327,14 +1208,12 @@
                 <span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span>
                 <span class="badge ${badgeClass}">${stage || '-'}</span>
             </div>
-            <div class="req-row"><strong>تاريخ الإنشاء:</strong> <span>${dateStr}</span></div>
+            <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
             <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || '-'} (${req.role || '-'})</span></div>
             <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || '-'}</span></div>
             <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || '0'} ج.م</span></div>
             <div class="req-row"><strong>عدد الأصناف:</strong> <span>${req.itemsList ? JSON.parse(req.itemsList).length : 0}</span></div>
-            <div class="req-row"><strong>الحالة العامة:</strong> <span>${status || '-'}</span></div>
             ${rejectBlock}
-            ${deptStateBox}
             <div class="dates-box">
                 <div>1. المدير العام: <span style="color: ${req.Gm_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${gmText}</span></div>
                 <div>2. رئيس الإدارة المركزية: <span style="color: ${req.Central_Date ? '#4ade80' : '#fbbf24'}; font-weight: bold;">${centralText}</span></div>
@@ -1342,603 +1221,34 @@
             </div>
             <div style="margin-top: 10px; display:flex; gap:8px;">
                 <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة الطلب</button>
-                ${poStatus === 'approved' ? `<button class="print-btn" style="margin-top:0; background:#198754;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-file-invoice-dollar"></i> طباعة أمر التوريد</button>` : ''}
             </div>
             ${buttonsHtml}
         `;
         return div;
     }
-    
-    /* ================== إدارة العقود ================== */
-    function handleContractLogin() {
-        const username = document.getElementById('contractUsername').value.trim();
-        const password = document.getElementById('contractPassword').value.trim();
-        if (!username || !password) return showCustomAlert("تنبيه", "يرجى إدخال اسم المستخدم وكلمة المرور.");
-        const btn = document.getElementById('contractLoginBtn');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
-        const formData = new URLSearchParams({ action: "loginContract", username, password });
-        fetch(SCRIPT_URL, { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-            btn.disabled = false;
-            btn.innerHTML = 'دخول';
-            if (data.status === "success") {
-                currentContractUser = data;
-                document.getElementById('contractLoginBox').style.display = 'none';
-                document.getElementById('contractDashboard').style.display = 'block';
-                document.getElementById('contractWelcomeTitle').innerHTML = `<i class="fas fa-user-circle"></i> مرحباً: ${data.name} (${data.contract_role})`;
-                if (data.contract_role === 'مدير') {
-                    document.getElementById('lblContractPending').textContent = 'مسودات بانتظار الاعتماد';
-                    document.getElementById('lblContractArchive').textContent = 'أوامر معتمدة / مرفوضة';
-                } else {
-                    document.getElementById('lblContractPending').textContent = 'طلبات جديدة';
-                    document.getElementById('lblContractArchive').textContent = 'طلباتي المرتجعة / المعتمدة';
-                }
-                loadContractRequests();
-                startAutoRefresh();
-            } else showCustomAlert("خطأ", data.message);
-        })
-        .catch(() => {
-            btn.disabled = false;
-            btn.innerHTML = 'دخول';
-            showCustomAlert("خطأ", "تعذر الاتصال بالخادم.");
-        });
-    }
-
-    function logoutContract() {
-        currentContractUser = null;
-        document.getElementById('contractLoginBox').style.display = 'block';
-        document.getElementById('contractDashboard').style.display = 'none';
-        document.getElementById('contractUsername').value = "";
-        document.getElementById('contractPassword').value = "";
-        stopAutoRefresh();
-    }
-
-    function switchContractTab(tab) {
-        currentContractTab = tab;
-        document.getElementById('tabContractPending').classList.toggle('active', tab === 'pending');
-        document.getElementById('tabContractArchive').classList.toggle('active', tab === 'archive');
-        renderContractRequests();
-    }
-
-    function loadContractRequests() {
-        if (!currentContractUser) return;
-        const container = document.getElementById('contractRequestsList');
-        container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
-        const formData = new URLSearchParams({ 
-            action: "getContractRequests", 
-            role: currentContractUser.contract_role,
-            contractRole: currentContractUser.contract_role,
-            username: currentContractUser.name
-        });
-        fetch(SCRIPT_URL, { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-            contractPendingData = (data && data.pending) ? data.pending : [];
-            contractArchiveData = (data && data.archive) ? data.archive : [];
-            document.getElementById('contractPendingCount').textContent = contractPendingData.length;
-            document.getElementById('contractArchiveCount').textContent = contractArchiveData.length;
-            renderContractRequests();
-        })
-        .catch(() => { container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>'; });
-    }
-
-    function renderContractRequests() {
-        const container = document.getElementById('contractRequestsList');
-        const data = currentContractTab === 'pending' ? contractPendingData : contractArchiveData;
-        container.innerHTML = "";
-        if (data.length === 0) {
-            container.innerHTML = '<p class="empty-state">لا توجد طلبات في هذا القسم حالياً.</p>';
-            return;
-        }
-        activeContractData = data;
-        data.forEach(req => container.appendChild(buildContractRequestCard(req, currentContractTab === 'pending')));
-    }
-
-    function buildContractRequestCard(req, withActions) {
-        const div = document.createElement('div'); div.className = 'request-card';
-        let poStatus = (req.PO_Status || '').toString().trim();
-        let statusColor, statusText;
-        if (poStatus === 'approved') { statusColor = '#198754'; statusText = 'تم الاعتماد النهائي'; }
-        else if (poStatus === 'rejected') { statusColor = '#dc3545'; statusText = 'مرفوض / مرتجع'; }
-        else if (poStatus === 'pending') { statusColor = '#0d6efd'; statusText = 'مسودة قيد الاعتماد'; }
-        else { statusColor = '#fbbf24'; statusText = 'لم يُصدر أمر توريد بعد'; poStatus = ''; }
-
-        let detailsHtml = "";
-        if (req.PO_Details) {
-            try {
-                let d = JSON.parse(req.PO_Details);
-                let itemsCount = d.items ? d.items.length : 0;
-                detailsHtml = `
-                    <div class="dept-state-box" style="border-color:${statusColor}; background:${statusColor}15;">
-                        <strong style="color:${statusColor};"><i class="fas fa-file-invoice-dollar"></i> تفاصيل المسودة:</strong>
-                        <div style="padding:4px 0;"><b>المورد:</b> ${d.supplier || '-'}</div>
-                        <div style="padding:4px 0;"><b>عدد الأصناف:</b> ${itemsCount}</div>
-                        <div style="padding:4px 0;"><b>الإجمالي:</b> ${d.totalCost || '-'} ج.م</div>
-                        <div style="padding:4px 0;"><b>التفقيط:</b> ${d.tafqit || '-'}</div>
-                    </div>
-                `;
-            } catch(_){}
-        }
-        if (poStatus === 'rejected' && req.PO_Reason) {
-            detailsHtml = `<div class="reject-block"><strong><i class="fas fa-times-circle"></i> سبب الرفض / التعديل:</strong><span>${req.PO_Reason}</span></div>` + detailsHtml;
-        }
-
-        let actionsHtml = "";
-        const userRole = (currentContractUser && currentContractUser.contract_role) ? currentContractUser.contract_role : '';
-        if (userRole === 'موظف' && poStatus !== 'approved' && withActions) {
-            _poReqCache[req.Request_ID] = req;
-            actionsHtml = `
-                <div class="req-actions" style="margin-top:15px;">
-                    <button class="main-btn" style="background:${poStatus === 'rejected' ? '#dc3545' : '#198754'};" 
-                        onclick="openPOModalSafe('${req.Request_ID}')">
-                        <i class="fas fa-check"></i> ${poStatus === 'rejected' ? 'تعديل وإعادة إرسال' : 'موافقة وإصدار مسودة'}
-                    </button>
-                </div>`;
-        } 
-        else if (userRole === 'مدير' && poStatus === 'pending' && withActions) {
-            actionsHtml = `
-                <div class="req-actions" style="flex-direction: row; justify-content: space-between; margin-top: 15px;">
-                    <button class="main-btn" style="width:48%; background:#198754; font-size:12px;" onclick="processContractAction('${req.Request_ID}', 'approvePurchaseOrder')"><i class="fas fa-check-double"></i> اعتماد نهائي</button>
-                    <button class="main-btn" style="width:48%; background:#dc3545; font-size:12px;" onclick="promptContractReject('${req.Request_ID}')"><i class="fas fa-times"></i> رفض وإرجاع</button>
-                </div>
-            `;
-        }
-
-        let printBtn = `<button class="print-btn" style="margin-top:10px;" onclick="printPurchaseOrderFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة أمر التوريد</button>`;
-        const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
-
-        div.innerHTML = `
-            <div class="req-title">
-                <span><i class="fas fa-file-signature"></i> ${req.Request_ID}</span>
-                <span class="badge" style="background:${statusColor}20; color:${statusColor}; border:1px solid ${statusColor}">${statusText}</span>
-            </div>
-            <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || req.Applicant_Name || '-'}</span></div>
-            <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || req.Parent_Department || '-'}</span></div>
-            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || req.Total_Cost || '-'} ج.م</span></div>
-            <div class="req-row"><strong>مسؤول الإصدار:</strong> <span>${req.PO_Issued_By || '-'}</span></div>
-            ${detailsHtml}
-            ${printBtn}
-            ${actionsHtml}
-        `;
-        return div;
-    }
-
-    function openPOModalSafe(requestId) {
-        const req = _poReqCache[requestId];
-        if (!req) {
-            showCustomAlert("تنبيه", "لم يتم العثور على بيانات الطلب. يرجى تحديث الصفحة.");
-            return;
-        }
-        openPOModal(requestId, req);
-    }
-
-    function openPOModal(requestId, reqObj) {
-        window.currentReqForPO = reqObj;
-        let itemsToDisplay = [];
-        let supplier = '';
-        let notes = '';
-        if (reqObj && reqObj.PO_Details) {
-            try {
-                let parsed = JSON.parse(reqObj.PO_Details);
-                itemsToDisplay = parsed.items || [];
-                supplier = parsed.supplier || '';
-                notes = parsed.notes || '';
-            } catch(_) {}
-        }
-        if (itemsToDisplay.length === 0 && (reqObj.itemsList || reqObj.Items_List)) {
-            try {
-                let reqItems = JSON.parse(reqObj.itemsList || reqObj.Items_List);
-                itemsToDisplay = reqItems.map(it => ({
-                    item: it.item, unitType: 'كمية', unitValue: it.qty, unitPrice: it.cost, totalCost: it.cost
-                }));
-            } catch(_) {}
-        }
-
-        const existing = document.getElementById("poModal");
-        if (existing) existing.remove();
-
-        const overlay = document.createElement("div");
-        overlay.id = "poModal";
-        overlay.className = "custom-modal-overlay";
-        overlay.innerHTML = `
-          <div class="custom-modal-box" style="max-width: 900px; text-align: right; background: #1e293b; color: #fff; border: 1px solid #c59b27;">
-            <div class="custom-modal-header" style="justify-content: flex-start; border-bottom: 1px solid #475569; padding-bottom: 10px;">
-              <i class="fas fa-file-invoice-dollar" style="color:#fbbf24;"></i>
-              <h3 style="color:#fbbf24;">إصدار / تعديل مسودة أمر توريد</h3>
-            </div>
-            <div class="custom-modal-body" style="background:transparent; padding:0; margin-top:15px;">
-                <div style="margin-bottom:15px;">
-                    <label style="color:#cbd5e1;">اسم المورد:</label>
-                    <input type="text" id="poSupplier" value="${supplier}" placeholder="اسم المورد..." style="width:100%; padding:10px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff;">
-                </div>
-                <table class="items-table" id="poItemsTable">
-                    <thead>
-                        <tr>
-                            <th style="width:30%;">البيان</th>
-                            <th style="width:15%;">الوحدة</th>
-                            <th style="width:15%;">الكمية</th>
-                            <th style="width:15%;">سعر الوحدة</th>
-                            <th style="width:15%;">الإجمالي</th>
-                        </tr>
-                    </thead>
-                    <tbody id="poItemsTableBody"></tbody>
-                </table>
-                <div style="margin-bottom:15px;">
-                    <label style="color:#cbd5e1;">ملاحظات عامة (تظهر أسفل الجدول):</label>
-                    <input type="text" id="poNotes" value="${notes}" placeholder="ملاحظات..." style="width:100%; padding:10px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff;">
-                </div>
-                <div style="background:rgba(25,135,84,0.1); border:1px solid #198754; padding:10px; border-radius:6px; margin-bottom:15px;">
-                    <label style="color:#4ade80; font-weight:bold; margin-bottom:5px;">التفقيط بالعملة المصرية:</label>
-                    <div id="poTafqit" style="color:#4ade80; font-size:13px; font-weight:bold;">فقط صفر جنيه مصري لا غير</div>
-                </div>
-            </div>
-            <div style="display:flex; gap:8px; margin-top:20px;">
-              <button id="poCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-              <button id="poConfirm" class="custom-modal-btn" style="background:#198754;">حفظ وإرسال للمدير</button>
-            </div>
-          </div>`;
-        document.body.appendChild(overlay);
-
-        const tbody = document.getElementById('poItemsTableBody');
-        itemsToDisplay.forEach(it => addPOItemRow(it));
-        if(itemsToDisplay.length === 0) addPOItemRow();
-        calcPOTotal();
-
-        document.getElementById('poCancel').onclick = () => overlay.remove();
-        document.getElementById('poConfirm').onclick = () => {
-            const supplierVal = document.getElementById('poSupplier').value.trim();
-            if(!supplierVal) { showCustomAlert("تنبيه", "يرجى إدخال اسم المورد."); return; }
-
-            let items = [];
-            document.querySelectorAll('#poItemsTableBody tr').forEach(tr => {
-                const item = tr.querySelector('.po-item-desc').value.trim();
-                const unitType = tr.querySelector('.po-item-unit').value;
-                const unitValue = tr.querySelector('.po-item-qty').value.trim();
-                const unitPrice = tr.querySelector('.po-item-price').value.trim();
-                const totalCost = tr.querySelector('.po-item-total').value.trim();
-                if (item && unitPrice) {
-                    items.push({ item, unitType, unitValue, unitPrice, totalCost });
-                }
-            });
-
-            if (items.length === 0) { showCustomAlert("تنبيه", "يجب إضافة صنف واحد على الأقل."); return; }
-
-            let totalCostVal = 0;
-            items.forEach(it => totalCostVal += parseFloat(it.totalCost));
-
-            const poHtmlForPDF = generatePOHtmlForPDF(reqObj, supplierVal, items, totalCostVal, document.getElementById('poTafqit').innerText, document.getElementById('poNotes').value);
-
-            const poData = {
-                action: "savePurchaseOrder", 
-                requestId: requestId,
-                poSupplier: supplierVal,
-                poItems: JSON.stringify(items),
-                poNotes: document.getElementById('poNotes').value,
-                poTotalCost: totalCostVal.toFixed(2),
-                poTafqit: document.getElementById('poTafqit').innerText,
-                issuedBy: currentContractUser ? currentContractUser.name : "موظف العقود",
-                contractRole: currentContractUser ? currentContractUser.contract_role : '',
-                username: currentContractUser ? currentContractUser.name : '',
-                poHtml: poHtmlForPDF
-            };
-            submitPOAction(poData, overlay);
-        };
-    }
-
-    function generatePOHtmlForPDF(reqObj, supplier, items, totalCost, tafqitText, notes) {
-        let itemsHtml = "";
-        items.forEach((it, idx) => {
-            itemsHtml += `<tr>
-                <td style="border: 1px solid #333; padding: 8px; text-align: center;">${idx+1}</td>
-                <td style="border: 1px solid #333; padding: 8px;">${it.item}</td>
-                <td style="border: 1px solid #333; padding: 8px; text-align: center;">${it.unitType}</td>
-                <td style="border: 1px solid #333; padding: 8px; text-align: center;">${it.unitValue}</td>
-                <td style="border: 1px solid #333; padding: 8px; text-align: center;">${it.unitPrice} ج.م</td>
-                <td style="border: 1px solid #333; padding: 8px; text-align: center; font-weight:900;">${it.totalCost} ج.م</td>
-            </tr>`;
-        });
-
-        return `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
-        <style>
-            @page { size: A4; margin: 15mm; }
-            body { font-family: "Arial", "DejaVu Sans", sans-serif; font-size: 12px; color: #000; padding: 0; margin: 0; font-weight: 700; }
-            h3 { font-size: 12px; font-weight: 900; margin: 0 0 2px 0; }
-            h2 { font-size: 20px; font-weight: 900; text-decoration: underline; text-align: center; margin: 20px 0; border-top: 2px solid #333; padding-top: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-            th, td { border: 1px solid #333; padding: 6px; }
-        </style></head><body>
-            <table style="border: none; margin-bottom: 20px;">
-                <tr>
-                    <td style="border: none; width: 50%; text-align: right; vertical-align: top;">
-                        <h3>وزارة الموارد المائية والري</h3>
-                        <h3>الهيئة العامة للسد العالي وخزان أسوان</h3>
-                        <span style="font-size: 11px; font-weight: 900;">إدارة العقود والمشتريات</span>
-                    </td>
-                    <td style="border: none; width: 50%; text-align: left; vertical-align: top;">
-                        <div style="display: inline-block; font-size: 11px; border: 1px solid #333; padding: 4px 8px; border-radius: 4px; text-align: right;">
-                            <div>رقم أمر التوريد: <span style="font-weight: 900;">${reqObj.Request_ID}</span></div>
-                            <div>التاريخ: <span style="font-weight: 900;">${new Date().toLocaleDateString('ar-EG')}</span></div>
-                        </div>
-                    </td>
-                </tr>
-            </table>
-            <h2>أمر توريد</h2>
-            <div style="font-size: 13px; line-height: 1.8; text-align: justify; margin-bottom: 20px;">
-                بناءً على موافقة السلطة المختصة (رئيس مجلس الإدارة) بجلسته المنعقدة بتاريخ <span style="font-weight: 900;">${reqObj.Chairman_Date || '---'}</span>، وبناءً على اعتماد إدارة العقود والمشتريات، تم الاتفاق مع المورد / <span style="font-weight: 900; font-size: 14px;">${supplier}</span> على توريد الأصناف الموضحة بالجدول التالي وفقاً للأسعار والشروط المتفق عليها:
-            </div>
-            <table>
-                <thead>
-                    <tr style="background: #f8fafc; font-weight: 900; text-align: center;">
-                        <th style="width: 5%;">م</th>
-                        <th style="text-align: right; width: 40%;">البيان</th>
-                        <th style="width: 10%;">الوحدة</th>
-                        <th style="width: 10%;">الكمية</th>
-                        <th style="width: 15%;">سعر الوحدة</th>
-                        <th style="width: 20%;">الإجمالي</th>
-                    </tr>
-                </thead>
-                <tbody>${itemsHtml}</tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="5" style="text-align: left; font-weight: 900; background: #f8fafc;">إجمالي أمر التوريد:</td>
-                        <td style="text-align: center; font-weight: 900; background: #f8fafc;">${parseFloat(totalCost).toFixed(2)} ج.م</td>
-                    </tr>
-                    <tr>
-                        <td colspan="6" style="text-align: right;">
-                            <span style="font-weight: 900;">ملاحظات:</span> <span>${notes || '---'}</span>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-            <div style="border: 1px solid #333; padding: 10px; font-size: 13px; font-weight: 900; margin-bottom: 40px; background: #f8fafc;">
-                التفقيط: <span style="font-weight: 700;">${tafqitText}</span>
-            </div>
-            <table style="border: none; margin-top: 40px;">
-                <tr>
-                    <td style="border-top: 1px solid #333; border-left: none; border-right: none; border-bottom: none; width: 33%; text-align: center; padding-top: 10px;">
-                        <div style="font-weight: 900; margin-bottom: 5px;">الموظف المختص بالإدارة</div>
-                        <div style="font-weight: 900; margin-top: 40px;"></div>
-                    </td>
-                    <td style="border-top: 1px solid #333; border-left: none; border-right: none; border-bottom: none; width: 34%; text-align: center; padding-top: 10px;">
-                        <div style="font-weight: 900; margin-bottom: 5px;"></div>
-                        <div style="font-weight: 900;">مدير عام العقود والمشتريات</div>
-                        <div style="font-weight: 900; margin-top: 40px;">---</div>
-                    </td>
-                    <td style="border-top: 1px solid #333; border-left: none; border-right: none; border-bottom: none; width: 33%; text-align: center; padding-top: 10px;">
-                        <div style="font-weight: 900; margin-bottom: 5px;">يعتمد</div>
-                        <div style="font-weight: 900;">رئيس الادارة المركزية للئشون المالية والادارية</div>
-                        <div style="font-weight: 900; margin-top: 40px;">---</div>
-                    </td>
-                </tr>
-            </table>
-        </body></html>`;
-    }
-
-    function addPOItemRow(data = null) {
-        const tbody = document.getElementById('poItemsTableBody');
-        const tr = document.createElement('tr');
-        const item = data ? data.item : '';
-        const unitType = data ? data.unitType : 'كمية';
-        const unitValue = data ? data.unitValue : '1';
-        const unitPrice = data ? data.unitPrice : '';
-        const totalCost = data ? data.totalCost : '';
-        tr.innerHTML = `
-            <td><input type="text" class="po-item-desc" value="${item}" placeholder="البيان..." required></td>
-            <td>
-                <select class="po-item-unit" style="padding:4px;">
-                    <option value="كمية" ${unitType==='كمية'?'selected':''}>كمية</option>
-                    <option value="عدد" ${unitType==='عدد'?'selected':''}>عدد</option>
-                    <option value="متر" ${unitType==='متر'?'selected':''}>متر</option>
-                    <option value="طن" ${unitType==='طن'?'selected':''}>طن</option>
-                    <option value="كيلو" ${unitType==='كيلو'?'selected':''}>كيلو</option>
-                    <option value="أخرى" ${unitType==='أخرى'?'selected':''}>أخرى</option>
-                </select>
-            </td>
-            <td><input type="number" class="po-item-qty" value="${unitValue}" oninput="calcPOTotal()" required></td>
-            <td><input type="number" class="po-item-price" value="${unitPrice}" oninput="calcPOTotal()" required></td>
-            <td><input type="text" class="po-item-total" value="${totalCost}" readonly style="background:#0f172a;"></td>
-        `;
-        tbody.appendChild(tr);
-        if (!data) calcPOTotal();
-    }
-
-    function calcPOTotal() {
-        let grandTotal = 0;
-        document.querySelectorAll('#poItemsTableBody tr').forEach(tr => {
-            const qty = parseFloat(tr.querySelector('.po-item-qty').value) || 0;
-            const price = parseFloat(tr.querySelector('.po-item-price').value) || 0;
-            const total = qty * price;
-            tr.querySelector('.po-item-total').value = total.toFixed(2);
-            grandTotal += total;
-        });
-        document.getElementById('poTafqit').innerText = "فقط " + tafqit(grandTotal) + " جنيهاً مصرياً لا غير";
-    }
-
-    function promptContractReject(requestId) {
-        const existing = document.getElementById("rejectContractModal");
-        if (existing) existing.remove();
-        const overlay = document.createElement("div");
-        overlay.id = "rejectContractModal";
-        overlay.className = "custom-modal-overlay";
-        overlay.innerHTML = `
-          <div class="custom-modal-box" style="max-width:500px;">
-            <div class="custom-modal-header"><i class="fas fa-times-circle" style="color:#dc3545;"></i><h3 style="color:#b91c1c;">رفض المسودة وإرجاعها</h3></div>
-            <div class="custom-modal-body" style="text-align:right;">
-              <textarea id="contractRejectReasonInput" placeholder="اكتب سبب الرفض أو التعديل المطلوب بوضوح..." style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff;"></textarea>
-            </div>
-            <div style="display:flex; gap:8px;">
-              <button id="rejectContractCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-              <button id="rejectContractConfirm" class="custom-modal-btn" style="background:#dc3545;">تأكيد الرفض</button>
-            </div>
-          </div>`;
-        document.body.appendChild(overlay);
-        document.getElementById('rejectContractCancel').onclick = () => overlay.remove();
-        document.getElementById('rejectContractConfirm').onclick = () => {
-            const reason = document.getElementById('contractRejectReasonInput').value.trim();
-            if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
-            overlay.remove();
-            const payload = { 
-                action: "rejectPurchaseOrder", 
-                requestId: requestId, 
-                rejectReason: reason,
-                contractRole: currentContractUser ? currentContractUser.contract_role : '',
-                username: currentContractUser ? currentContractUser.name : '',
-                role: currentContractUser ? currentContractUser.contract_role : ''
-            };
-            submitPOAction(payload, null);
-        };
-    }
-
-    function processContractAction(requestId, actionName) {
-        const req = _poReqCache[requestId] || activeContractData.find(r => r.Request_ID === requestId);
-        let poHtmlForPDF = "";
-        if (req && req.PO_Details) {
-            try {
-                let d = JSON.parse(req.PO_Details);
-                poHtmlForPDF = generatePOHtmlForPDF(req, d.supplier, d.items || [], d.totalCost, d.tafqit, d.notes);
-            } catch(_) {}
-        }
-        const payload = { 
-            action: actionName, 
-            requestId: requestId,
-            contractRole: currentContractUser ? currentContractUser.contract_role : '',
-            username: currentContractUser ? currentContractUser.name : '',
-            role: currentContractUser ? currentContractUser.contract_role : '',
-            poHtml: poHtmlForPDF
-        };
-        submitPOAction(payload, null);
-    }
-
-    function submitPOAction(poData, modalElement) {
-        const formData = new URLSearchParams();
-        for (const key in poData) formData.append(key, poData[key]);
-        fetch(SCRIPT_URL, { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(res => {
-            if (res.status === "success") {
-                showSuccess("تم بنجاح", res.message || "تم تنفيذ الإجراء بنجاح.");
-                if (modalElement) modalElement.remove();
-                loadContractRequests();
-            } else showCustomAlert("خطأ", res.message || "حدث خطأ أثناء التنفيذ.");
-        })
-        .catch(() => showCustomAlert("خطأ", "تعذر الاتصال بالخادم."));
-    }
-
-    function tafqit(number) {
-        if (number === 0) return "صفر";
-        const str = parseFloat(number).toFixed(2);
-        const parts = str.split('.');
-        let integerPart = parseInt(parts[0]);
-        let decimalPart = parseInt(parts[1]);
-        const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
-        const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
-        const hundreds = ['', 'مائة', 'مئتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة'];
-
-        function convertGroup(num) {
-            let res = "";
-            let h = Math.floor(num / 100);
-            let t = Math.floor((num % 100) / 10);
-            let o = num % 10;
-            if (h > 0) res += hundreds[h] + " و";
-            if (t > 0 || o > 0) {
-                if (t === 1) res += ones[10 + o];
-                else if (o > 0) {
-                    if (t > 1) res += ones[o] + " و" + tens[t];
-                    else res += ones[o];
-                } else if (t > 1) res += tens[t];
-            }
-            return res.replace(/ و$/, "");
-        }
-
-        function convertInteger(num) {
-            if (num === 0) return "";
-            let parts = [];
-            let millions = Math.floor(num / 1000000);
-            let thousands = Math.floor((num % 1000000) / 1000);
-            let remainder = num % 1000;
-            if (millions > 0) {
-                if (millions === 1) parts.push("مليون");
-                else if (millions === 2) parts.push("مليونان");
-                else if (millions >= 3 && millions <= 10) parts.push(convertGroup(millions) + " ملايين");
-                else parts.push(convertGroup(millions) + " مليون");
-            }
-            if (thousands > 0) {
-                if (thousands === 1) parts.push("ألف");
-                else if (thousands === 2) parts.push("ألفان");
-                else if (thousands >= 3 && thousands <= 10) parts.push(convertGroup(thousands) + " آلاف");
-                else parts.push(convertGroup(thousands) + " ألف");
-            }
-            if (remainder > 0) parts.push(convertGroup(remainder));
-            return parts.join(" و");
-        }
-
-        let result = convertInteger(integerPart);
-        if (decimalPart > 0) {
-            result += " جنيهاً و" + convertGroup(decimalPart) + " قرشاً";
-        }
-        return result;
-    }
 
     function startAutoRefresh() {
         if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
         _autoRefreshTimer = setInterval(function() {
-            if (document.getElementById('dashboard') && 
-                document.getElementById('dashboard').style.display !== 'none' &&
-                document.getElementById('reviewView').classList.contains('active') &&
-                Object.keys(loggedInUser).length > 0) {
+            if (document.getElementById('dashboard') && document.getElementById('dashboard').style.display !== 'none') {
                 loadReviewRequests();
-            }
-            if (document.getElementById('contractDashboard') && 
-                document.getElementById('contractDashboard').style.display !== 'none' &&
-                document.getElementById('orderView').classList.contains('active') &&
-                currentContractUser) {
-                loadContractRequests();
             }
         }, 30000);
     }
 
     function stopAutoRefresh() {
-        if (_autoRefreshTimer) {
-            clearInterval(_autoRefreshTimer);
-            _autoRefreshTimer = null;
-        }
-    }
-
-    function getWatermarkForPrint(req) {
-        const stage = (req.Current_Stage || "").toString();
-        const status = (req.Status || "").toString();
-        const poStatus = (req.PO_Status || "").toString();
-        if (poStatus === "approved") return { text: "معتمد", color: "#198754" };
-        if (poStatus === "rejected") return { text: "مرفوض", color: "#dc3545" };
-        if (poStatus === "pending") return { text: "مسودة", color: "#b45309" };
-        if (stage.indexOf("مرفوض") !== -1) return { text: "مرفوض", color: "#dc3545" };
-        if (stage.indexOf("معتمد نهائياً") !== -1 || status.indexOf("معتمد نهائياً") !== -1) return { text: "معتمد نهائياً", color: "#198754" };
-        if (stage.indexOf("بانتظار رد") === 0) {
-            var pendingText = stage.replace("بانتظار رد ", "").trim();
-            return { text: "بانتظار رد " + pendingText, color: "#0d6efd" };
-        }
-        if (stage.indexOf("بانتظار قرار رئيس مجلس") === 0) return { text: "بانتظار قرار رئيس مجلس الإدارة", color: "#b45309" };
-        if (stage === "مراجعة المدير العام") return { text: "قيد الانتظار - المدير العام", color: "#b45309" };
-        if (stage === "مراجعة رئيس الإدارة المركزية") return { text: "قيد الانتظار - الإدارة المركزية", color: "#b45309" };
-        if (stage === "مراجعة رئيس مجلس الإدارة") return { text: "قيد الانتظار - رئيس مجلس الإدارة", color: "#b45309" };
-        return { text: "قيد الانتظار", color: "#b45309" };
+        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
     }
 
     function printSpecificRequestFromCard(reqId) {
         let req = activeRequestsData.find(r => r.Request_ID === reqId);
-        if (!req) req = activeContractData.find(r => r.Request_ID === reqId);
-        if (!req) {
-            showCustomAlert("تنبيه", "بيانات الطلب غير متوفرة للطباعة.");
-            return;
-        }
+        if (!req) return;
         document.getElementById('printRequestSection').style.display = 'block';
         document.getElementById('contractPrintSection').style.display = 'none';
 
         document.getElementById('printReqId').textContent = req.Request_ID;
-        document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : new Date().toLocaleDateString('ar-EG');
-        document.getElementById('printParentDept').textContent = req.parentDepartment ? "إدارة " + req.parentDepartment : "إدارة التعاقدات والمشتريات";
+        document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '';
+        document.getElementById('printParentDept').textContent = "إدارة " + (req.parentDepartment || "");
         document.getElementById('printManagerTitle').textContent = "السيد المحاسب / مدير عام إدارة " + (req.parentDepartment || "");
         document.getElementById('printApplicantName').textContent = req.applicantName || "---";
         document.getElementById('printApplicantRole').textContent = req.role || "---";
@@ -1946,23 +1256,11 @@
         document.getElementById('printPhone').textContent = req.phone || "---";
         document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (req.parentDepartment || "الإدارة");
         document.getElementById('printManagerSignName').textContent = req.managerName || "---";
-        document.getElementById('printGmDate').textContent = req.Gm_Date ? ("تمت الموافقة (" + req.Gm_Date + ")") : "قيد الانتظار";
-        document.getElementById('printCentralDate').textContent = req.Central_Date ? ("تمت الموافقة (" + req.Central_Date + ")") : "قيد الانتظار";
-        document.getElementById('printChairmanDate').textContent = req.Chairman_Date ? ("معتمد نهائياً (" + req.Chairman_Date + ")") : "قيد الانتظار";
-
-        const rejectBox = document.getElementById('printRejectBox');
-        const isPending = (req.Current_Stage || "").toString().indexOf("بانتظار قرار رئيس مجلس") === 0 || (req.Current_Stage || "").toString().indexOf("تعديل مطلوب") !== -1;
-        if (req.Reject_Reason && !isPending) {
-            rejectBox.style.display = "block";
-            document.getElementById('printRejectReason').textContent = req.Reject_Reason;
-        } else rejectBox.style.display = "none";
-
-        const wm = getWatermarkForPrint(req);
-        const watermarkEl = document.getElementById('printWatermark');
-        watermarkEl.style.display = 'block';
-        watermarkEl.textContent = wm.text;
-        watermarkEl.style.color = wm.color;
-        watermarkEl.style.opacity = "0.20";
+        
+        const wm = document.getElementById('printWatermark');
+        if (req.Status === "معتمد نهائياً") { wm.style.display = 'none'; }
+        else if (req.Status === "مرفوض") { wm.style.display = 'block'; wm.textContent = "مرفوض"; wm.style.color = "#dc3545"; }
+        else { wm.style.display = 'block'; wm.textContent = "قيد الانتظار"; wm.style.color = "#b45309"; }
 
         let itemsHtml = '';
         try {
@@ -1978,133 +1276,12 @@
         } catch(_) {}
         document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
         document.getElementById('printRequestTotalCost').textContent = (req.totalCost || "0") + " ج.م";
-        
         window.print();
     }
 
-    function printPurchaseOrderFromCard(reqId) {
-        let req = activeRequestsData.find(r => r.Request_ID === reqId);
-        if (!req) req = activeContractData.find(r => r.Request_ID === reqId);
-        if (!req) {
-            showCustomAlert("تنبيه", "لم يتم العثور على بيانات الطلب. يرجى تحديث الصفحة.");
-            return;
-        }
-        if (req.PO_Status !== 'approved' && req.PO_Status !== 'pending') {
-            showCustomAlert("تنبيه", "لا يوجد أمر توريد معتمد لهذا الطلب. يرجى إصداره أولاً.");
-            return;
-        }
-        let details = {};
-        try { details = JSON.parse(req.PO_Details || "{}"); } catch(_) {}
-
-        document.getElementById('printRequestSection').style.display = 'none';
-        document.getElementById('contractPrintSection').style.display = 'block';
-
-        document.getElementById('printPOReqId').textContent = req.Request_ID;
-        document.getElementById('printPODateHeader').textContent = req.PO_Date ? new Date(req.PO_Date).toLocaleDateString('ar-EG') : new Date().toLocaleDateString('ar-EG');
-        document.getElementById('printPOChairmanDate').textContent = req.Chairman_Date || "---";
-        document.getElementById('printPOSupplier').textContent = details.supplier || "---";
-        document.getElementById('printPOManagerName').textContent = req.managerName || "---";
-        document.getElementById('printPONotes').textContent = details.notes || "لا توجد ملاحظات";
-        document.getElementById('printPOTafqit').textContent = details.tafqit || "---";
-        document.getElementById('printPOTotal').textContent = (details.totalCost || req.totalCost || "0") + " ج.م";
-
-        if (req.PO_Status === 'approved') {
-            document.getElementById('printWatermark').style.display = 'none'; 
-        } else {
-            const wm = getWatermarkForPrint(req);
-            document.getElementById('printWatermark').style.display = 'block';
-            document.getElementById('printWatermark').textContent = wm.text;
-            document.getElementById('printWatermark').style.color = wm.color;
-        }
-
-        let poItemsHtml = '';
-        if (details.items && details.items.length > 0) {
-            details.items.forEach((it, idx) => {
-                poItemsHtml += `<tr>
-                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${idx+1}</td>
-                    <td style="border: 1px solid #333; padding: 8px;">${it.item}</td>
-                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${it.unitType}</td>
-                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${it.unitValue}</td>
-                    <td style="border: 1px solid #333; padding: 8px; text-align: center;">${it.unitPrice} ج.م</td>
-                    <td style="border: 1px solid #333; padding: 8px; text-align: center; font-weight:900;">${it.totalCost} ج.م</td>
-                </tr>`;
-            });
-        }
-        document.getElementById('printPOTableBody').innerHTML = poItemsHtml;
-        window.print();
-    }
-
-    function generatePrintableHtmlForBackend() {
-        const printable = document.getElementById('printableArea').cloneNode(true);
-        const watermark = printable.querySelector('#printWatermark');
-        if (watermark) {
-            watermark.style.display = 'block'; 
-        }
-
-        return `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                @page { size: A4; margin: 0; }
-                body { font-family: 'Cairo', Arial, sans-serif; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                #printableArea { display: block !important; width: 100%; }
-                #printWatermark { opacity: 0.15 !important; }
-                table { page-break-inside: avoid; }
-            </style>
-        </head>
-        <body>
-            ${printable.innerHTML}
-        </body>
-        </html>
-        `;
-    }
-
-    function printReport() {
-        document.getElementById('printRequestSection').style.display = 'block';
-        document.getElementById('contractPrintSection').style.display = 'none';
-        
-        document.getElementById('printReqId').textContent = lastCreatedReqId;
-        document.getElementById('printDate').textContent = new Date().toLocaleDateString('ar-EG');
-        document.getElementById('printParentDept').textContent = document.getElementById('parentDepartment').value ? "إدارة " + document.getElementById('parentDepartment').value : "إدارة التعاقدات والمشتريات";
-        document.getElementById('printManagerTitle').textContent = document.getElementById('managerTitle').value || "السيد المحاسب / مدير عام الإدارة";
-        document.getElementById('printApplicantName').textContent = document.getElementById('applicantName').value || "---";
-        document.getElementById('printApplicantRole').textContent = document.getElementById('applicantRole').value || "---";
-        document.getElementById('printNationalId').textContent = document.getElementById('applicantNationalId').value || "---";
-        document.getElementById('printPhone').textContent = document.getElementById('applicantPhone').value || "---";
-        document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (document.getElementById('parentDepartment').value || "الإدارة");
-        document.getElementById('printManagerSignName').textContent = document.getElementById('managerName').value || "---";
-        document.getElementById('printGmDate').textContent = "قيد الانتظار";
-        document.getElementById('printCentralDate').textContent = "قيد الانتظار";
-        document.getElementById('printChairmanDate').textContent = "قيد الانتظار";
-        document.getElementById('printRejectBox').style.display = "none";
-        
-        const watermarkEl = document.getElementById('printWatermark');
-        watermarkEl.style.display = 'block';
-        watermarkEl.textContent = "قيد الانتظار - المدير العام";
-        watermarkEl.style.color = "#b45309";
-        watermarkEl.style.opacity = "0.20";
-
-        let itemsHtml = '';
-        let total = 0;
-        document.querySelectorAll('#itemsTableBody tr').forEach(tr => {
-            const desc = tr.querySelector('.item-desc').value;
-            const qty = tr.querySelector('.item-qty').value;
-            const cost = parseFloat(tr.querySelector('.item-cost').value) || 0;
-            const purpose = tr.querySelector('.item-purpose').value;
-            total += cost;
-            itemsHtml += `<tr>
-                <td style="border: 1px solid #333; padding: 6px 8px;">${desc}</td>
-                <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${qty}</td>
-                <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${cost.toFixed(2)}</td>
-                <td style="border: 1px solid #333; padding: 6px 8px;">${purpose}</td>
-            </tr>`;
-        });
-        document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
-        document.getElementById('printRequestTotalCost').textContent = total.toFixed(2) + " ج.م";
-        window.print();
-    }
+    function generatePrintableHtmlForBackend() { return ""; }
+    function printReport() { window.print(); }
 </script>
 </body>
 </html>
+</div>
