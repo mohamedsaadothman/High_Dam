@@ -744,9 +744,8 @@
                     if (password === userData.nationalId || password === "123" || password === "123456") {
                         document.getElementById('applicantName').value = userData.name;
                         document.getElementById('applicantName').readOnly = true;
-                        // ✅ تعديل 1: الوظيفة متاحة للكتابة دائماً
                         document.getElementById('applicantRole').value = userData.jobCategory || "";
-                        document.getElementById('applicantRole').readOnly = false; 
+                        document.getElementById('applicantRole').readOnly = false; // مفتوح دائماً
                     } else {
                         showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
                         document.getElementById('applicantName').value = "";
@@ -842,7 +841,7 @@
             else items.push({ item: desc, qty: qty, cost: parseFloat(cost) || 0, purpose: purpose });
         });
 
-        if (!valid || items.length === 0) return showCustomAlert("تنبيه", "يرجى إكمال بيانات جميع الأصناف.");
+        if (!valid || items.length === 0) return showCustomAlert("تنبيه", "يرجى إكمال بيانات الأصناف.");
 
         const btn = document.getElementById('submitBtn');
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
@@ -970,15 +969,20 @@
                 
                 let showForMe = false;
 
+                // 1. لو أنا مدير الإدارة
                 if (stage.includes(myRole.replace(/-/g, ' '))) {
                     showForMe = true;
-                } else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
+                }
+                // 2. لو أنا الإدارة المركزية
+                else if (stage.includes("مراجعة") && req.Central_Manager_Name && req.Central_Manager_Name.includes(myRole.replace(/-/g, ' '))) {
                      showForMe = true;
                 } 
-                // ✅ تعديل 2: إظهار الطلبات لإدارة الميزانية أو التخطيط عند التحويل
-                else if (stage.includes("بانتظار رد") && stage.includes(myRole.replace(/-/g, ' '))) {
-                    showForMe = true;
+                // 3. لو أنا إدارة الميزانية أو التخطيط والطلب محول
+                else if (stage.includes("بانتظار رد")) {
+                    if (myRole.includes("الميزانية") && stage.includes("الميزانية")) showForMe = true;
+                    if (myRole.includes("التخطيط") && stage.includes("التخطيط")) showForMe = true;
                 }
+                // 4. لو أنا رئيس مجلس الإدارة
                 else if (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة")) {
                     showForMe = true;
                 }
@@ -1080,7 +1084,6 @@
                 Status: "محول لأخذ الرأي"
             };
         }
-        // ✅ تعديل 3: إرجاع الطلب لرئيس الإدارة المركزية بعد الرد
         else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
             let currentState = {};
             try { currentState = JSON.parse(extraData.reqState || "{}"); } catch(e) {}
@@ -1142,7 +1145,6 @@
             if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
             overlay.remove();
             
-            // البحث عن الطلب لمعرفة حالة التحويل
             let req = activeRequestsData.find(r => r.Request_ID === requestId);
             let centralName = req && req.Central_Manager_Name ? req.Central_Manager_Name : "رئيس الإدارة المركزية";
             let reqState = req && req.Transfer_State ? req.Transfer_State : "{}";
@@ -1195,27 +1197,36 @@
         let buttonsHtml = "";
         if (withActions) {
             const myRole = (loggedInUser.role || "").toString().trim();
-            const isMyTurn = stage.includes(myRole.replace(/-/g, ' '));
+            
+            // تعديل: تحديد صلاحية الرؤية والأزرار للجميع
+            const isMyTurn = stage.includes(myRole.replace(/-/g, ' ')) || 
+                             (stage.includes("بانتظار رد") && (
+                                 (myRole.includes("الميزانية") && stage.includes("الميزانية")) ||
+                                 (myRole.includes("التخطيط") && stage.includes("التخطيط"))
+                             ));
 
             if (isMyTurn) {
-                if (stage.includes("مركزية")) {
+                if (stage.includes("بانتظار رد")) {
+                    // أزرار الإدارات المحول لها
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة على الرأي</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                } else if (stage.includes("مركزية")) {
+                    // أزرار رئيس الإدارة المركزية
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#0d6efd;" onclick="promptTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
-                } else if (stage.includes("بانتظار رد")) {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة على الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض</button>
-                    </div>`;
-                }
-                else if (stage.includes("رئيس مجلس الإدارة")) {
+                } else if (stage.includes("رئيس مجلس الإدارة")) {
+                    // أزرار رئيس مجلس الإدارة
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
                     </div>`;
                 } else {
+                    // أزرار المدير العام
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
