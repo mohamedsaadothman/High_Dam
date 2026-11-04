@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>رفع المستخدمين إلى Firebase</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <style>
+        body { font-family: Arial; background: #1e293b; color: #fff; text-align: center; padding: 50px; }
+        button { padding: 15px 30px; font-size: 20px; background: #198754; color: white; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 20px; }
+        button:disabled { background: #64748b; cursor: not-allowed; }
+        #log { background: #0f172a; padding: 20px; border-radius: 8px; text-align: right; max-width: 800px; margin: 0 auto; min-height: 200px; white-space: pre-wrap; font-family: monospace; }
+        .success { color: #4ade80; } .error { color: #f87171; }
+    </style>
+</head>
+<body>
+
+    <h1>أداة رفع المستخدمين (مرة واحدة)</h1>
+    <p>اضغط على الزر لبدء رفع حسابات (Users) و (Users_contract) إلى Firebase</p>
+    
+    <button id="uploadBtn" onclick="startUpload()">🚀 بدء الرفع</button>
+    
+    <div id="log">في انتظار البدء...</div>
+
+    <script>
+        // إعدادات Firebase الخاصة بك
+        const firebaseConfig = {
+            apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
+            authDomain: "dam-purchases-app.firebaseapp.com",
+            projectId: "dam-purchases-app",
+            storageBucket: "dam-purchases-app.appspot.com",
+            messagingSenderId: "123271128649",
+            appId: "1:123271128649:web:1096b95fc97c8575b50198"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // البيانات من شيت Users (المراجعة) - بناءً على الصورة
+        const usersData = [
+            { username: "رئيس مجلس الادارة", name: "الدكتور محمد رشدى", password: "123", role: "رئيس مجلس الإدارة" },
+            { username: "مدير ادارة الاستحقاقات", name: "عبدالحليم فتحى", password: "123", role: "مدير إدارة" },
+            { username: "مدير ادارة العقود", name: "عمرو الامين", password: "123", role: "مدير إدارة" },
+            { username: "مدير ادارة الميزانية", name: "محمد فاروق", password: "123", role: "مدير إدارة" },
+            { username: "مدير ادارة المشتريات", name: "لمياء احمد حسن", password: "123", role: "مدير إدارة" },
+            { username: "مدير ادارة المخازن", name: "محمد محمود عبدالموجود", password: "123", role: "مدير إدارة" },
+            { username: "مدير الادارة المركزية للتصنيع", name: "ابراهيم فايز", password: "123", role: "مدير إدارة" },
+            { username: "رئيس الادارة المركزية لصيانة السد", name: "محمد عبدالحميد", password: "123", role: "رئيس إدارة مركزية" },
+            { username: "رئيس الادارة المركزية للتخطيط", name: "حمده عبدالجابر", password: "123", role: "رئيس إدارة مركزية" },
+            { username: "رئيس الادارة المركزية للبحوث", name: "مجمد سعد", password: "123", role: "رئيس إدارة مركزية" },
+            { username: "رئيس الادارة المركزية للمالية", name: "احمد محمود", password: "123", role: "رئيس إدارة مركزية" }
+        ];
+
+        // البيانات من شيت Users_contract (العقود) - بناءً على الصورة
+        const contractUsersData = [
+            { username: "1", name: "محمود جابر", password: "1", role: "موظف" },
+            { username: "2", name: "احمد عبد الظاهر", password: "2", role: "مدير" }
+        ];
+
+        async function createUserAndDoc(email, password, userData) {
+            const log = document.getElementById('log');
+            try {
+                // 1. إنشاء الحساب في Authentication
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const uid = userCredential.user.uid;
+                
+                // 2. حفظ البيانات في Firestore
+                await db.collection("users").doc(uid).set({
+                    username: userData.username,
+                    name: userData.name,
+                    role: userData.role,
+                    type: userData.type || 'review' // review أو contract
+                });
+
+                log.innerHTML += `<span class="success">✅ تم إضافة: ${userData.name} (${email})</span>\n`;
+            } catch (error) {
+                if (error.code === 'auth/email-already-in-use') {
+                    log.innerHTML += `<span style="color:#fbbf24">⚠️ الحساب موجود بالفعل: ${email}</span>\n`;
+                } else {
+                    log.innerHTML += `<span class="error">❌ خطأ في ${userData.name}: ${error.message}</span>\n`;
+                }
+            }
+        }
+
+        async function startUpload() {
+            const btn = document.getElementById('uploadBtn');
+            btn.disabled = true;
+            btn.innerText = "جاري الرفع...";
+            const log = document.getElementById('log');
+            log.innerHTML = "بدء العملية...\n";
+
+            // رفع مستخدمي المراجعة
+            log.innerHTML += "\n--- رفع مستخدمي المراجعة (Users) ---\n";
+            for (let u of usersData) {
+                let email = u.username.replace(/\s+/g, '-') + "@dam-app.com";
+                u.type = 'review';
+                await createUserAndDoc(email, u.password, u);
+            }
+
+            // رفع مستخدمي العقود
+            log.innerHTML += "\n--- رفع مستخدمي العقود (Users_contract) ---\n";
+            for (let c of contractUsersData) {
+                let email = c.username + "@contract.dam-app.com";
+                c.type = 'contract';
+                await createUserAndDoc(email, c.password, c);
+            }
+
+            log.innerHTML += "\n🎉 اكتملت العملية بنجاح!";
+            btn.innerText = "تم الرفع";
+        }
+    </script>
+</body>
+</html>
