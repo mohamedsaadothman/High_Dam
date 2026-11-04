@@ -107,7 +107,7 @@
         .filter-bar label { font-size: 11px; color: #94a3b8; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
         .filter-bar input, .filter-bar select { padding: 8px 10px; font-size: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #fff; width: 100%; }
         
-        /* تعديل تنسيق خانات التاريخ لتظهر بانتظام على الموبايل */
+        /* ضبط وتعديل اتجاه خانات التاريخ لتظهر بانتظام على الموبايل */
         .filter-bar input[type="date"] { direction: ltr; text-align: right; font-family: 'Cairo', sans-serif; }
         .filter-bar input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; opacity: 0.9; margin-left: 5px; }
 
@@ -908,7 +908,6 @@
         renderFilteredRequests();
     }
 
-    // الدالة المُحدثة لجلب الطلبات الحالية والقديمة للأرشيف والطلبات المعلقة بدقة
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -1128,23 +1127,35 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            const myRole = (loggedInUser.role || "").toString().trim().replace(/-/g, ' ');
-            const isMyTurn = stage.includes(myRole) || 
-                             (stage.includes("بانتظار") && (
-                                 (myRole.includes("الميزانية") && stage.includes("الميزانية")) ||
-                                 (myRole.includes("التخطيط") && stage.includes("التخطيط"))
-                             )) ||
-                             (myRole.includes("الشئون المالية والإدارية") && stage.includes("الشئون المالية والإدارية")) ||
-                             (myRole.includes("رئيس مجلس الإدارة") && stage.includes("مراجعة رئيس مجلس الإدارة"));
+            const myRole = (loggedInUser.role || "").toString().trim().toLowerCase();
+            const parentDept = (req.parentDepartment || "").toString().trim().toLowerCase();
+            
+            let isMyTurn = false;
+
+            if (myRole.includes("رئيس مجلس الإدارة") || myRole.includes("chairman")) {
+                if (stage.toLowerCase().includes("رئيس مجلس الإدارة")) isMyTurn = true;
+            }
+            else if (myRole.includes("مالية") || myRole.includes("إدارية")) {
+                if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية")) isMyTurn = true;
+            }
+            else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
+                if (stage.toLowerCase().includes(myRole)) isMyTurn = true;
+            }
+            else {
+                // المدير العام للإدارة
+                if (stage.toLowerCase().includes(myRole) || (parentDept && stage.toLowerCase().includes(parentDept))) {
+                    isMyTurn = true;
+                }
+            }
 
             if (isMyTurn) {
-                if (stage.includes("بانتظار رأي")) {
+                if (stage.includes("رئيس مجلس الإدارة")) {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve', {centralName: '${req.Central_Manager_Name}', reqState: '${req.Transfer_State}'})"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
                     </div>`;
-                } 
-                else if (stage.includes("الشئون المالية والإدارية")) {
+                }
+                else if (stage.includes("الشئون المالية والإدارية") || stage.includes("مالية")) {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
@@ -1156,13 +1167,8 @@
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 }
-                else if (stage.includes("رئيس مجلس الإدارة")) {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
-                    </div>`;
-                }
                 else {
+                    // دور المدير العام للإدارة المنشئة
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للإدارة المركزية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
