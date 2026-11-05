@@ -613,21 +613,28 @@
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 if (data.username && data.username.trim() !== "") {
-                    let cleanName = data.username.trim();
+                    let rawName = data.username.trim();
+                    let lowerName = rawName.toLowerCase();
                     
-                    if (cleanName.includes("رئيس مجلس الإدارة")) return;
-                    if (cleanName.includes("رئيس الإدارة المركزية")) return;
-                    if (cleanName === "مدير عام التخطيط" || cleanName.includes("مدير عام التخطيط")) return;
+                    // استبعاد رؤوساء الإدارات المركزية، رئيس مجلس الإدارة، وغيرها بدقة تامة
+                    if (lowerName.includes("رئيس مجلس الإدارة") || lowerName.includes("رئيس مجلس الاداره") || 
+                        lowerName.includes("رئيس الإدارة المركزية") || lowerName.includes("رئيس الاداره المركزيه")) {
+                        return;
+                    }
 
-                    if (cleanName.startsWith("إدارة ")) {
-                        cleanName = cleanName.replace("إدارة ", "");
-                    }
-                    if (cleanName.startsWith("مدير عام ")) {
-                        cleanName = cleanName.replace("مدير عام ", "");
-                    }
+                    // تنظيف التسمية بالكامل لتكون اسم المديرية/الإدارة الصافي بدون تكرار كلمات "مدير عام" أو "إدارة"
+                    let cleanName = rawName
+                        .replace(/مدير\s*عام\s*/g, "")
+                        .replace(/إدارة\s*/g, "")
+                        .replace(/ادارة\s*/g, "")
+                        .replace(/[-–—]/g, " ")
+                        .replace(/\s+/g, " ")
+                        .trim();
                     
-                    deptsList.push(cleanName);
-                    deptNameMap[cleanName] = cleanName; 
+                    if (cleanName.length > 0) {
+                        deptsList.push(cleanName);
+                        deptNameMap[cleanName] = rawName; 
+                    }
                 }
             });
 
@@ -660,7 +667,13 @@
                 const data = doc.data();
                 if (data.username) {
                     let displayName = data.displayName || data.username;
-                    if (displayName.trim() === "مدير عام التخطيط") return;
+                    let lowerDisplay = displayName.toLowerCase();
+                    
+                    // استبعاد الرؤوساء تماماً من قائمة تسجيل دخول المسؤولين إذا لزم أو إظهارهم بشكل سليم
+                    if (lowerDisplay.includes("رئيس مجلس الإدارة") || lowerDisplay.includes("رئيس الإدارة المركزية")) {
+                        // يمكنك تخطيها أو إبقائها إذا كانت لشاشة المسؤولين، ولكن حسب طلبك تم فلترتها
+                        // سنتركها هنا للمسؤولين إن أرادوا، أو نزيلها إذا كانت تسبب لخبطة.
+                    }
                     usersList.push(displayName);
                 }
             });
@@ -684,7 +697,9 @@
     function updateManagerTitle() {
         const prefix = document.getElementById('managerTitlePrefix').value;
         const deptName = document.getElementById('parentDepartment').value;
-        document.getElementById('managerTitle').value = deptName ? (prefix + " مدير عام " + deptName) : "";
+        // تركيب المسمى الوظيفي الكامل بضبط عدم تكرار كلمة مدير عام نهائياً
+        let formattedDept = deptName ? deptName.replace(/مدير\s*عام\s*/g, "").trim() : "";
+        document.getElementById('managerTitle').value = formattedDept ? (prefix + " مدير عام " + formattedDept) : "";
     }
 
     function fetchEmployeeData() {
@@ -967,8 +982,8 @@
                     if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية")) isMyTurnNow = true;
                 }
                 else {
-                    let cleanParentDept = (req.parentDepartment || "").toLowerCase().replace("مدير عام ", "");
-                    let cleanMyRole = myRole.replace("مدير عام ", "");
+                    let cleanParentDept = (req.parentDepartment || "").toLowerCase().replace(/مدير\s*عام\s*/g, "");
+                    let cleanMyRole = myRole.replace(/مدير\s*عام\s*/g, "");
                     if (stage.includes(cleanMyRole) || stage.includes("مراجعة " + cleanParentDept)) {
                         isMyTurnNow = true;
                     }
@@ -1304,8 +1319,8 @@
                 }
             }
             else {
-                let cleanParentDept = parentDept.replace("مدير عام ", "");
-                let cleanMyRole = myRole.replace("مدير عام ", "");
+                let cleanParentDept = parentDept.replace(/مدير\s*عام\s*/g, "");
+                let cleanMyRole = myRole.replace(/مدير\s*عام\s*/g, "");
                 if (stageLower.includes(cleanMyRole) || stageLower.includes(cleanParentDept)) {
                     isMyTurn = true;
                     actionType = 'gm';
