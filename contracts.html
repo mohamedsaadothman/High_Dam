@@ -929,6 +929,7 @@
         renderFilteredRequests();
     }
 
+    // التعديل الجذري والآمن لدالة تحميل ومراجعة الطلبات لضمان عدم اختفائها
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -952,31 +953,39 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                if (myRole.includes("رئيس مجلس الإدارة")) {
-                    if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
-                }
-                else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية") || myRole.includes("الموارد البشرية")) {
-                    if (stage.includes("الشئون المالية") || 
-                        (stage.includes("مالية") && !stage.includes("بعد أخذ الرأي")) ||
-                        stage.includes("بانتظار رأي")) {
+                // 1. فحص إدارة الميزانية أو التخطيط والمتابعة بدقة
+                if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
+                    if (stage.includes("بانتظار رأي") && stage.includes(myRole)) {
                         isMyTurnNow = true;
                     }
                 }
-                else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                    if (stage.includes("بانتظار رأي") && (myRole.includes(stage) || stage.includes(myRole))) isMyTurnNow = true;
+                // 2. رئيس مجلس الإدارة
+                else if (myRole.includes("رئيس مجلس الإدارة")) {
+                    if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
                 }
+                // 3. الشئون المالية والإدارية
+                else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
+                    if (stage.includes("الشئون المالية") || (stage.includes("مالية") && !stage.includes("بعد أخذ الرأي"))) {
+                        isMyTurnNow = true;
+                    }
+                }
+                // 4. رئيس الإدارة المركزية
                 else if (req.centralManager && myRole.includes(req.centralManager.toLowerCase())) {
-                    if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي")) isMyTurnNow = true;
+                    if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية")) {
+                        isMyTurnNow = true;
+                    }
                 }
+                // 5. المدير العام العادي للقسم
                 else {
                     if (stage.includes(myRole) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
                         isMyTurnNow = true;
                     }
                 }
 
-                let passedByMe = history.some(h => h.toLowerCase().includes(myRole));
+                // تحديد ما إذا كان الطلب قد انتهى أو تم اعتماده نهائياً ليذهب للأرشيف
+                let passedByMe = history.some(h => h.toLowerCase().includes(myRole) && !myRole.includes("مالية"));
                 
-                if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || passedByMe) {
+                if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
                 }
 
