@@ -170,10 +170,10 @@
                         <div class="form-group"><label>3- اسم مقدم الطلب:</label><input type="text" id="applicantName" readonly placeholder="يُجلب تلقائياً..." style="background:#1e293b; color:#94a3b8;"></div>
                         <div class="form-group"><label>4- الوظيفة:</label><input type="text" id="applicantRole" required placeholder="اكتب الوظيفة..."></div>
                         <div class="form-group">
-                            <label>5- الإدارة التابع لها:</label>
-                            <div class="custom-select-wrap" id="deptSelectWrap" data-placeholder="-- اختر الإدارة --">
+                            <label>5- المدير العام التابع له:</label>
+                            <div class="custom-select-wrap" id="deptSelectWrap" data-placeholder="-- اختر المدير --">
                                 <div class="custom-select-trigger placeholder" id="deptTrigger" tabindex="0">
-                                    <span class="custom-select-label">-- اختر الإدارة --</span>
+                                    <span class="custom-select-label">-- اختر المدير --</span>
                                     <i class="fas fa-chevron-down select-arrow"></i>
                                 </div>
                                 <div class="custom-select-menu" id="deptMenu"></div>
@@ -615,11 +615,13 @@
                 if (data.username && data.username.trim() !== "") {
                     let cleanName = data.username.trim();
                     
+                    if (cleanName.includes("رئيس مجلس الإدارة")) return;
+                    if (cleanName.includes("رئيس الإدارة المركزية")) return;
                     if (cleanName === "مدير عام التخطيط" || cleanName.includes("مدير عام التخطيط")) return;
                     if (cleanName.includes("إدارة التخطيط والمتابعة")) cleanName = "إدارة التخطيط والمتابعة";
 
-                    if (!cleanName.startsWith("إدارة") && !cleanName.includes("مجلس")) {
-                        cleanName = "إدارة " + cleanName;
+                    if (cleanName.startsWith("إدارة ")) {
+                        cleanName = cleanName.replace("إدارة ", "");
                     }
                     
                     deptsList.push(cleanName);
@@ -1096,22 +1098,41 @@
                 const myRole = loggedInUser.role;
                 
                 for (let key in updatedState) {
-                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                    updatedState[key].date = nowStr;
-                    if (actionType === 'dept_reject' && extraData.rejectReason) {
-                        updatedState[key].reason = extraData.rejectReason;
+                    if (myRole.includes("ميزانية") && key.includes("ميزانية")) {
+                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                        updatedState[key].date = nowStr;
+                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+                    } else if (myRole.includes("تخطيط") && key.includes("تخطيط")) {
+                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                        updatedState[key].date = nowStr;
+                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                     }
                 }
                 
-                let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
+                let allReplied = true;
+                for (let key in updatedState) {
+                    if (updatedState[key].decision === "pending") allReplied = false;
+                }
+                
                 let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
-
-                updates = { 
-                    Current_Stage: "مراجعة " + originalCentral + " (بعد أخذ الرأي)", 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + originalCentral,
-                    Transfer_State: JSON.stringify(updatedState),
-                    History: history
-                };
+                
+                if (allReplied) {
+                    updates = { 
+                        Current_Stage: "مراجعة " + originalCentral + " (بعد أخذ الرأي)", 
+                        Status: "تم أخذ الرأي - بانتظار اعتماد " + originalCentral,
+                        Transfer_State: JSON.stringify(updatedState),
+                        History: history
+                    };
+                } else {
+                    let remaining = [];
+                    for (let key in updatedState) { if(updatedState[key].decision === "pending") remaining.push(key); }
+                    updates = { 
+                        Current_Stage: "بانتظار رأي " + remaining.join(","), 
+                        Status: "قيد الانتظار - بانتظار باقي الآراء",
+                        Transfer_State: JSON.stringify(updatedState),
+                        History: history
+                    };
+                }
             }
             else if (actionType === 'finance_approve') {
                 let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
