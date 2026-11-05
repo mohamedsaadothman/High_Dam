@@ -875,6 +875,7 @@ function switchTab(tab) {
     renderFilteredRequests();
 }
 
+/* ===== loadReviewRequests (النسخة المطلوبة) ===== */
 function loadReviewRequests() {
     if (!loggedInUser || !loggedInUser.role) return;
     const container = document.getElementById('requestsList');
@@ -896,37 +897,46 @@ function loadReviewRequests() {
             let isMyTurnNow = false;
             let isArchivedForMe = false;
 
+            // 1. التحقق إذا كان الطلب في مرحلة أخذ رأي الإدارات الفرعية
             if (stage.includes("بانتظار رأي")) {
                 try {
                     let state = JSON.parse(req.Transfer_State || "{}");
-                    let myKey = Object.keys(state).find(k => k.trim() === myUsername);
-                    if (myKey) {
+                    let myKey = Object.keys(state).find(k => k.trim().toLowerCase() === myUsernameLower);
+                    if (myKey && state[myKey].decision === "pending") {
                         isMyTurnNow = true;
                     }
                 } catch(e) {}
             }
+            // 2. رئيس مجلس الإدارة
             else if (myUsernameLower.includes("رئيس مجلس الإدارة") || myUsernameLower.includes("chairman")) {
                 if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
             }
+            // 3. الشئون المالية والادارية
             else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
-                if (stage.includes("مالية") || stage.includes("الشئون المالية")) isMyTurnNow = true;
+                if (stage.includes("مالية") || stage.includes("الشئون المالية") || stage.includes("بعد أخذ الرأي")) isMyTurnNow = true;
             }
-            else if (req.centralManager && myUsernameLower.includes(req.centralManager.toLowerCase())) {
-                if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي")) isMyTurnNow = true;
+            // 4. رئيس الإدارة المركزية (المسؤول عن الاعتماد)
+            else if (req.Central_Manager_Name && myUsernameLower.includes(req.Central_Manager_Name.toLowerCase())) {
+                if (stage.includes("رئيس الإدارة المركزية") || stage.includes("الاعتماد النهائي")) isMyTurnNow = true;
             }
+            // 5. المدير العام للإدارة الفرعية
             else {
                 if (stage.includes(myUsernameLower) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
                     isMyTurnNow = true;
                 }
             }
 
+            // تحديد ما إذا كان الطلب قد تم معالجته بواسطة هذا المستخدم (ينتقل للأرشيف)
             let passedByMe = history.some(h => h.toLowerCase().includes(myUsernameLower));
-            if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || passedByMe) {
+            if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                 isArchivedForMe = true;
             }
 
-            if (isMyTurnNow) pendingData.push(req);
-            else if (isArchivedForMe) archiveData.push(req);
+            if (isMyTurnNow) {
+                pendingData.push(req);
+            } else if (isArchivedForMe || passedByMe) {
+                archiveData.push(req);
+            }
         });
 
         pendingData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
@@ -1252,6 +1262,7 @@ function buildDeptStateBox(transferStateJson) {
     return html;
 }
 
+/* ===== buildRequestCard (النسخة المطلوبة والمتوافقة) ===== */
 function buildRequestCard(req, withActions) {
     const div = document.createElement('div'); div.className = 'request-card';
     const stage = (req.Current_Stage || "").toString();
