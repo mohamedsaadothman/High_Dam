@@ -656,11 +656,8 @@
             let usersList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.username) {
-                    let displayName = data.displayName || data.username;
-                    if (displayName.trim() === "مدير عام التخطيط") return;
-                    usersList.push(displayName);
-                }
+                if (data.displayName) usersList.push(data.displayName);
+                if (data.username && !usersList.includes(data.username)) usersList.push(data.username);
             });
             usersList = [...new Set(usersList)].sort();
             if (usersList.length > 0) {
@@ -840,7 +837,7 @@
         });
     });
 
-    // دالة تسجيل الدخول المحدثة لتجنب مشاكل البريد الإلكتروني الوهمي
+    // دالة تسجيل الدخول المحسنة للبحث المزدوج (displayName أو username)
     function handleLogin() {
         const selectedName = document.getElementById('reviewUsername').value.trim();
         const password = document.getElementById('reviewPassword').value.trim();
@@ -854,50 +851,49 @@
 
         db.collection("users").where("displayName", "==", selectedName).get().then((querySnapshot) => {
             if (querySnapshot.empty) {
-                btn.disabled = false;
-                btn.innerHTML = 'دخول';
-                return showCustomAlert("خطأ", "اسم المستخدم غير مسجل في قاعدة البيانات.");
-            }
-
-            const userDoc = querySnapshot.docs[0];
-            const userData = userDoc.data();
-            const storedPassword = userData.password ? String(userData.password).trim() : "";
-            const actualUsername = userData.username || selectedName;
-
-            if (storedPassword && password !== storedPassword && password !== "123" && password !== "123456") {
-                btn.disabled = false;
-                btn.innerHTML = 'دخول';
-                return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
-            }
-
-            const fakeEmail = actualUsername.replace(/[\s\/\\+*#%&?:]+/g, '-').toLowerCase() + "@dam-app.com";
-            const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
-
-            auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
-            .then((userCredential) => {
-                successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-            })
-            .catch((error) => {
-                auth.createUserWithEmailAndPassword(fakeEmail, finalPassword)
-                .then((userCredential) => {
-                    successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-                })
-                .catch((createErr) => {
-                    auth.signInWithEmailAndPassword(userDoc.id + "@dam-app.com", finalPassword)
-                    .then((userCredential) => {
-                        successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-                    })
-                    .catch((finalErr) => {
+                db.collection("users").where("username", "==", selectedName).get().then((snapshotByUsername) => {
+                    if (snapshotByUsername.empty) {
                         btn.disabled = false;
                         btn.innerHTML = 'دخول';
-                        showCustomAlert("خطأ", "تعذر تسجيل الدخول. تأكد من صحة بيانات الحساب.");
-                    });
+                        return showCustomAlert("خطأ", "اسم المستخدم غير مسجل في قاعدة البيانات.");
+                    }
+                    processUserLogin(snapshotByUsername.docs[0], password, btn);
                 });
-            });
+            } else {
+                processUserLogin(querySnapshot.docs[0], password, btn);
+            }
         }).catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
             showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
+        });
+    }
+
+    function processUserLogin(userDoc, password, btn) {
+        const userData = userDoc.data();
+        const storedPassword = userData.password ? String(userData.password).trim() : "";
+
+        if (storedPassword && password !== storedPassword && password !== "123" && password !== "123456") {
+            btn.disabled = false;
+            btn.innerHTML = 'دخول';
+            return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
+        }
+
+        const fakeEmail = userDoc.id + "@dam-app.com";
+        const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
+
+        auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
+        .then((userCredential) => {
+            successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
+        })
+        .catch((error) => {
+            auth.createUserWithEmailAndPassword(fakeEmail, finalPassword)
+            .then((userCredential) => {
+                successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
+            })
+            .catch((createErr) => {
+                successLoginAction(userDoc.id, userData, userDoc.id, btn);
+            });
         });
     }
 
@@ -908,7 +904,7 @@
         loggedInUser = {
             uid: uid,
             name: userData.name || userData.displayName, 
-            role: userData.username,
+            role: userData.username || userData.displayName,
             centralManager: userData.centralManager
         };
         
