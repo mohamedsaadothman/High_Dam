@@ -616,13 +616,12 @@
                     let rawName = data.username.trim();
                     let lowerName = rawName.toLowerCase();
                     
-                    // استبعاد رؤوساء الإدارات المركزية، رئيس مجلس الإدارة، وغيرها بدقة تامة
                     if (lowerName.includes("رئيس مجلس الإدارة") || lowerName.includes("رئيس مجلس الاداره") || 
-                        lowerName.includes("رئيس الإدارة المركزية") || lowerName.includes("رئيس الاداره المركزيه")) {
-                        return;
+                        lowerName.includes("رئيس الإدارة المركزية") || lowerName.includes("رئيس الاداره المركزيه") ||
+                        lowerName.includes("الميزانية") || lowerName.includes("التخطيط")) {
+                        return; 
                     }
 
-                    // تنظيف التسمية بالكامل لتكون اسم المديرية/الإدارة الصافي بدون تكرار كلمات "مدير عام" أو "إدارة"
                     let cleanName = rawName
                         .replace(/مدير\s*عام\s*/g, "")
                         .replace(/إدارة\s*/g, "")
@@ -667,13 +666,6 @@
                 const data = doc.data();
                 if (data.username) {
                     let displayName = data.displayName || data.username;
-                    let lowerDisplay = displayName.toLowerCase();
-                    
-                    // استبعاد الرؤوساء تماماً من قائمة تسجيل دخول المسؤولين إذا لزم أو إظهارهم بشكل سليم
-                    if (lowerDisplay.includes("رئيس مجلس الإدارة") || lowerDisplay.includes("رئيس الإدارة المركزية")) {
-                        // يمكنك تخطيها أو إبقائها إذا كانت لشاشة المسؤولين، ولكن حسب طلبك تم فلترتها
-                        // سنتركها هنا للمسؤولين إن أرادوا، أو نزيلها إذا كانت تسبب لخبطة.
-                    }
                     usersList.push(displayName);
                 }
             });
@@ -697,7 +689,6 @@
     function updateManagerTitle() {
         const prefix = document.getElementById('managerTitlePrefix').value;
         const deptName = document.getElementById('parentDepartment').value;
-        // تركيب المسمى الوظيفي الكامل بضبط عدم تكرار كلمة مدير عام نهائياً
         let formattedDept = deptName ? deptName.replace(/مدير\s*عام\s*/g, "").trim() : "";
         document.getElementById('managerTitle').value = formattedDept ? (prefix + " مدير عام " + formattedDept) : "";
     }
@@ -716,7 +707,6 @@
                     if (password === storedPassword) {
                         document.getElementById('applicantName').value = userData.name;
                         document.getElementById('applicantName').readOnly = true;
-                        
                         document.getElementById('applicantRole').value = ""; 
                         document.getElementById('applicantRole').readOnly = false; 
                     } else {
@@ -976,21 +966,47 @@
                     if (stage.includes("مالية") || stage.includes("الشئون المالية")) isMyTurnNow = true;
                 }
                 else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                    if (stage.includes("بانتظار رأي") && (stage.includes("ميزانية") || stage.includes("تخطيط"))) isMyTurnNow = true;
+                    try {
+                        let state = JSON.parse(req.Transfer_State || "{}");
+                        for (let key in state) {
+                            if (myRole.includes("ميزانية") && key.includes("ميزانية") && state[key].decision === "pending") {
+                                isMyTurnNow = true;
+                            }
+                            if (myRole.includes("تخطيط") && key.includes("تخطيط") && state[key].decision === "pending") {
+                                isMyTurnNow = true;
+                            }
+                        }
+                    } catch(e) {}
                 }
                 else if (req.centralManager && myRole.includes(req.centralManager.toLowerCase())) {
                     if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية")) isMyTurnNow = true;
                 }
                 else {
-                    let cleanParentDept = (req.parentDepartment || "").toLowerCase().replace(/مدير\s*عام\s*/g, "");
-                    let cleanMyRole = myRole.replace(/مدير\s*عام\s*/g, "");
-                    if (stage.includes(cleanMyRole) || stage.includes("مراجعة " + cleanParentDept)) {
+                    let cleanParentDept = (req.parentDepartment || "").toLowerCase().replace(/مدير\s*عام\s*/g, "").trim();
+                    let cleanMyRole = myRole.replace(/مدير\s*عام\s*/g, "").replace(/إدارة\s*/g, "").replace(/ادارة\s*/g, "").trim();
+                    
+                    if (stage.includes(cleanMyRole) || stage.includes(cleanParentDept) || 
+                        stage.includes("مراجعة " + cleanParentDept) || stage.includes("مراجعة " + cleanMyRole)) {
                         isMyTurnNow = true;
                     }
                 }
 
                 let passedByMe = history.some(h => h.toLowerCase().includes(myRole));
                 
+                if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
+                    try {
+                        let state = JSON.parse(req.Transfer_State || "{}");
+                        for (let key in state) {
+                            if (myRole.includes("ميزانية") && key.includes("ميزانية") && state[key].decision !== "pending") {
+                                passedByMe = true;
+                            }
+                            if (myRole.includes("تخطيط") && key.includes("تخطيط") && state[key].decision !== "pending") {
+                                passedByMe = true;
+                            }
+                        }
+                    } catch(e) {}
+                }
+
                 if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || passedByMe) {
                     isArchivedForMe = true;
                 }
@@ -1102,9 +1118,15 @@
                 };
             } 
             else if (actionType === 'finance_transfer') {
+                let targetArray = extraData.targetDepts.split(",");
+                let transferObj = {};
+                targetArray.forEach(dept => {
+                    transferObj[dept.trim()] = { decision: "pending", date: nowStr };
+                });
+
                 updates = { 
                     Current_Stage: "بانتظار رأي " + extraData.targetDepts, 
-                    Transfer_State: JSON.stringify({ [extraData.targetDepts]: { decision: "pending", date: nowStr } }),
+                    Transfer_State: JSON.stringify(transferObj),
                     Status: "قيد الانتظار - أخذ رأي " + extraData.targetDepts,
                     History: history
                 };
@@ -1274,12 +1296,14 @@
             let actionType = null;
 
             if (stageLower.includes("بانتظار رأي") && (myRole.includes("ميزانية") || myRole.includes("تخطيط"))) {
-                if (stageLower.includes(myRole) || 
-                    (myRole.includes("ميزانية") && stageLower.includes("ميزانية")) || 
-                    (myRole.includes("تخطيط") && stageLower.includes("تخطيط"))) {
-                    isMyTurn = true;
-                    actionType = 'dept_opinion';
-                }
+                try {
+                    let state = JSON.parse(req.Transfer_State || "{}");
+                    for (let key in state) {
+                        if (myRole.includes("ميزانية") && key.includes("ميزانية") && state[key].decision === "pending") isMyTurn = true;
+                        if (myRole.includes("تخطيط") && key.includes("تخطيط") && state[key].decision === "pending") isMyTurn = true;
+                    }
+                } catch(e) {}
+                if (isMyTurn) actionType = 'dept_opinion';
             }
             else if (myRole.includes("رئيس مجلس الإدارة") || myRole.includes("chairman")) {
                 if (stageLower.includes("رئيس مجلس الإدارة") && !stageLower.includes("الشئون")) {
@@ -1319,9 +1343,11 @@
                 }
             }
             else {
-                let cleanParentDept = parentDept.replace(/مدير\s*عام\s*/g, "");
-                let cleanMyRole = myRole.replace(/مدير\s*عام\s*/g, "");
-                if (stageLower.includes(cleanMyRole) || stageLower.includes(cleanParentDept)) {
+                let cleanParentDept = parentDept.replace(/مدير\s*عام\s*/g, "").trim();
+                let cleanMyRole = myRole.replace(/مدير\s*عام\s*/g, "").replace(/إدارة\s*/g, "").replace(/ادارة\s*/g, "").trim();
+                
+                if (stageLower.includes(cleanMyRole) || stageLower.includes(cleanParentDept) || 
+                    stageLower.includes("مراجعة " + cleanParentDept) || stageLower.includes("مراجعة " + cleanMyRole)) {
                     isMyTurn = true;
                     actionType = 'gm';
                 }
