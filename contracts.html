@@ -280,7 +280,7 @@
                             <input type="date" id="filterDateTo">
                         </div>
                         <div class="filter-group">
-                            <label><i class="fas fa-building"></i> الإدارة</label>
+                            <label><i class="fas fa-building"></i> المدير العام / الجهة</label>
                             <select id="filterDept">
                                 <option value="">-- الكل --</option>
                             </select>
@@ -618,10 +618,12 @@
                     if (cleanName.includes("رئيس مجلس الإدارة")) return;
                     if (cleanName.includes("رئيس الإدارة المركزية")) return;
                     if (cleanName === "مدير عام التخطيط" || cleanName.includes("مدير عام التخطيط")) return;
-                    if (cleanName.includes("إدارة التخطيط والمتابعة")) cleanName = "إدارة التخطيط والمتابعة";
 
                     if (cleanName.startsWith("إدارة ")) {
                         cleanName = cleanName.replace("إدارة ", "");
+                    }
+                    if (cleanName.startsWith("مدير عام ")) {
+                        cleanName = cleanName.replace("مدير عام ", "");
                     }
                     
                     deptsList.push(cleanName);
@@ -962,10 +964,12 @@
                     if (stage.includes("بانتظار رأي") && (stage.includes("ميزانية") || stage.includes("تخطيط"))) isMyTurnNow = true;
                 }
                 else if (req.centralManager && myRole.includes(req.centralManager.toLowerCase())) {
-                    if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي")) isMyTurnNow = true;
+                    if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية")) isMyTurnNow = true;
                 }
                 else {
-                    if (stage.includes(myRole) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
+                    let cleanParentDept = (req.parentDepartment || "").toLowerCase().replace("مدير عام ", "");
+                    let cleanMyRole = myRole.replace("مدير عام ", "");
+                    if (stage.includes(cleanMyRole) || stage.includes("مراجعة " + cleanParentDept)) {
                         isMyTurnNow = true;
                     }
                 }
@@ -1300,7 +1304,9 @@
                 }
             }
             else {
-                if (stageLower.includes(myRole) || (parentDept && stageLower.includes(parentDept))) {
+                let cleanParentDept = parentDept.replace("مدير عام ", "");
+                let cleanMyRole = myRole.replace("مدير عام ", "");
+                if (stageLower.includes(cleanMyRole) || stageLower.includes(cleanParentDept)) {
                     isMyTurn = true;
                     actionType = 'gm';
                 }
@@ -1364,7 +1370,7 @@
             </div>
             <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
             <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName || '-'} (${req.role || '-'})</span></div>
-            <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || '-'}</span></div>
+            <div class="req-row"><strong>المدير العام التابع له:</strong> <span>${req.parentDepartment || '-'}</span></div>
             <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || '0'} ج.م</span></div>
             ${rejectBlock}
             <div style="margin-top: 10px; display:flex; gap:8px;">
@@ -1408,7 +1414,7 @@
         document.getElementById('printReqId').textContent = req.Request_ID;
         document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '';
         document.getElementById('printParentDept').textContent = "إدارة " + (req.parentDepartment || "");
-        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / مدير عام إدارة " + (req.parentDepartment || "");
+        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / مدير عام " + (req.parentDepartment || "");
         document.getElementById('printApplicantName').textContent = req.applicantName || "---";
         document.getElementById('printApplicantRole').textContent = req.role || "---";
         document.getElementById('printNationalId').textContent = req.nationalId || "---";
@@ -1536,7 +1542,7 @@
                 "التاريخ": r.Timestamp ? new Date(r.Timestamp).toLocaleDateString('ar-EG') : "",
                 "اسم مقدم الطلب": r.applicantName || "",
                 "الوظيفة": r.role || "",
-                "الإدارة": r.parentDepartment || "",
+                "المدير العام التابع له": r.parentDepartment || "",
                 "الرقم القومي": r.nationalId || "",
                 "الهاتف": r.phone || "",
                 "اسم المدير": r.managerName || "",
@@ -1684,7 +1690,7 @@
                 <span class="badge ${badgeClass}">${status || stage || '-'}</span>
             </div>
             <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
-            <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment || '-'}</span></div>
+            <div class="req-row"><strong>المدير العام التابع له:</strong> <span>${req.parentDepartment || '-'}</span></div>
             <div class="req-row"><strong>المرحلة الحالية:</strong> <span>${stage || '-'}</span></div>
             <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${req.totalCost || '0'} ج.م</span></div>
             <div class="req-row" style="flex-direction:column; align-items:flex-start;"><strong>الأصناف:</strong> <span style="color:#cbd5e1;">${itemsSummary || '-'}</span></div>
@@ -1785,7 +1791,7 @@
                         <span class="badge badge-ok">${req.Status}</span>
                     </div>
                     <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName}</span></div>
-                    <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment}</span></div>
+                    <div class="req-row"><strong>المدير العام التابع له:</strong> <span>${req.parentDepartment}</span></div>
                     <div class="req-row"><strong>التكلفة:</strong> <span>${req.totalCost} ج.م</span></div>
                     <div class="req-actions">
                         <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
