@@ -840,6 +840,7 @@
         });
     });
 
+    // دالة تسجيل الدخول المحدثة لتجنب مشاكل البريد الإلكتروني الوهمي
     function handleLogin() {
         const selectedName = document.getElementById('reviewUsername').value.trim();
         const password = document.getElementById('reviewPassword').value.trim();
@@ -852,62 +853,73 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
         db.collection("users").where("displayName", "==", selectedName).get().then((querySnapshot) => {
-            let actualUsername = selectedName; 
-            let firestorePassword = "";
-
-            if (!querySnapshot.empty) {
-                const docData = querySnapshot.docs[0].data();
-                actualUsername = docData.username;
-                firestorePassword = docData.password ? String(docData.password) : "";
+            if (querySnapshot.empty) {
+                btn.disabled = false;
+                btn.innerHTML = 'دخول';
+                return showCustomAlert("خطأ", "اسم المستخدم غير مسجل في قاعدة البيانات.");
             }
 
-            if (firestorePassword && password !== firestorePassword && password !== "123" && password !== "123456") {
+            const userDoc = querySnapshot.docs[0];
+            const userData = userDoc.data();
+            const storedPassword = userData.password ? String(userData.password).trim() : "";
+            const actualUsername = userData.username || selectedName;
+
+            if (storedPassword && password !== storedPassword && password !== "123" && password !== "123456") {
                 btn.disabled = false;
                 btn.innerHTML = 'دخول';
                 return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
             }
 
-            const fakeEmail = actualUsername.replace(/\s+/g, '-') + "@dam-app.com";
+            const fakeEmail = actualUsername.replace(/[\s\/\\+*#%&?:]+/g, '-').toLowerCase() + "@dam-app.com";
             const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
 
             auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
             .then((userCredential) => {
-                db.collection("users").doc(userCredential.user.uid).get().then((doc) => {
-                    btn.disabled = false;
-                    btn.innerHTML = 'دخول';
-
-                    if (doc.exists) {
-                        const userData = doc.data();
-                        loggedInUser = {
-                            uid: userCredential.user.uid,
-                            name: userData.name, 
-                            role: userData.username,
-                            centralManager: userData.centralManager
-                        };
-                        
-                        localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
-                        
-                        document.getElementById('loginBox').style.display = 'none';
-                        document.getElementById('dashboard').style.display = 'block';
-                        document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + " (" + loggedInUser.role + ")";
-                        
-                        loadReviewRequests();
-                        startAutoRefresh();
-                    } else {
-                        showCustomAlert("خطأ", "الحساب غير مسجل.");
-                    }
-                });
+                successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
             })
             .catch((error) => {
-                btn.disabled = false;
-                btn.innerHTML = 'دخول';
-                showCustomAlert("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
+                auth.createUserWithEmailAndPassword(fakeEmail, finalPassword)
+                .then((userCredential) => {
+                    successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
+                })
+                .catch((createErr) => {
+                    auth.signInWithEmailAndPassword(userDoc.id + "@dam-app.com", finalPassword)
+                    .then((userCredential) => {
+                        successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
+                    })
+                    .catch((finalErr) => {
+                        btn.disabled = false;
+                        btn.innerHTML = 'دخول';
+                        showCustomAlert("خطأ", "تعذر تسجيل الدخول. تأكد من صحة بيانات الحساب.");
+                    });
+                });
             });
         }).catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
-            showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
         });
+    }
+
+    function successLoginAction(docId, userData, uid, btn) {
+        btn.disabled = false;
+        btn.innerHTML = 'دخول';
+
+        loggedInUser = {
+            uid: uid,
+            name: userData.name || userData.displayName, 
+            role: userData.username,
+            centralManager: userData.centralManager
+        };
+        
+        localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
+        
+        document.getElementById('loginBox').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + " (" + loggedInUser.role + ")";
+        
+        loadReviewRequests();
+        startAutoRefresh();
     }
 
     function logoutReviewUser() {
@@ -929,7 +941,7 @@
         renderFilteredRequests();
     }
 
-    // الدالة المُحدثة والشاملة لمعالجة ظهور الطلبات لجميع الجهات (بما فيها رئيس الإدارة المركزية بعد أخذ الرأي)
+    // دالة التحميل المطورة والمصححة تماماً للتعامل مع الـ Transfer_State وأسماء الميزانية والتخطيط
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -953,13 +965,14 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
+                let state = {};
+                try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+
                 // 1. إدارة الميزانية
                 if (myRole.includes("ميزانية")) {
                     if (stage.includes("ميزانية") || stage.includes("أخذ رأي")) {
-                        let state = {};
-                        try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-                        let myDeptKey = Object.keys(state).find(k => k.includes("ميزانية"));
-                        if (!myDeptKey || state[myDeptKey].decision === "pending") {
+                        let matchedKey = Object.keys(state).find(k => k.toLowerCase().includes("ميزانية"));
+                        if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
                             isMyTurnNow = true;
                         }
                     }
@@ -967,17 +980,15 @@
                 // 2. إدارة التخطيط والمتابعة
                 else if (myRole.includes("تخطيط")) {
                     if (stage.includes("تخطيط") || stage.includes("أخذ رأي")) {
-                        let state = {};
-                        try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-                        let myDeptKey = Object.keys(state).find(k => k.includes("تخطيط"));
-                        if (!myDeptKey || state[myDeptKey].decision === "pending") {
+                        let matchedKey = Object.keys(state).find(k => k.toLowerCase().includes("تخطيط"));
+                        if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
                             isMyTurnNow = true;
                         }
                     }
                 }
-                // 3. رئيس الإدارة المركزية (يظهر له الطلب بانتظار الاعتماد بعد أخذ الرأي أو مراحله الخاصة)
-                else if (myRole.includes("رئيس الإدارة المركزية") || (req.centralManager && myRole.includes(req.centralManager.toLowerCase()))) {
-                    if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية")) {
+                // 3. رئيس الإدارة المركزية
+                else if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (req.centralManager && myRole.includes(req.centralManager.toLowerCase()))) {
+                    if (stage.includes("أخذ الرأي") || stage.includes("أخذ رأي") || stage.includes("بانتظار اعتماد") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية") || status.includes("بانتظار اعتماد رئيس الإدارة المركزية")) {
                         isMyTurnNow = true;
                     }
                 }
@@ -987,7 +998,7 @@
                 }
                 // 5. الشئون المالية والإدارية
                 else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
-                    if (stage.includes("الشئون المالية") || (stage.includes("مالية") && !stage.includes("بعد أخذ الرأي"))) {
+                    if (stage.includes("الشئون المالية") || (stage.includes("مالية") && !stage.includes("أخذ الرأي") && !status.includes("تم أخذ الرأي"))) {
                         isMyTurnNow = true;
                     }
                 }
@@ -1089,8 +1100,10 @@
 
             if (actionType === 'gm_approve') {
                 db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
-                    let centralName = "رئيس الإدارة المركزية";
-                    if(!querySnapshot.empty) centralName = querySnapshot.docs[0].data().centralManager || centralName;
+                    let centralName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+                    if(!querySnapshot.empty && querySnapshot.docs[0].data().centralManager) {
+                        centralName = querySnapshot.docs[0].data().centralManager;
+                    }
                     
                     updates = { 
                         Current_Stage: "مراجعة " + centralName, 
@@ -1143,18 +1156,17 @@
                 }
                 
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
+                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 
-                // تحديث المرحلة بوضوح ليعود الطلب مباشرة لرئيس الإدارة المركزية
                 updates = { 
                     Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + originalCentral, 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole,
+                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + originalCentral,
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
             }
             else if (actionType === 'finance_approve') {
-                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
+                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
                 updates = { 
                     Current_Stage: "مراجعة " + originalCentral + " (الاعتماد النهائي)", 
                     Finance_Date: nowStr, 
@@ -1258,6 +1270,7 @@
         const stage = (req.Current_Stage || "").toString();
         const status = (req.Status || "").toString();
         const stageLower = stage.toLowerCase();
+        const statusLower = status.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
@@ -1287,33 +1300,27 @@
                     actionType = 'chairman';
                 }
             }
-            else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية") || myRole.includes("الموارد البشرية")) {
-                if (stageLower.includes("الشئون المالية") || 
-                    (stageLower.includes("مالية") && !stageLower.includes("بعد أخذ الرأي"))) {
-                    isMyTurn = true;
-                    actionType = 'finance';
-                }
-            }
-            else if (stageLower.includes("بعد أخذ الرأي")) {
-                if ((centralName && myRole.includes(centralName)) || 
-                    myRole.includes("رئيس الإدارة المركزية") || 
-                    stageLower.includes(myRole)) {
+            else if (stageLower.includes("بعد أخذ الرأي") || statusLower.includes("تم أخذ الرأي")) {
+                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
                     isMyTurn = true;
                     actionType = 'central_final';
                 }
             }
-            else if (stageLower.includes("الاعتماد النهائي") || stageLower.includes("(الاعتماد النهائي)")) {
-                if ((centralName && myRole.includes(centralName)) || 
-                    myRole.includes("رئيس الإدارة المركزية") || 
-                    stageLower.includes(myRole)) {
+            else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
+                if (stageLower.includes("الشئون المالية") || 
+                    (stageLower.includes("مالية") && !stageLower.includes("أخذ الرأي"))) {
+                    isMyTurn = true;
+                    actionType = 'finance';
+                }
+            }
+            else if (stageLower.includes("الاعتماد النهائي")) {
+                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
                     isMyTurn = true;
                     actionType = 'central_final_approve';
                 }
             }
-            else if (stageLower.includes("رئيس الإدارة المركزية") && !stageLower.includes("الشئون")) {
-                if ((centralName && myRole.includes(centralName)) || 
-                    myRole.includes("رئيس الإدارة المركزية") || 
-                    stageLower.includes(myRole)) {
+            else if (stageLower.includes("رئيس الإدارة المركزية") || myRole.includes("مركزية")) {
+                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
                     isMyTurn = true;
                     actionType = 'central';
                 }
@@ -1352,13 +1359,7 @@
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 }
-                else if (actionType === 'central_final') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                    </div>`;
-                }
-                else if (actionType === 'central_final_approve') {
+                else if (actionType === 'central_final' || actionType === 'central_final_approve') {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
