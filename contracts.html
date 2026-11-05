@@ -604,8 +604,8 @@ function loadDepartments() {
         
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            if (data.displayName && data.displayName.trim() !== "") {
-                let cleanName = data.displayName.trim();
+            if (data.name && data.name.trim() !== "") {
+                let cleanName = data.name.trim();
                 if (!deptsList.includes(cleanName)) {
                     deptsList.push(cleanName);
                     deptNameMap[cleanName] = data.username; 
@@ -627,8 +627,7 @@ function loadReviewUsersList() {
         querySnapshot.forEach((doc) => {
             const data = doc.data();
             if (data.username) {
-                let displayName = data.displayName || data.username;
-                if (displayName.trim() === "مدير عام التخطيط") return;
+                let displayName = data.name || data.username;
                 usersList.push(displayName);
             }
         });
@@ -825,7 +824,7 @@ function handleLogin() {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-    db.collection("users").where("displayName", "==", selectedName).get().then((querySnapshot) => {
+    db.collection("users").where("name", "==", selectedName).get().then((querySnapshot) => {
         let actualUsername = selectedName; 
         if (!querySnapshot.empty) actualUsername = querySnapshot.docs[0].data().username;
 
@@ -894,8 +893,8 @@ function loadReviewRequests() {
         pendingData = [];
         archiveData = [];
         
-        const myRole = (loggedInUser.role || "").toString().trim().toLowerCase();
-        const myDisplayName = (loggedInUser.name || "").toString().trim().toLowerCase();
+        const myUsername = (loggedInUser.role || "").toString().trim(); 
+        const myUsernameLower = myUsername.toLowerCase();
 
         querySnapshot.forEach((doc) => {
             const req = doc.data();
@@ -906,28 +905,31 @@ function loadReviewRequests() {
             let isMyTurnNow = false;
             let isArchivedForMe = false;
 
-            if (myRole.includes("رئيس مجلس الإدارة")) {
+            if (stage.includes("بانتظار رأي")) {
+                try {
+                    let state = JSON.parse(req.Transfer_State || "{}");
+                    let myKey = Object.keys(state).find(k => k.trim() === myUsername);
+                    if (myKey) {
+                        isMyTurnNow = true;
+                    }
+                } catch(e) {}
+            }
+            else if (myUsernameLower.includes("رئيس مجلس الإدارة") || myUsernameLower.includes("chairman")) {
                 if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
             }
-            else if (myRole.includes("مالية") || myRole.includes("إدارية")) {
+            else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
                 if (stage.includes("مالية") || stage.includes("الشئون المالية")) isMyTurnNow = true;
             }
-            else if (stage.includes("بانتظار رأي")) {
-                let isDeptMentioned = stage.includes(myRole) || stage.includes(myDisplayName);
-                if (isDeptMentioned || (myRole.includes("ميزانية") && stage.includes("ميزانية")) || (myRole.includes("تخطيط") && stage.includes("تخطيط"))) {
-                    isMyTurnNow = true;
-                }
-            }
-            else if (req.centralManager && myRole.includes(req.centralManager.toLowerCase())) {
+            else if (req.centralManager && myUsernameLower.includes(req.centralManager.toLowerCase())) {
                 if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي")) isMyTurnNow = true;
             }
             else {
-                if (stage.includes(myRole) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
+                if (stage.includes(myUsernameLower) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
                     isMyTurnNow = true;
                 }
             }
 
-            let passedByMe = history.some(h => h.toLowerCase().includes(myRole));
+            let passedByMe = history.some(h => h.toLowerCase().includes(myUsernameLower));
             if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || passedByMe) {
                 isArchivedForMe = true;
             }
@@ -1146,7 +1148,7 @@ function promptFinanceTransfer(requestId) {
       <div class="custom-modal-box" style="max-width:520px;">
         <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
         <div class="custom-modal-body" style="text-align:right;">
-          <p style="margin-bottom:12px; font-size:13px; color:#475569;">جاري تحميل الإدارات...</p>
+          <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة المطلوب أخذ رأيها:</p>
           <div id="transferOptionsContainer" style="max-height: 300px; overflow-y: auto;"></div>
         </div>
         <div style="display:flex; gap:8px;">
@@ -1165,31 +1167,36 @@ function promptFinanceTransfer(requestId) {
         
         qs.forEach(doc => {
             const data = doc.data();
-            const name = data.displayName || data.username || "";
+            const username = data.username || "";
+            const realName = data.name || username; 
             
-            if (name.includes("مجلس الإدارة") || name.includes("مالية") || name.includes("المدير العام")) return;
+            const lowerName = realName.toLowerCase() + " " + username.toLowerCase();
+            if (lowerName.includes("مالية") || lowerName.includes("إدارية") || lowerName.includes("finance") || lowerName.includes("مجلس الإدارة")) return;
 
             found++;
             container.innerHTML += `
                 <label class="transfer-option">
-                    <input type="checkbox" class="dept-checkbox" value="${name}">
-                    <span>${name}</span>
+                    <input type="checkbox" class="dept-checkbox" value="${username}">
+                    <span>${realName} (${username})</span>
                 </label>`;
         });
         
         if(found === 0) {
-            container.innerHTML = '<p style="color:red; font-size:12px; font-weight:bold;">لم يتم العثور على إدارات متاحة للتحويل. تأكد من إعدادات المستخدمين في Firestore.</p>';
+            container.innerHTML = '<p style="color:red; font-size:12px; font-weight:bold;">لا توجد إدارات متاحة للتحويل.</p>';
         }
 
         document.getElementById('transferConfirm').onclick = () => {
-            const selected = [];
+            const selectedUsernames = [];
             document.querySelectorAll('.dept-checkbox:checked').forEach(cb => {
-                selected.push(cb.value);
+                selectedUsernames.push(cb.value);
             });
             
-            if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
+            if (selectedUsernames.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
             overlay.remove();
-            processAction(requestId, "finance_transfer", { targetDepts: selected.join(",") });
+            
+            processAction(requestId, "finance_transfer", { 
+                targetDepts: selectedUsernames.join(",") 
+            });
         };
     }).catch(err => {
         console.error(err);
@@ -1242,25 +1249,30 @@ function buildRequestCard(req, withActions) {
 
     let buttonsHtml = "";
     if (withActions) {
-        const myRole = (loggedInUser.role || "").toString().trim().toLowerCase();
+        const myUsername = (loggedInUser.role || "").toString().trim(); 
+        const myUsernameLower = myUsername.toLowerCase();
         const parentDept = (req.parentDepartment || "").toString().trim().toLowerCase();
         const centralName = (req.Central_Manager_Name || "").toString().trim().toLowerCase();
         let isMyTurn = false;
 
-        if (myRole.includes("رئيس مجلس الإدارة") || myRole.includes("chairman")) {
+        if (stage.toLowerCase().includes("بانتظار رأي")) {
+            try {
+                let state = JSON.parse(req.Transfer_State || "{}");
+                let myKey = Object.keys(state).find(k => k.trim() === myUsername);
+                if (myKey) isMyTurn = true;
+            } catch(e) {}
+        }
+        else if (myUsernameLower.includes("رئيس مجلس الإدارة") || myUsernameLower.includes("chairman")) {
             if (stage.toLowerCase().includes("رئيس مجلس الإدارة")) isMyTurn = true;
         }
-        else if (myRole.includes("مالية") || myRole.includes("إدارية")) {
+        else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
             if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية")) isMyTurn = true;
         }
-        else if (stage.toLowerCase().includes("بانتظار رأي")) {
-            if (stage.toLowerCase().includes(myRole) || (myRole.includes("ميزانية") && stage.toLowerCase().includes("ميزانية")) || (myRole.includes("تخطيط") && stage.toLowerCase().includes("تخطيط"))) isMyTurn = true;
-        }
-        else if (centralName && myRole.includes(centralName)) {
+        else if (centralName && myUsernameLower.includes(centralName)) {
             if (stage.toLowerCase().includes(centralName) || stage.toLowerCase().includes("رئيس الإدارة المركزية")) isMyTurn = true;
         }
         else {
-            if (stage.toLowerCase().includes(myRole) || (parentDept && stage.toLowerCase().includes(parentDept))) isMyTurn = true;
+            if (stage.toLowerCase().includes(myUsernameLower) || (parentDept && stage.toLowerCase().includes(parentDept))) isMyTurn = true;
         }
 
         if (isMyTurn) {
@@ -1752,7 +1764,7 @@ function promptContractReject(requestId) {
     document.body.appendChild(overlay);
     document.getElementById('rejectContractCancel').onclick = () => overlay.remove();
     document.getElementById('rejectContractConfirm').onclick = () => {
-        const reason = document.getElementById('contractRejectReasonInput').value.trim();
+        const reason = document.getElementById('rejectContractReasonInput').value.trim();
         if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
         overlay.remove();
         db.collection("requests").doc(requestId).update({
