@@ -596,7 +596,7 @@ class CustomSelect {
 
 let deptSelect, titleSelect, reviewUserSelect;
 
-/* ===== Load Departments (يعتمد على حقل username) ===== */
+/* ===== Load Departments ===== */
 function loadDepartments() {
     db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
         let deptsList = [];
@@ -604,7 +604,6 @@ function loadDepartments() {
         
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            // هنا بنجلب من الـ username مش الـ name
             if (data.username && data.username.trim() !== "") {
                 let cleanName = data.username.trim();
                 if (!deptsList.includes(cleanName)) {
@@ -622,7 +621,7 @@ function loadDepartments() {
     }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
 }
 
-/* ===== Load Review Users List (للدخول يعتمد على حقل username) ===== */
+/* ===== Load Review Users List ===== */
 function loadReviewUsersList() {
     db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
         let usersList = [];
@@ -1039,7 +1038,7 @@ function processAction(requestId, actionType, extraData = {}) {
             let deptsArray = extraData.targetDepts.split(",");
             let stateObj = {};
             deptsArray.forEach(d => {
-                stateObj[d] = { decision: "pending", date: nowStr };
+                stateObj[d.trim()] = { decision: "pending", date: nowStr };
             });
 
             updates = { 
@@ -1053,18 +1052,42 @@ function processAction(requestId, actionType, extraData = {}) {
             let currentState = {};
             try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
             let updatedState = { ...currentState };
+            
+            const myUsername = (loggedInUser.role || "").trim();
             for (let key in updatedState) {
-                updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                updatedState[key].date = nowStr;
-                if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+                if (key.trim() === myUsername) {
+                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                    updatedState[key].date = nowStr;
+                    if (actionType === 'dept_reject' && extraData.rejectReason) {
+                        updatedState[key].reason = extraData.rejectReason;
+                    }
+                }
             }
+
+            let allReplied = true;
+            for (let key in updatedState) {
+                if (updatedState[key].decision === 'pending') {
+                    allReplied = false;
+                    break;
+                }
+            }
+
             let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-            updates = { 
-                Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية (بعد أخذ الرأي)", 
-                Status: "تم أخذ الرأي - " + decisionText + " من " + loggedInUser.role,
-                Transfer_State: JSON.stringify(updatedState),
-                History: history
-            };
+            
+            if (allReplied) {
+                updates = { 
+                    Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية (بعد أخذ الرأي)", 
+                    Status: "تم أخذ آراء الإدارات - جاهز للاعتماد",
+                    Transfer_State: JSON.stringify(updatedState),
+                    History: history
+                };
+            } else {
+                updates = { 
+                    Status: "تم الرد بـ " + decisionText + " من " + myUsername + " - بانتظار باقي الإدارات",
+                    Transfer_State: JSON.stringify(updatedState),
+                    History: history
+                };
+            }
         }
         else if (actionType === 'finance_approve') {
             let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
@@ -1140,8 +1163,10 @@ function promptFinanceTransfer(requestId) {
       <div class="custom-modal-box" style="max-width:520px;">
         <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
         <div class="custom-modal-body" style="text-align:right;">
-          <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة المطلوب أخذ رأيها:</p>
-          <div id="transferOptionsContainer" style="max-height: 300px; overflow-y: auto;"></div>
+          <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (أو الإدارتين) المطلوب أخذ رأيها:</p>
+          <div id="transferOptionsContainer" style="max-height: 300px; overflow-y: auto;">
+             <p style="text-align:center; color:#64748b;">جاري البحث...</p>
+          </div>
         </div>
         <div style="display:flex; gap:8px;">
           <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
@@ -1160,21 +1185,20 @@ function promptFinanceTransfer(requestId) {
         qs.forEach(doc => {
             const data = doc.data();
             const username = data.username || "";
-            
-            // استبعاد الإدارة المالية والقيادات عشان ميبقوش في قائمة التحويل
             const lowerName = username.toLowerCase();
-            if (lowerName.includes("مالية") || lowerName.includes("إدارية") || lowerName.includes("finance") || lowerName.includes("مجلس الإدارة") || lowerName.includes("رئيس")) return;
-
-            found++;
-            container.innerHTML += `
-                <label class="transfer-option">
-                    <input type="checkbox" class="dept-checkbox" value="${username}">
-                    <span>${username}</span>
-                </label>`;
+            
+            if (lowerName.includes("ميزانية") || lowerName.includes("تخطيط")) {
+                found++;
+                container.innerHTML += `
+                    <label class="transfer-option">
+                        <input type="checkbox" class="dept-checkbox" value="${username}">
+                        <span>${username}</span>
+                    </label>`;
+            }
         });
         
         if(found === 0) {
-            container.innerHTML = '<p style="color:red; font-size:12px; font-weight:bold;">لا توجد إدارات متاحة للتحويل.</p>';
+            container.innerHTML = '<p style="color:red; font-size:12px; font-weight:bold;">لم يتم العثور على إدارة الميزانية أو التخطيط في الفايربيز. تأكد من كتابة أسمائهم.</p>';
         }
 
         document.getElementById('transferConfirm').onclick = () => {
@@ -1254,11 +1278,11 @@ function buildRequestCard(req, withActions) {
                 if (myKey) isMyTurn = true;
             } catch(e) {}
         }
+        else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
+            if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية") || stage.toLowerCase().includes("بعد أخذ الرأي")) isMyTurn = true;
+        }
         else if (myUsernameLower.includes("رئيس مجلس الإدارة") || myUsernameLower.includes("chairman")) {
             if (stage.toLowerCase().includes("رئيس مجلس الإدارة")) isMyTurn = true;
-        }
-        else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
-            if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية")) isMyTurn = true;
         }
         else if (centralName && myUsernameLower.includes(centralName)) {
             if (stage.toLowerCase().includes(centralName) || stage.toLowerCase().includes("رئيس الإدارة المركزية")) isMyTurn = true;
@@ -1280,7 +1304,7 @@ function buildRequestCard(req, withActions) {
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
                 </div>`;
             }
-            else if (stage.includes("الشئون المالية والإدارية") || stage.includes("مالية")) {
+            else if (stage.includes("بعد أخذ الرأي") || stage.includes("الشئون المالية") || stage.includes("مالية")) {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للجهة المختصة</button>
                     <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
@@ -1293,7 +1317,7 @@ function buildRequestCard(req, withActions) {
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                 </div>`;
             }
-            else if (stage.includes("بعد أخذ الرأي") || stage.includes("الاعتماد النهائي")) {
+            else if (stage.includes("الاعتماد النهائي")) {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
