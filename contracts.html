@@ -462,7 +462,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-/* ===== Global State ===== */
+/* ===== Global State & Caching ===== */
 let lastCreatedReqId = "REQ-000000";
 let loggedInUser = {};
 let currentTrackUser = null;
@@ -478,6 +478,8 @@ let currentTab = 'pending';
 let pendingData = [];
 let archiveData = [];
 let deptNameMap = {};
+let cachedReviewUsers = null;
+let cachedDepts = null;
 
 /* ===== Init on Load ===== */
 window.addEventListener('DOMContentLoaded', () => {
@@ -596,16 +598,21 @@ class CustomSelect {
 
 let deptSelect, titleSelect, reviewUserSelect;
 
-/* ===== Load Departments ===== */
+/* ===== Load Departments (Optimized & Using displayName) ===== */
 function loadDepartments() {
+    if (cachedDepts) {
+        setupDeptDropdown(cachedDepts);
+        return;
+    }
     db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
         let deptsList = [];
         deptNameMap = {}; 
         
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            if (data.username && data.username.trim() !== "") {
-                let cleanName = data.username.trim();
+            let val = data.displayName || data.username;
+            if (val && val.trim() !== "") {
+                let cleanName = val.trim();
                 if (!deptsList.includes(cleanName)) {
                     deptsList.push(cleanName);
                     deptNameMap[cleanName] = cleanName; 
@@ -613,30 +620,43 @@ function loadDepartments() {
             }
         });
 
-        deptsList = deptsList.sort();
-        if (deptsList.length > 0) {
-            if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
-            else deptSelect.setOptions(deptsList, true);
-        }
+        cachedDepts = deptsList.sort();
+        setupDeptDropdown(cachedDepts);
     }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
 }
 
-/* ===== Load Review Users List ===== */
+function setupDeptDropdown(deptsList) {
+    if (deptsList.length > 0) {
+        if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
+        else deptSelect.setOptions(deptsList, true);
+    }
+}
+
+/* ===== Load Review Users List (Optimized & Using username) ===== */
 function loadReviewUsersList() {
+    if (cachedReviewUsers) {
+        setupReviewUsersDropdown(cachedReviewUsers);
+        return;
+    }
     db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
         let usersList = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            if (data.username) {
-                usersList.push(data.username);
+            let val = data.username || data.displayName;
+            if (val) {
+                usersList.push(val.trim());
             }
         });
-        usersList = [...new Set(usersList)].sort();
-        if (usersList.length > 0) {
-            if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
-            else reviewUserSelect.setOptions(usersList, true);
-        }
+        cachedReviewUsers = [...new Set(usersList)].sort();
+        setupReviewUsersDropdown(cachedReviewUsers);
     }).catch(err => console.error("خطأ:", err));
+}
+
+function setupReviewUsersDropdown(usersList) {
+    if (usersList.length > 0) {
+        if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
+        else reviewUserSelect.setOptions(usersList, true);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -875,7 +895,7 @@ function switchTab(tab) {
     renderFilteredRequests();
 }
 
-/* ===== loadReviewRequests (النسخة المطلوبة) ===== */
+/* ===== Optimized Review Requests & Preventing Archive Duplications ===== */
 function loadReviewRequests() {
     if (!loggedInUser || !loggedInUser.role) return;
     const container = document.getElementById('requestsList');
@@ -897,7 +917,7 @@ function loadReviewRequests() {
             let isMyTurnNow = false;
             let isArchivedForMe = false;
 
-            // 1. التحقق إذا كان الطلب في مرحلة أخذ رأي الإدارات الفرعية
+            // 1. التحقق من حالة أخذ الرأي للإدارات الفرعية (ميزانية / تخطيط)
             if (stage.includes("بانتظار رأي")) {
                 try {
                     let state = JSON.parse(req.Transfer_State || "{}");
@@ -911,22 +931,22 @@ function loadReviewRequests() {
             else if (myUsernameLower.includes("رئيس مجلس الإدارة") || myUsernameLower.includes("chairman")) {
                 if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
             }
-            // 3. الشئون المالية والادارية
+            // 3. الشئون المالية والإدارية (أو المركز الرئيسي المالي)
             else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
                 if (stage.includes("مالية") || stage.includes("الشئون المالية") || stage.includes("بعد أخذ الرأي")) isMyTurnNow = true;
             }
-            // 4. رئيس الإدارة المركزية (المسؤول عن الاعتماد)
+            // 4. رئيس الإدارة المركزية
             else if (req.Central_Manager_Name && myUsernameLower.includes(req.Central_Manager_Name.toLowerCase())) {
                 if (stage.includes("رئيس الإدارة المركزية") || stage.includes("الاعتماد النهائي")) isMyTurnNow = true;
             }
-            // 5. المدير العام للإدارة الفرعية
+            // 5. المدير العام الفرعي
             else {
                 if (stage.includes(myUsernameLower) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
                     isMyTurnNow = true;
                 }
             }
 
-            // تحديد ما إذا كان الطلب قد تم معالجته بواسطة هذا المستخدم (ينتقل للأرشيف)
+            // فحص إذا كان الطلب مر على المستخدم وتم البت فيه لينتقل للأرشيف الخاص به بدقة
             let passedByMe = history.some(h => h.toLowerCase().includes(myUsernameLower));
             if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                 isArchivedForMe = true;
@@ -1016,7 +1036,7 @@ function exportToExcel() {
     }
 }
 
-/* ===== Process Actions ===== */
+/* ===== Process Actions & Added Central Finance Approval Button after Sub-Depts ===== */
 function processAction(requestId, actionType, extraData = {}) {
     const nowStr = new Date().toLocaleString();
     db.collection("requests").doc(requestId).get().then((doc) => {
@@ -1065,7 +1085,7 @@ function processAction(requestId, actionType, extraData = {}) {
             
             const myUsername = (loggedInUser.role || "").trim();
             for (let key in updatedState) {
-                if (key.trim() === myUsername) {
+                if (key.trim().toLowerCase() === myUsername.toLowerCase()) {
                     updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                     updatedState[key].date = nowStr;
                     if (actionType === 'dept_reject' && extraData.rejectReason) {
@@ -1086,8 +1106,8 @@ function processAction(requestId, actionType, extraData = {}) {
             
             if (allReplied) {
                 updates = { 
-                    Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية (بعد أخذ الرأي)", 
-                    Status: "تم أخذ آراء الإدارات - جاهز للاعتماد",
+                    Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية (بعد اعتماد الإدارات)", 
+                    Status: "تم اعتماد الآراء من الإدارات - بانتظار اعتماد الشئون المالية",
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
@@ -1098,6 +1118,16 @@ function processAction(requestId, actionType, extraData = {}) {
                     History: history
                 };
             }
+        }
+        // زرار موافقة المالية بعد عودة الطلب من الميزانية أو التخطيط
+        else if (actionType === 'finance_approve_after_depts') {
+            let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
+            updates = { 
+                Current_Stage: "مراجعة " + originalCentral + " (الاعتماد النهائي)", 
+                Finance_Date: nowStr, 
+                Status: "قيد الانتظار - موافقة " + originalCentral, 
+                History: history 
+            };
         }
         else if (actionType === 'finance_approve') {
             let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
@@ -1194,7 +1224,7 @@ function promptFinanceTransfer(requestId) {
         
         qs.forEach(doc => {
             const data = doc.data();
-            const username = data.username || "";
+            const username = data.username || data.displayName || "";
             const lowerName = username.toLowerCase();
             
             if (lowerName.includes("ميزانية") || lowerName.includes("تخطيط")) {
@@ -1208,7 +1238,7 @@ function promptFinanceTransfer(requestId) {
         });
         
         if(found === 0) {
-            container.innerHTML = '<p style="color:red; font-size:12px; font-weight:bold;">لم يتم العثور على إدارة الميزانية أو التخطيط في الفايربيز. تأكد من كتابة أسمائهم.</p>';
+            container.innerHTML = '<p style="color:red; font-size:12px; font-weight:bold;">لم يتم العثور على إدارة الميزانية أو التخطيط في الفايربيز.</p>';
         }
 
         document.getElementById('transferConfirm').onclick = () => {
@@ -1230,7 +1260,7 @@ function promptFinanceTransfer(requestId) {
     });
 }
 
-/* ===== Build Request Card ===== */
+/* ===== Build Request Card & Action Buttons ===== */
 function buildDeptStateBox(transferStateJson) {
     let state = {};
     try { state = JSON.parse(transferStateJson || "{}"); } catch(_) { return ""; }
@@ -1262,7 +1292,6 @@ function buildDeptStateBox(transferStateJson) {
     return html;
 }
 
-/* ===== buildRequestCard (النسخة المطلوبة والمتوافقة) ===== */
 function buildRequestCard(req, withActions) {
     const div = document.createElement('div'); div.className = 'request-card';
     const stage = (req.Current_Stage || "").toString();
@@ -1285,12 +1314,12 @@ function buildRequestCard(req, withActions) {
         if (stage.toLowerCase().includes("بانتظار رأي")) {
             try {
                 let state = JSON.parse(req.Transfer_State || "{}");
-                let myKey = Object.keys(state).find(k => k.trim() === myUsername);
-                if (myKey) isMyTurn = true;
+                let myKey = Object.keys(state).find(k => k.trim().toLowerCase() === myUsernameLower);
+                if (myKey && state[myKey].decision === "pending") isMyTurn = true;
             } catch(e) {}
         }
         else if (myUsernameLower.includes("مالية") || myUsernameLower.includes("إدارية") || myUsernameLower.includes("finance")) {
-            if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية") || stage.toLowerCase().includes("بعد أخذ الرأي")) isMyTurn = true;
+            if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية") || stage.toLowerCase().includes("بعد اعتماد الإدارات")) isMyTurn = true;
         }
         else if (myUsernameLower.includes("رئيس مجلس الإدارة") || myUsernameLower.includes("chairman")) {
             if (stage.toLowerCase().includes("رئيس مجلس الإدارة")) isMyTurn = true;
@@ -1315,14 +1344,21 @@ function buildRequestCard(req, withActions) {
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
                 </div>`;
             }
-            else if (stage.includes("بعد أخذ الرأي") || stage.includes("الشئون المالية") || stage.includes("مالية")) {
+            // الزرار الجديد المضاف هنا بناءً على طلبك بعد اعتماد الإدارات الفرعية
+            else if (stage.includes("بعد اعتماد الإدارات")) {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve_after_depts')"><i class="fas fa-check-double"></i> موافقة بعد اعتماد الإدارات وتحويل لرئيس الإدارة المركزية</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                </div>`;
+            }
+            else if (stage.includes("الشئون المالية") || stage.includes("مالية")) {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للجهة المختصة</button>
                     <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                 </div>`;
             }
-            else if (stage.includes("رئيس الإدارة المركزية") && !stage.includes("بعد أخذ الرأي")) {
+            else if (stage.includes("رئيس الإدارة المركزية") && !stage.includes("بعد اعتماد الإدارات")) {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للشئون المالية</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
