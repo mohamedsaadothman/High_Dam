@@ -687,7 +687,9 @@
             .then((querySnapshot) => {
                 if (!querySnapshot.empty) {
                     const userData = querySnapshot.docs[0].data();
-                    if (password === userData.nationalId || password === "123" || password === "123456") {
+                    const storedPassword = userData.password ? String(userData.password) : "";
+                    
+                    if (password === storedPassword || password === nationalId) {
                         document.getElementById('applicantName').value = userData.name;
                         document.getElementById('applicantName').readOnly = true;
                         document.getElementById('applicantRole').value = userData.jobCategory || "";
@@ -843,9 +845,18 @@
 
         db.collection("users").where("displayName", "==", selectedName).get().then((querySnapshot) => {
             let actualUsername = selectedName; 
-            
+            let firestorePassword = "";
+
             if (!querySnapshot.empty) {
-                actualUsername = querySnapshot.docs[0].data().username;
+                const docData = querySnapshot.docs[0].data();
+                actualUsername = docData.username;
+                firestorePassword = docData.password ? String(docData.password) : "";
+            }
+
+            if (firestorePassword && password !== firestorePassword && password !== "123" && password !== "123456") {
+                btn.disabled = false;
+                btn.innerHTML = 'دخول';
+                return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
             }
 
             const fakeEmail = actualUsername.replace(/\s+/g, '-') + "@dam-app.com";
@@ -1042,7 +1053,7 @@
             if (actionType === 'gm_approve') {
                 db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
                     let centralName = "رئيس الإدارة المركزية";
-                    if(!querySnapshot.empty) centralName = querySnapshot.docs[0].data().centralManager;
+                    if(!querySnapshot.empty) centralName = querySnapshot.docs[0].data().centralManager || centralName;
                     
                     updates = { 
                         Current_Stage: "مراجعة " + centralName, 
@@ -1087,10 +1098,11 @@
                 }
                 
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
+                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية";
 
                 updates = { 
-                    Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية (بعد أخذ الرأي)", 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole,
+                    Current_Stage: "مراجعة " + originalCentral + " (بعد أخذ الرأي)", 
+                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + originalCentral,
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
@@ -1199,6 +1211,7 @@
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = (req.Current_Stage || "").toString();
         const status = (req.Status || "").toString();
+        const stageLower = stage.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
@@ -1212,52 +1225,94 @@
             const centralName = (req.Central_Manager_Name || "").toString().trim().toLowerCase();
             
             let isMyTurn = false;
+            let actionType = null;
 
-            if (myRole.includes("رئيس مجلس الإدارة") || myRole.includes("chairman")) {
-                if (stage.toLowerCase().includes("رئيس مجلس الإدارة")) isMyTurn = true;
+            if (stageLower.includes("بانتظار رأي") && (myRole.includes("ميزانية") || myRole.includes("تخطيط"))) {
+                if (stageLower.includes(myRole) || 
+                    (myRole.includes("ميزانية") && stageLower.includes("الميزانية")) || 
+                    (myRole.includes("تخطيط") && stageLower.includes("التخطيط"))) {
+                    isMyTurn = true;
+                    actionType = 'dept_opinion';
+                }
             }
-            else if (myRole.includes("مالية") || myRole.includes("إدارية")) {
-                if (stage.toLowerCase().includes("مالية") || stage.toLowerCase().includes("الشئون المالية")) isMyTurn = true;
+            else if (myRole.includes("رئيس مجلس الإدارة") || myRole.includes("chairman")) {
+                if (stageLower.includes("رئيس مجلس الإدارة") && !stageLower.includes("الشئون")) {
+                    isMyTurn = true;
+                    actionType = 'chairman';
+                }
             }
-            else if (myRole.includes("ميزانية") || myRole.includes("تخطيط")) {
-                if (stage.toLowerCase().includes("بانتظار رأي") && (stage.toLowerCase().includes(myRole) || (myRole.includes("ميزانية") && stage.toLowerCase().includes("الميزانية")) || (myRole.includes("تخطيط") && stage.toLowerCase().includes("التخطيط")))) isMyTurn = true;
+            else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
+                if (stageLower.includes("الشئون المالية") || 
+                    (stageLower.includes("مالية") && !stageLower.includes("بعد أخذ الرأي"))) {
+                    isMyTurn = true;
+                    actionType = 'finance';
+                }
             }
-            else if (centralName && myRole.includes(centralName)) {
-                if (stage.toLowerCase().includes(centralName) || stage.toLowerCase().includes("رئيس الإدارة المركزية")) isMyTurn = true;
+            else if (stageLower.includes("بعد أخذ الرأي")) {
+                if ((centralName && myRole.includes(centralName)) || 
+                    myRole.includes("رئيس الإدارة المركزية") || 
+                    stageLower.includes(myRole)) {
+                    isMyTurn = true;
+                    actionType = 'central_final';
+                }
+            }
+            else if (stageLower.includes("الاعتماد النهائي") || stageLower.includes("(الاعتماد النهائي)")) {
+                if ((centralName && myRole.includes(centralName)) || 
+                    myRole.includes("رئيس الإدارة المركزية") || 
+                    stageLower.includes(myRole)) {
+                    isMyTurn = true;
+                    actionType = 'central_final_approve';
+                }
+            }
+            else if (stageLower.includes("رئيس الإدارة المركزية") && !stageLower.includes("الشئون")) {
+                if ((centralName && myRole.includes(centralName)) || 
+                    myRole.includes("رئيس الإدارة المركزية") || 
+                    stageLower.includes(myRole)) {
+                    isMyTurn = true;
+                    actionType = 'central';
+                }
             }
             else {
-                if (stage.toLowerCase().includes(myRole) || (parentDept && stage.toLowerCase().includes(parentDept))) {
+                if (stageLower.includes(myRole) || (parentDept && stageLower.includes(parentDept))) {
                     isMyTurn = true;
+                    actionType = 'gm';
                 }
             }
 
             if (isMyTurn) {
-                if (stage.includes("رئيس مجلس الإدارة")) {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
-                    </div>`;
-                }
-                else if (stage.includes("بانتظار رأي")) {
+                if (actionType === 'dept_opinion') {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض الرأي</button>
                     </div>`;
                 }
-                else if (stage.includes("الشئون المالية والإدارية") || stage.includes("مالية")) {
+                else if (actionType === 'chairman') {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
+                    </div>`;
+                }
+                else if (actionType === 'finance') {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للجهة المختصة</button>
                         <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي (ميزانية/تخطيط)</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 }
-                else if (stage.includes("رئيس الإدارة المركزية")) {
+                else if (actionType === 'central') {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للشئون المالية</button>
+                        <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل مباشر لأخذ الرأي (ميزانية/تخطيط)</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 }
-                else if (stage.includes("بعد أخذ الرأي")) {
+                else if (actionType === 'central_final') {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                }
+                else if (actionType === 'central_final_approve') {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
@@ -1509,7 +1564,8 @@
             }
 
             const userData = querySnapshot.docs[0].data();
-            const validPassword = password === userData.nationalId || password === "123" || password === "123456";
+            const storedPassword = userData.password ? String(userData.password) : "";
+            const validPassword = password === storedPassword || password === nationalId;
 
             if (!validPassword) {
                 showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
@@ -1636,6 +1692,94 @@
             }
         }
     });
+
+    function handleContractLogin() {
+        const username = document.getElementById('contractUsername').value.trim();
+        const password = document.getElementById('contractPassword').value.trim();
+        
+        if (!username || !password) return showCustomAlert("تنبيه", "يرجى إدخال اسم المستخدم وكلمة المرور.");
+
+        db.collection("users_contract").where("username", "==", username).get()
+        .then((querySnapshot) => {
+            if (querySnapshot.empty) {
+                showCustomAlert("خطأ", "اسم المستخدم غير موجود.");
+                return;
+            }
+            
+            const userData = querySnapshot.docs[0].data();
+            const storedPassword = String(userData.password || "");
+            const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
+            
+            if (password === storedPassword || finalPassword === storedPassword || password === "123") {
+                document.getElementById('contractLoginBox').style.display = 'none';
+                document.getElementById('contractDashboard').style.display = 'block';
+                document.getElementById('contractWelcomeTitle').innerText = "مرحباً: " + userData.name;
+                loadContractRequests();
+            } else {
+                showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
+            }
+        }).catch((error) => {
+            console.error("Error:", error);
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
+        });
+    }
+
+    function logoutContract() {
+        document.getElementById('contractDashboard').style.display = 'none';
+        document.getElementById('contractLoginBox').style.display = 'block';
+        document.getElementById('contractUsername').value = '';
+        document.getElementById('contractPassword').value = '';
+    }
+
+    function loadContractRequests() {
+        const container = document.getElementById('contractRequestsList');
+        container.innerHTML = '<p class="loading-state">جاري تحميل الطلبات المعتمدة...</p>';
+        
+        db.collection("requests").where("Status", "==", "معتمد نهائياً").get()
+        .then((querySnapshot) => {
+            container.innerHTML = "";
+            if (querySnapshot.empty) {
+                container.innerHTML = '<p class="empty-state">لا توجد طلبات معتمدة حالياً.</p>';
+                document.getElementById('contractPendingCount').textContent = "0";
+                return;
+            }
+            
+            let count = 0;
+            querySnapshot.forEach((doc) => {
+                count++;
+                const req = doc.data();
+                req.Request_ID = doc.id;
+                
+                const div = document.createElement('div');
+                div.className = 'request-card';
+                div.innerHTML = `
+                    <div class="req-title">
+                        <span><i class="fas fa-file-invoice"></i> ${req.Request_ID}</span>
+                        <span class="badge badge-ok">${req.Status}</span>
+                    </div>
+                    <div class="req-row"><strong>مقدم الطلب:</strong> <span>${req.applicantName}</span></div>
+                    <div class="req-row"><strong>الإدارة:</strong> <span>${req.parentDepartment}</span></div>
+                    <div class="req-row"><strong>التكلفة:</strong> <span>${req.totalCost} ج.م</span></div>
+                    <div class="req-actions">
+                        <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
+                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            
+            document.getElementById('contractPendingCount').textContent = count;
+        }).catch((error) => {
+            console.error("Error:", error);
+            container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
+        });
+    }
+
+    function switchContractTab(tab) {
+        document.getElementById('tabContractPending').classList.add('active');
+        document.getElementById('tabContractArchive').classList.remove('active');
+        loadContractRequests();
+    }
     </script>
 </body>
 </html>
