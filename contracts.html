@@ -617,6 +617,11 @@
                     // تنظيف النص تماماً من الرموز الخفية + إزالة علامة الاستفهام العربية والإنجليزية + إزالة المسافات الزائدة
                     let cleanName = rawName.replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
                     
+                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة من قائمة الاختيارات
+                    if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
+                        return; // تخطي هذا العنصر
+                    }
+                    
                     deptsSet.add(cleanName);
                     deptNameMap[cleanName] = cleanName; 
                 }
@@ -649,10 +654,15 @@
             let usersList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.name) usersList.push(data.name);
-                if (data.username && !usersList.includes(data.username)) usersList.push(data.username);
+                // جلب الاسم من عمود department
+                if (data.department && data.department.trim() !== "") {
+                    usersList.push(data.department.trim());
+                }
             });
+            
+            // إزالة التكرارات وترتيب أبجدي
             usersList = [...new Set(usersList)].sort();
+            
             if (usersList.length > 0) {
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
                 else reviewUserSelect.setOptions(usersList, true);
@@ -846,19 +856,14 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        db.collection("users").where("name", "==", selectedName).get().then((querySnapshot) => {
+        // بما أن القائمة الآن تجلب من عمود department، يجب البحث بهذا العمود
+        db.collection("users").where("department", "==", selectedName).get().then((querySnapshot) => {
             if (querySnapshot.empty) {
-                db.collection("users").where("username", "==", selectedName).get().then((snapshotByUsername) => {
-                    if (snapshotByUsername.empty) {
-                        btn.disabled = false;
-                        btn.innerHTML = 'دخول';
-                        return showCustomAlert("خطأ", "اسم المستخدم غير مسجل في قاعدة البيانات.");
-                    }
-                    processUserLogin(snapshotByUsername.docs[0], password, btn);
-                });
-            } else {
-                processUserLogin(querySnapshot.docs[0], password, btn);
+                btn.disabled = false;
+                btn.innerHTML = 'دخول';
+                return showCustomAlert("خطأ", "اسم المستخدم غير مسجل في قاعدة البيانات.");
             }
+            processUserLogin(querySnapshot.docs[0], password, btn);
         }).catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
@@ -898,9 +903,10 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
+        // استخدام department كاسم للمستخدم إن وجد، وإلا name
         loggedInUser = {
             uid: uid,
-            name: userData.name || "", 
+            name: userData.name || userData.department || "", 
             role: userData.role || userData.username || "",
             centralManager: userData.centralManager || ""
         };
