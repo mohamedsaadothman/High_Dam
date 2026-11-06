@@ -612,10 +612,10 @@
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let rawName = data.username || data.displayName || "";
+                // تم التحديث ليتوافق مع الحقل الصحيح في الهيكل الجديد (department أو username أو role)
+                let rawName = data.department || data.username || data.name || "";
                 if (rawName.trim() !== "") {
                     let cleanName = rawName.trim();
-                    // إضافة الاسم الأصلي مباشرة بدون أي تعديل أو حذف لمنع تشويهه
                     deptsSet.add(cleanName);
                     deptNameMap[cleanName] = cleanName; 
                 }
@@ -648,7 +648,8 @@
             let usersList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.displayName) usersList.push(data.displayName);
+                // التوافق مع الحقول الجديدة (name أو username)
+                if (data.name) usersList.push(data.name);
                 if (data.username && !usersList.includes(data.username)) usersList.push(data.username);
             });
             usersList = [...new Set(usersList)].sort();
@@ -673,7 +674,6 @@
         let deptName = document.getElementById('parentDepartment').value;
         
         if (deptName) {
-            // استبدال الشرطات فقط بمسافات داخل المسمى الوظيفي الكامل دون حذف أي كلمات
             let formattedDeptName = deptName.replace(/[-_]+/g, ' ').trim();
             document.getElementById('managerTitle').value = prefix + " " + formattedDeptName;
         } else {
@@ -693,7 +693,8 @@
                     const storedPassword = userData.password ? String(userData.password).trim() : "";
                     
                     if (password === storedPassword) {
-                        document.getElementById('applicantName').value = userData.name;
+                        // التوافق مع الحقل name في الداتا الجديدة
+                        document.getElementById('applicantName').value = userData.name || "";
                         document.getElementById('applicantName').readOnly = true;
                         
                         document.getElementById('applicantRole').value = ""; 
@@ -847,7 +848,8 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        db.collection("users").where("displayName", "==", selectedName).get().then((querySnapshot) => {
+        // البحث باستخدام الحقل الجديد name أو username
+        db.collection("users").where("name", "==", selectedName).get().then((querySnapshot) => {
             if (querySnapshot.empty) {
                 db.collection("users").where("username", "==", selectedName).get().then((snapshotByUsername) => {
                     if (snapshotByUsername.empty) {
@@ -901,9 +903,9 @@
 
         loggedInUser = {
             uid: uid,
-            name: userData.name || userData.displayName, 
-            role: userData.username || userData.displayName,
-            centralManager: userData.centralManager
+            name: userData.name || "", 
+            role: userData.role || userData.username || "",
+            centralManager: userData.centralManager || ""
         };
         
         localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
@@ -1085,7 +1087,7 @@
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
             if (actionType === 'gm_approve') {
-                db.collection("users").where("username", "==", loggedInUser.role).get().then((querySnapshot) => {
+                db.collection("users").where("role", "==", loggedInUser.role).get().then((querySnapshot) => {
                     let centralName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
                     if(!querySnapshot.empty && querySnapshot.docs[0].data().centralManager) {
                         centralName = querySnapshot.docs[0].data().centralManager;
@@ -1608,7 +1610,7 @@
             trackUser = {
                 nationalId: nationalId,
                 name: userData.name || "",
-                role: userData.jobCategory || ""
+                role: userData.role || ""
             };
 
             sessionStorage.setItem('trackUser', JSON.stringify(trackUser));
