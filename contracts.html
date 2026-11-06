@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -614,12 +615,10 @@
                 const data = doc.data();
                 let rawName = data.centralManager || "";
                 if (rawName.trim() !== "") {
-                    // تنظيف النص تماماً من الرموز الخفية + إزالة علامة الاستفهام العربية والإنجليزية + إزالة المسافات الزائدة
                     let cleanName = rawName.replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
                     
-                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة من قائمة اختيار المدير التابع له
                     if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
-                        return; // تخطي هذا العنصر
+                        return; 
                     }
                     
                     deptsSet.add(cleanName);
@@ -650,16 +649,25 @@
     }
 
     function loadReviewUsersList() {
-        // جلب كل المسؤولين بدون شروط معقدة
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let usersSet = new Set();
-            
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                // سنجمع كل الأسماء المتاحة لضمان ظهور الجميع
-                if (data.department && data.department.trim() !== "") usersSet.add(data.department.trim());
-                if (data.centralManager && data.centralManager.trim() !== "") usersSet.add(data.centralManager.trim());
-                if (data.name && data.name.trim() !== "") usersSet.add(data.name.trim());
+                // جلب جميع الحقول المحتملة لضمان ظهور كافة المسؤولين ورؤساء الإدارات دون استثناء
+                const possibleFields = [
+                    data.department, 
+                    data.Department, 
+                    data.name, 
+                    data.role, 
+                    data.centralManager
+                ];
+                
+                possibleFields.forEach(val => {
+                    if (val && typeof val === 'string' && val.trim() !== "") {
+                        let cleanVal = val.replace(/[\u200e\u200f\u202a-\u202e]/g, "").trim();
+                        usersSet.add(cleanVal);
+                    }
+                });
             });
             
             let usersList = [...usersSet].sort();
@@ -668,7 +676,7 @@
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
                 else reviewUserSelect.setOptions(usersList, true);
             }
-        }).catch(err => console.error("خطأ:", err));
+        }).catch(err => console.error("خطأ في تحميل قائمة المسؤولين:", err));
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -857,12 +865,11 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        // البحث الشامل لضمان العثور على المستخدم أياً كان العمود الذي تم حفظ اسمه فيه
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let foundDoc = null;
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.department === selectedName || data.centralManager === selectedName || data.name === selectedName) {
+                if (data.department === selectedName || data.Department === selectedName || data.centralManager === selectedName || data.name === selectedName || data.role === selectedName || data.username === selectedName) {
                     foundDoc = doc;
                 }
             });
@@ -913,10 +920,9 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
-        // استخدام department أو centralManager كاسم للمستخدم إن وجد، وإلا name
         loggedInUser = {
             uid: uid,
-            name: userData.name || userData.department || userData.centralManager || "", 
+            name: userData.name || userData.department || userData.Department || userData.centralManager || "", 
             role: userData.role || userData.username || "",
             centralManager: userData.centralManager || ""
         };
@@ -1831,3 +1837,4 @@
     </script>
 </body>
 </html>
+
