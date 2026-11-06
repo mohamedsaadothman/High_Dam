@@ -617,7 +617,7 @@
                     // تنظيف النص تماماً من الرموز الخفية + إزالة علامة الاستفهام العربية والإنجليزية + إزالة المسافات الزائدة
                     let cleanName = rawName.replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
                     
-                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة من قائمة الاختيارات
+                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة من قائمة اختيار المدير التابع له
                     if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
                         return; // تخطي هذا العنصر
                     }
@@ -654,9 +654,10 @@
             let usersList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                // جلب الاسم من عمود department
-                if (data.department && data.department.trim() !== "") {
-                    usersList.push(data.department.trim());
+                // جلب الاسم من أي عمود متاح لضمان ظهور كل المديرين
+                let displayName = data.department || data.centralManager || data.name;
+                if (displayName && displayName.trim() !== "") {
+                    usersList.push(displayName.trim());
                 }
             });
             
@@ -856,14 +857,23 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        // البحث باستخدام الاسم المختار من قائمة department
-        db.collection("users").where("department", "==", selectedName).get().then((querySnapshot) => {
-            if (querySnapshot.empty) {
+        // البحث الشامل لضمان العثور على المستخدم أياً كان العمود الذي تم حفظ اسمه فيه
+        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
+            let foundDoc = null;
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.department === selectedName || data.centralManager === selectedName || data.name === selectedName) {
+                    foundDoc = doc;
+                }
+            });
+
+            if (!foundDoc) {
                 btn.disabled = false;
                 btn.innerHTML = 'دخول';
                 return showCustomAlert("خطأ", "اسم المستخدم غير مسجل في قاعدة البيانات.");
             }
-            processUserLogin(querySnapshot.docs[0], password, btn);
+            
+            processUserLogin(foundDoc, password, btn);
         }).catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
@@ -903,10 +913,10 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
-        // استخدام department كاسم للمستخدم إن وجد، وإلا name
+        // استخدام department أو centralManager كاسم للمستخدم إن وجد، وإلا name
         loggedInUser = {
             uid: uid,
-            name: userData.name || userData.department || "", 
+            name: userData.name || userData.department || userData.centralManager || "", 
             role: userData.role || userData.username || "",
             centralManager: userData.centralManager || ""
         };
