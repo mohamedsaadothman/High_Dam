@@ -607,7 +607,7 @@
 
     function loadDepartments() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
-            let deptsList = [];
+            let deptsSet = new Set();
             deptNameMap = {}; 
             
             querySnapshot.forEach((doc) => {
@@ -615,18 +615,13 @@
                 let rawName = data.username || data.displayName || "";
                 if (rawName.trim() !== "") {
                     let cleanName = rawName.trim();
-                    
-                    if (cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس الإدارة المركزية")) {
-                        return;
-                    }
-
-                    // جلب اسم الإدارة كما هو من username بدون أي حذف لكلمة "مدير عام"
-                    deptsList.push(cleanName);
+                    // إضافة الاسم الأصلي مباشرة بدون أي تعديل أو حذف لمنع تشويهه
+                    deptsSet.add(cleanName);
                     deptNameMap[cleanName] = cleanName; 
                 }
             });
 
-            deptsList = [...new Set(deptsList)].sort();
+            let deptsList = [...deptsSet].sort();
             
             if (deptsList.length > 0) {
                 if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
@@ -678,9 +673,9 @@
         let deptName = document.getElementById('parentDepartment').value;
         
         if (deptName) {
-            // استبدال الشرطات بمسافات داخل المسمى الوظيفي فقط
-            deptName = deptName.replace(/[-_]+/g, ' ').trim();
-            document.getElementById('managerTitle').value = prefix + " " + deptName;
+            // استبدال الشرطات فقط بمسافات داخل المسمى الوظيفي الكامل دون حذف أي كلمات
+            let formattedDeptName = deptName.replace(/[-_]+/g, ' ').trim();
+            document.getElementById('managerTitle').value = prefix + " " + formattedDeptName;
         } else {
             document.getElementById('managerTitle').value = "";
         }
@@ -1419,12 +1414,12 @@
         document.getElementById('printReqId').textContent = req.Request_ID;
         document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '';
         document.getElementById('printParentDept').textContent = "إدارة " + (req.parentDepartment || "");
-        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / مدير عام إدارة " + (req.parentDepartment || "");
+        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / " + (req.parentDepartment || "");
         document.getElementById('printApplicantName').textContent = req.applicantName || "---";
         document.getElementById('printApplicantRole').textContent = req.role || "---";
         document.getElementById('printNationalId').textContent = req.nationalId || "---";
         document.getElementById('printPhone').textContent = req.phone || "---";
-        document.getElementById('printManagerSignTitle').textContent = "مدير عام " + (req.parentDepartment || "الإدارة");
+        document.getElementById('printManagerSignTitle').textContent = req.parentDepartment || "الإدارة";
         document.getElementById('printManagerSignName').textContent = req.managerName || "---";
         
         const rejectBox = document.getElementById('printRejectBox');
