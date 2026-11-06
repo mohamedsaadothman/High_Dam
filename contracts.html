@@ -612,20 +612,29 @@
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.username && data.username.trim() !== "") {
-                    let cleanName = data.username.trim();
+                let rawName = data.username || data.displayName || "";
+                if (rawName.trim() !== "") {
+                    let cleanName = rawName.trim();
                     
-                    if (cleanName.includes("رئيس مجلس الإدارة")) return;
-                    if (cleanName.includes("رئيس الإدارة المركزية")) return;
-                    if (cleanName === "مدير عام التخطيط" || cleanName.includes("مدير عام التخطيط")) return;
-                    if (cleanName.includes("إدارة التخطيط والمتابعة")) cleanName = "إدارة التخطيط والمتابعة";
+                    if (cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("مدير عام التخطيط")) {
+                        return;
+                    }
+
+                    cleanName = cleanName.replace(/[-_]+/g, ' ');
+                    
+                    if (cleanName.includes("التخطيط والمتابعة")) cleanName = "إدارة التخطيط والمتابعة";
+                    else if (cleanName.includes("الميزانية")) cleanName = "إدارة الميزانية";
+                    else if (cleanName.includes("الموارد البشرية")) cleanName = "إدارة الموارد البشرية";
 
                     if (cleanName.startsWith("إدارة ")) {
                         cleanName = cleanName.replace("إدارة ", "");
                     }
                     
-                    deptsList.push(cleanName);
-                    deptNameMap[cleanName] = cleanName; 
+                    cleanName = cleanName.trim();
+                    if (cleanName) {
+                        deptsList.push(cleanName);
+                        deptNameMap[cleanName] = cleanName; 
+                    }
                 }
             });
 
@@ -837,7 +846,6 @@
         });
     });
 
-    // دالة تسجيل الدخول المحسنة للبحث المزدوج (displayName أو username)
     function handleLogin() {
         const selectedName = document.getElementById('reviewUsername').value.trim();
         const password = document.getElementById('reviewPassword').value.trim();
@@ -937,7 +945,6 @@
         renderFilteredRequests();
     }
 
-    // دالة التحميل المطورة والمصححة تماماً للتعامل مع الـ Transfer_State وأسماء الميزانية والتخطيط
     function loadReviewRequests() {
         if (!loggedInUser || !loggedInUser.role) return;
         
@@ -964,7 +971,6 @@
                 let state = {};
                 try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 
-                // 1. إدارة الميزانية
                 if (myRole.includes("ميزانية")) {
                     if (stage.includes("ميزانية") || stage.includes("أخذ رأي")) {
                         let matchedKey = Object.keys(state).find(k => k.toLowerCase().includes("ميزانية"));
@@ -973,7 +979,6 @@
                         }
                     }
                 }
-                // 2. إدارة التخطيط والمتابعة
                 else if (myRole.includes("تخطيط")) {
                     if (stage.includes("تخطيط") || stage.includes("أخذ رأي")) {
                         let matchedKey = Object.keys(state).find(k => k.toLowerCase().includes("تخطيط"));
@@ -982,30 +987,25 @@
                         }
                     }
                 }
-                // 3. رئيس الإدارة المركزية
                 else if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (req.centralManager && myRole.includes(req.centralManager.toLowerCase()))) {
                     if (stage.includes("أخذ الرأي") || stage.includes("أخذ رأي") || stage.includes("بانتظار اعتماد") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية") || status.includes("بانتظار اعتماد رئيس الإدارة المركزية")) {
                         isMyTurnNow = true;
                     }
                 }
-                // 4. رئيس مجلس الإدارة
                 else if (myRole.includes("رئيس مجلس الإدارة")) {
                     if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
                 }
-                // 5. الشئون المالية والإدارية
                 else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
                     if (stage.includes("الشئون المالية") || (stage.includes("مالية") && !stage.includes("أخذ الرأي") && !status.includes("تم أخذ الرأي"))) {
                         isMyTurnNow = true;
                     }
                 }
-                // 6. المدير العام العادي للقسم
                 else {
                     if (stage.includes(myRole) || stage.includes("مراجعة " + (req.parentDepartment || "").toLowerCase())) {
                         isMyTurnNow = true;
                     }
                 }
 
-                // الأرشيف
                 let passedByMe = history.some(h => h.toLowerCase().includes(myRole) && !myRole.includes("مالية"));
                 
                 if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
