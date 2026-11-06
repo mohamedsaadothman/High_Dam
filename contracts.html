@@ -614,10 +614,12 @@
                 const data = doc.data();
                 let rawName = data.centralManager || "";
                 if (rawName.trim() !== "") {
+                    // تنظيف النص تماماً من الرموز الخفية + إزالة علامة الاستفهام العربية والإنجليزية + إزالة المسافات الزائدة
                     let cleanName = rawName.replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
                     
+                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة من قائمة اختيار المدير التابع له
                     if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
-                        return; 
+                        return; // تخطي هذا العنصر
                     }
                     
                     deptsSet.add(cleanName);
@@ -649,24 +651,23 @@
 
     function loadReviewUsersList() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
-            let usersSet = new Set();
+            let usersList = [];
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                // جلب القيم من عمود department أو Department حصرياً كما طلبت
-                let deptVal = data.department || data.Department;
-                if (deptVal && typeof deptVal === 'string' && deptVal.trim() !== "") {
-                    let cleanVal = deptVal.replace(/[\u200e\u200f\u202a-\u202e]/g, "").trim();
-                    usersSet.add(cleanVal);
+                // جلب الاسم من عمود department فقط
+                if (data.department && data.department.trim() !== "") {
+                    usersList.push(data.department.trim());
                 }
             });
             
-            let usersList = [...usersSet].sort();
+            // إزالة التكرارات وترتيب أبجدي
+            usersList = [...new Set(usersList)].sort();
             
             if (usersList.length > 0) {
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
                 else reviewUserSelect.setOptions(usersList, true);
             }
-        }).catch(err => console.error("خطأ في تحميل قائمة الإدارات:", err));
+        }).catch(err => console.error("خطأ:", err));
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -855,12 +856,12 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
+        // البحث في عمود department فقط
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let foundDoc = null;
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let deptVal = data.department || data.Department || "";
-                if (deptVal === selectedName || data.centralManager === selectedName || data.name === selectedName || data.role === selectedName || data.username === selectedName) {
+                if (data.department === selectedName) {
                     foundDoc = doc;
                 }
             });
@@ -911,9 +912,10 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
+        // استخدام department كاسم للمستخدم إن وجد، وإلا name
         loggedInUser = {
             uid: uid,
-            name: userData.name || userData.department || userData.Department || userData.centralManager || "", 
+            name: userData.name || userData.department || "", 
             role: userData.role || userData.username || "",
             centralManager: userData.centralManager || ""
         };
@@ -1807,7 +1809,7 @@
                     <div class="req-row"><strong>التكلفة:</strong> <span>${req.totalCost} ج.م</span></div>
                     <div class="req-actions">
                         <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
-                        <button class="print-print-btn print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
                     </div>
                 `;
                 container.appendChild(div);
