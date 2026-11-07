@@ -981,7 +981,6 @@
                 let state = {};
                 try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 
-                // **الحل النهائي المباشر والصريح بناءً على فحص الـ Console**
                 if (managerCentral.includes("الموارد البشرية") && stage.includes("الموارد البشرية")) {
                     isMyTurnNow = true;
                 }
@@ -1101,17 +1100,18 @@
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
             if (actionType === 'gm_approve') {
-                db.collection("users").where("name", "==", loggedInUser.role).get().then((querySnapshot) => {
-                    let centralName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
-                    if(!querySnapshot.empty && querySnapshot.docs[0].data().centralManager) {
-                        centralName = cleanText(querySnapshot.docs[0].data().centralManager);
+                // جلب المسؤول التالي من جدول users بناءً على department (المدير العام المختار في تقديم الطلب)
+                db.collection("users").where("centralManager", "==", req.parentDepartment).get().then((querySnapshot) => {
+                    let nextManager = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+                    if(!querySnapshot.empty && querySnapshot.docs[0].data().nextManager) {
+                        nextManager = cleanText(querySnapshot.docs[0].data().nextManager);
                     }
                     
                     updates = { 
-                        Current_Stage: "مراجعة " + centralName, 
+                        Current_Stage: "مراجعة " + nextManager, 
                         Gm_Date: nowStr, 
-                        Status: "قيد الانتظار - موافقة " + centralName,
-                        Central_Manager_Name: centralName,
+                        Status: "قيد الانتظار - موافقة " + req.parentDepartment,
+                        Central_Manager_Name: nextManager,
                         History: history
                     };
                     executeUpdate(requestId, updates);
@@ -1200,7 +1200,7 @@
     function executeUpdate(requestId, updates) {
         db.collection("requests").doc(requestId).update(updates)
         .then(() => {
-            showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب.");
+            showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب ونقله للأرشيف.");
             loadReviewRequests();
         }).catch((error) => {
             console.error("Error: ", error);
@@ -1288,7 +1288,6 @@
             let isMyTurn = false;
             let actionType = null;
 
-            // **مطابقة الأزرار بناءً على تطابق الموارد البشرية**
             if (managerCentral.includes("الموارد البشرية") && stageLower.includes("الموارد البشرية")) {
                 isMyTurn = true;
                 actionType = 'gm';
@@ -1361,7 +1360,7 @@
                 }
                 else {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للمسؤول التالي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
                     </div>`;
                 }
