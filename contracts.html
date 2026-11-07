@@ -655,8 +655,9 @@
             let usersSet = new Set();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.centralManager && data.centralManager.trim() !== "") {
-                    usersSet.add(cleanText(data.centralManager));
+                // التعديل هنا: القراءة من حقل department بدلاً من centralManager
+                if (data.department && data.department.trim() !== "") {
+                    usersSet.add(cleanText(data.department));
                 }
             });
             
@@ -855,13 +856,12 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
+        // التعديل هنا: البحث في حقل department
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let foundDoc = null;
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let centralVal = cleanText(data.centralManager || "");
-                let nameVal = cleanText(data.name || "");
-                if (centralVal === selectedName || nameVal === selectedName) {
+                if (cleanText(data.department) === selectedName) {
                     foundDoc = doc;
                 }
             });
@@ -912,8 +912,9 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
-        const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
-        const userRole = cleanText(userData.centralManager || userData.role || "مسؤول");
+        // التعديل هنا: الاسم والدور ياخدوا من department
+        const realName = cleanText(userData.name || userData.department || "مسؤول النظام");
+        const userRole = cleanText(userData.department || userData.role || "مسؤول");
 
         loggedInUser = {
             uid: uid,
@@ -979,7 +980,6 @@
                 let state = {};
                 try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 
-                // --- منطق المطابقة للمدير العام ---
                 if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
                     if (stage.includes("أخذ الرأي") || stage.includes("أخذ رأي") || stage.includes("بانتظار اعتماد") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية") || status.includes("بانتظار اعتماد رئيس الإدارة المركزية")) {
                         isMyTurnNow = true;
@@ -991,7 +991,6 @@
                         isMyTurnNow = true;
                     }
                 } else {
-                    // **التعديل الجذري لمرونة المطابقة للمدير العام**
                     if (stage.includes(myRole) || myRole.includes(stage) || stage.includes(parentDept) || parentDept.includes(myRole) || myRole.includes(parentDept)) {
                         if (stage.includes("مراجعة") || stage.includes("مدير عام") || stage.includes("موافقة")) {
                             isMyTurnNow = true;
@@ -1316,7 +1315,6 @@
                 }
             }
             else {
-                // **مطابقة الأزرار المرنة للمدير العام**
                 if (stageLower.includes(myRole) || myRole.includes(stageLower) || (parentDept && stageLower.includes(parentDept)) || myRole.includes(parentDept) || parentDept.includes(myRole)) {
                     isMyTurn = true;
                     actionType = 'gm';
