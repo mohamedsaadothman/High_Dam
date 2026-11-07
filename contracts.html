@@ -54,7 +54,7 @@ textarea { resize: vertical; height: 80px; }
 .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
 .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
 #printableArea { display: none; }
-.print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 45px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.15; color: #b45309; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; width: 100%; overflow: hidden; }
+.print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 42px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: normal; width: 90%; opacity: 0.15; color: #b45309; letter-spacing: 1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; line-height: 1.3; word-break: break-word; }
 @media print {
 body * { visibility: hidden; }
 #printableArea, #printableArea * { visibility: visible; }
@@ -124,6 +124,8 @@ input[readonly] { cursor: not-allowed; opacity: 0.85; }
 .items-table th, .items-table td { border: 1px solid #475569; padding: 8px; font-size: 12px; text-align: center; }
 .items-table th { background: #1e293b; color: #cbd5e1; font-weight: 700; }
 .items-table input { width: 100%; padding: 6px; font-size: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #fff; text-align: center; direction: rtl; unicode-bidi: plaintext; }
+.action-menu-btn { background: #0d6efd; color: #fff; border: none; width: 100%; padding: 14px; border-radius: 8px; font-weight: 900; font-size: 15px; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 12px; }
+.action-menu-btn:hover { background: #0b5ed7; }
 </style>
 </head>
 <script>
@@ -467,10 +469,38 @@ let archiveData = [];
 let deptNameMap = {};
 let trackUser = null;
 let trackRequestsCache = [];
+
+const CENTRAL_FINANCE_ROLE = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+const CHAIRMAN_ROLE = "رئيس مجلس الإدارة";
+
 function cleanText(txt) {
 if (!txt) return "";
 return String(txt).replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
 }
+function normalizeRole(txt) {
+return cleanText(txt).toLowerCase().replace(/\s+/g, " ");
+}
+function isFinanceCentralRole(role) {
+const r = normalizeRole(role);
+return r.includes("رئيس الإدارة المركزية") && (r.includes("الشئون المالية") || r.includes("الشؤون المالية"));
+}
+function isChairmanRole(role) {
+const r = normalizeRole(role);
+return r.includes("رئيس مجلس الإدارة") || r.includes("رئيس مجلس الادارة");
+}
+function isFinanceManagerRole(role) {
+const r = normalizeRole(role);
+return r.includes("مدير عام") && (r.includes("الشئون المالية") || r.includes("الشؤون المالية")) && !r.includes("رئيس الإدارة المركزية");
+}
+function isPlanningManagerRole(role) {
+const r = normalizeRole(role);
+return r.includes("مدير عام") && r.includes("التخطيط والمتابعة");
+}
+function isOtherCentralRole(role) {
+const r = normalizeRole(role);
+return r.includes("رئيس الإدارة المركزية") && !isFinanceCentralRole(role);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
 const savedUser = localStorage.getItem('reviewUser');
 if (savedUser) {
@@ -538,20 +568,12 @@ if (defaultValue) this.setValue(defaultValue, false);
 else this._applyPlaceholder();
 }
 _bind() {
-this.trigger.addEventListener('click', (e) => {
-e.stopPropagation();
-this.toggle();
-});
+this.trigger.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
 this.trigger.addEventListener('keydown', (e) => {
-if (e.key === 'Enter' || e.key === ' ') {
-e.preventDefault();
-this.toggle();
-}
+if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggle(); }
 if (e.key === 'Escape') this.close();
 });
-document.addEventListener('click', (e) => {
-if (!this.wrap.contains(e.target)) this.close();
-});
+document.addEventListener('click', (e) => { if (!this.wrap.contains(e.target)) this.close(); });
 }
 setOptions(opts, keepValue = false) {
 this.options = opts;
@@ -571,51 +593,29 @@ div.className = 'custom-select-option';
 div.textContent = opt;
 div.dataset.value = opt;
 if (this.hiddenInput.value === opt) div.classList.add('selected');
-div.addEventListener('click', (e) => {
-e.stopPropagation();
-this.setValue(opt);
-this.close();
-});
+div.addEventListener('click', (e) => { e.stopPropagation(); this.setValue(opt); this.close(); });
 this.menu.appendChild(div);
 });
 }
 setValue(value, fireEvents = true) {
 this.hiddenInput.value = value;
-if (value) {
-this.labelEl.textContent = value;
-this.trigger.classList.remove('placeholder');
-} else {
-this._applyPlaceholder();
-}
+if (value) { this.labelEl.textContent = value; this.trigger.classList.remove('placeholder'); }
+else { this._applyPlaceholder(); }
 this.menu.querySelectorAll('.custom-select-option').forEach(el => {
 el.classList.toggle('selected', el.dataset.value === value);
 });
 if (fireEvents) this.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
 }
-_applyPlaceholder() {
-this.labelEl.textContent = this.placeholder;
-this.trigger.classList.add('placeholder');
-}
-getValue() {
-return this.hiddenInput.value;
-}
-toggle() {
-this.menu.classList.contains('open') ? this.close() : this.open();
-}
+_applyPlaceholder() { this.labelEl.textContent = this.placeholder; this.trigger.classList.add('placeholder'); }
+getValue() { return this.hiddenInput.value; }
+toggle() { this.menu.classList.contains('open') ? this.close() : this.open(); }
 open() {
-document.querySelectorAll('.custom-select-menu.open').forEach(m => {
-if (m !== this.menu) m.classList.remove('open');
-});
-document.querySelectorAll('.custom-select-trigger.open').forEach(t => {
-if (t !== this.trigger) t.classList.remove('open');
-});
+document.querySelectorAll('.custom-select-menu.open').forEach(m => { if (m !== this.menu) m.classList.remove('open'); });
+document.querySelectorAll('.custom-select-trigger.open').forEach(t => { if (t !== this.trigger) t.classList.remove('open'); });
 this.menu.classList.add('open');
 this.trigger.classList.add('open');
 }
-close() {
-this.menu.classList.remove('open');
-this.trigger.classList.remove('open');
-}
+close() { this.menu.classList.remove('open'); this.trigger.classList.remove('open'); }
 }
 let deptSelect, titleSelect, reviewUserSelect;
 function loadDepartments() {
@@ -627,9 +627,7 @@ const data = doc.data();
 let rawName = data.centralManager || "";
 let cleanName = cleanText(rawName);
 if (cleanName !== "") {
-if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
-return;
-}
+if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) { return; }
 deptsSet.add(cleanName);
 deptNameMap[cleanName] = cleanName;
 }
@@ -660,9 +658,7 @@ querySnapshot.forEach((doc) => {
 const data = doc.data();
 let managerVal = data.centralManager;
 let cleanVal = cleanText(managerVal);
-if (cleanVal !== "") {
-usersSet.add(cleanVal);
-}
+if (cleanVal !== "") { usersSet.add(cleanVal); }
 });
 let usersList = [...usersSet].sort();
 if (usersList.length > 0) {
@@ -673,11 +669,7 @@ else reviewUserSelect.setOptions(usersList, true);
 }
 document.addEventListener('DOMContentLoaded', () => {
 titleSelect = new CustomSelect('titleSelectWrap', [
-"السيد المحاسب/",
-"السيد المهندس/",
-"السيد المحامى/",
-"السيد الدكتور/",
-"السيد الاستاذ/"
+"السيد المحاسب/", "السيد المهندس/", "السيد المحامى/", "السيد الدكتور/", "السيد الاستاذ/"
 ], "السيد المحاسب/");
 document.getElementById('parentDepartment').addEventListener('change', updateManagerTitle);
 document.getElementById('managerTitlePrefix').addEventListener('change', updateManagerTitle);
@@ -686,11 +678,8 @@ addItemRow();
 function updateManagerTitle() {
 const prefix = document.getElementById('managerTitlePrefix').value;
 let deptName = cleanText(document.getElementById('parentDepartment').value);
-if (deptName) {
-document.getElementById('managerTitle').value = prefix + " " + deptName;
-} else {
-document.getElementById('managerTitle').value = "";
-}
+if (deptName) { document.getElementById('managerTitle').value = prefix + " " + deptName; }
+else { document.getElementById('managerTitle').value = ""; }
 }
 function fetchEmployeeData() {
 const nationalId = document.getElementById('applicantNationalId').value.trim();
@@ -714,9 +703,7 @@ document.getElementById('applicantName').value = "";
 showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل.");
 document.getElementById('applicantName').value = "";
 }
-}).catch((err) => {
-console.error("خطأ:", err);
-});
+}).catch((err) => { console.error("خطأ:", err); });
 }
 }
 function showCustomAlert(title, message) {
@@ -759,16 +746,11 @@ tbody.appendChild(tr);
 }
 function removeItemRow(rowId) {
 const row = document.getElementById(rowId);
-if (row) {
-row.remove();
-calcTotalRequestCost();
-}
+if (row) { row.remove(); calcTotalRequestCost(); }
 }
 function calcTotalRequestCost() {
 let total = 0;
-document.querySelectorAll('.item-cost').forEach(input => {
-total += parseFloat(input.value) || 0;
-});
+document.querySelectorAll('.item-cost').forEach(input => { total += parseFloat(input.value) || 0; });
 document.getElementById('totalCostDisplay').value = total.toFixed(2) + " ج.م";
 }
 function resetCreateForm() {
@@ -819,7 +801,8 @@ managerName: cleanText(document.getElementById('managerName').value),
 itemsList: JSON.stringify(items),
 totalCost: totalCost,
 Current_Stage: "مراجعة " + selectedDeptDisplay,
-Status: "قيد الانتظار - موافقة " + selectedDeptDisplay,
+Current_Owner_Role: selectedDeptDisplay,
+Status: "قيد الانتظار - " + selectedDeptDisplay,
 History: []
 };
 const requestData = { ...data, Timestamp: new Date().toISOString() };
@@ -850,9 +833,7 @@ querySnapshot.forEach((doc) => {
 const data = doc.data();
 let centralVal = cleanText(data.centralManager || "");
 let nameVal = cleanText(data.name || "");
-if (centralVal === selectedName || nameVal === selectedName) {
-foundDoc = doc;
-}
+if (centralVal === selectedName || nameVal === selectedName) { foundDoc = doc; }
 });
 if (!foundDoc) {
 btn.disabled = false;
@@ -877,17 +858,11 @@ return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
 const fakeEmail = userDoc.id + "@dam-app.com";
 const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
 auth.signInWithEmailAndPassword(fakeEmail, finalPassword)
-.then((userCredential) => {
-successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-})
+.then((userCredential) => { successLoginAction(userDoc.id, userData, userCredential.user.uid, btn); })
 .catch((error) => {
 auth.createUserWithEmailAndPassword(fakeEmail, finalPassword)
-.then((userCredential) => {
-successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-})
-.catch((createErr) => {
-successLoginAction(userDoc.id, userData, userDoc.id, btn);
-});
+.then((userCredential) => { successLoginAction(userDoc.id, userData, userCredential.user.uid, btn); })
+.catch((createErr) => { successLoginAction(userDoc.id, userData, userDoc.id, btn); });
 });
 }
 function successLoginAction(docId, userData, uid, btn) {
@@ -895,7 +870,7 @@ btn.disabled = false;
 btn.innerHTML = 'دخول';
 const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
 const userRole = cleanText(userData.centralManager || userData.role || "مسؤول");
-loggedInUser = { uid: uid, name: realName, role: userRole, centralManager: cleanText(userData.centralManager || "") };
+loggedInUser = { uid: uid, name: realName, role: userRole, centralManager: cleanText(userData.centralManager || ""), department: cleanText(userData.department || "") };
 localStorage.setItem('reviewUser', JSON.stringify(loggedInUser));
 document.getElementById('loginBox').style.display = 'none';
 document.getElementById('dashboard').style.display = 'block';
@@ -920,59 +895,59 @@ document.getElementById('tabPending').classList.toggle('active', tab === 'pendin
 document.getElementById('tabArchive').classList.toggle('active', tab === 'archive');
 renderFilteredRequests();
 }
+
+function getCurrentUserDepartment() {
+return cleanText(loggedInUser.department || loggedInUser.centralManager || loggedInUser.role || "");
+}
+
 function loadReviewRequests() {
-if (!loggedInUser || !loggedInUser.role) return;
+if (!loggedInUser || (!loggedInUser.role && !loggedInUser.department)) return;
 const container = document.getElementById('requestsList');
 container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الطلبات...</p>';
 db.collection("requests").get().then((querySnapshot) => {
 pendingData = [];
 archiveData = [];
-const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
+const myDept = normalizeRole(getCurrentUserDepartment());
+const myRole = normalizeRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmCentralFinance = isFinanceCentralRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmChairman = isChairmanRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmFinanceMgr = isFinanceManagerRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmPlanningMgr = isPlanningManagerRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmOtherCentral = isOtherCentralRole(loggedInUser.centralManager || loggedInUser.role);
+
 querySnapshot.forEach((doc) => {
 const req = doc.data();
 req.Request_ID = doc.id;
-const stage = cleanText(req.Current_Stage || "").toLowerCase();
-const status = cleanText(req.Status || "").toLowerCase();
-let history = req.History || [];
+const ownerRole = normalizeRole(req.Current_Owner_Role || "");
+const status = normalizeRole(req.Status || "");
 let isMyTurnNow = false;
-let isArchivedForMe = false;
-let state = {};
-try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-if (managerCentral.includes("الموارد البشرية") && stage.includes("الموارد البشرية")) {
-isMyTurnNow = true;
-} else if (managerCentral.includes("الشئون المالية") || managerCentral.includes("الشؤون المالية")) {
-if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("الشئون المالية") || stage.includes("مالية")) {
-let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("مالية") || cleanText(k).toLowerCase().includes("الشئون"));
-if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
-isMyTurnNow = true;
-}
-}
-} else if (managerCentral.includes("التخطيط والمتابعة") || managerCentral.includes("تخطيط")) {
-if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("تخطيط")) {
-let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("تخطيط"));
-if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
-isMyTurnNow = true;
-}
-}
-} else if (managerCentral.includes("رئيس الإدارة المركزية") || managerCentral.includes("رئيس مجلس الإدارة")) {
-if (stage.includes("رئيس مجلس الإدارة") || stage.includes("رئيس الإدارة المركزية")) {
-isMyTurnNow = true;
-}
+
+if (iAmChairman) {
+if (ownerRole.includes(normalizeRole(CHAIRMAN_ROLE))) isMyTurnNow = true;
+} else if (iAmCentralFinance) {
+if (ownerRole === normalizeRole(CENTRAL_FINANCE_ROLE)) isMyTurnNow = true;
+} else if (iAmFinanceMgr) {
+if (ownerRole.includes("مدير عام") && (ownerRole.includes("الشئون المالية") || ownerRole.includes("الشؤون المالية"))) isMyTurnNow = true;
+} else if (iAmPlanningMgr) {
+if (ownerRole.includes("مدير عام") && ownerRole.includes("التخطيط والمتابعة")) isMyTurnNow = true;
+} else if (iAmOtherCentral) {
+if (ownerRole === myRole || ownerRole === myDept) isMyTurnNow = true;
 } else {
-if (stage.includes(managerCentral)) {
-isMyTurnNow = true;
+if (ownerRole === myDept || ownerRole === myRole) isMyTurnNow = true;
 }
-}
-let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(managerCentral));
-if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
-isArchivedForMe = true;
-}
+
+const history = req.History || [];
+const passedByMe = history.some(h => normalizeRole(h) === myRole || normalizeRole(h) === myDept);
+const isFinal = status.includes("معتمد نهائياً") || status.includes("مرفوض");
+const isArchivedForMe = (passedByMe && !isMyTurnNow) || isFinal;
+
 if (isMyTurnNow) {
 pendingData.push(req);
 } else if (isArchivedForMe) {
 archiveData.push(req);
 }
 });
+
 pendingData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
 archiveData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
 document.getElementById('pendingCount').textContent = pendingData.length;
@@ -983,6 +958,7 @@ console.error("Error: ", error);
 container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
 });
 }
+
 function renderFilteredRequests() {
 const container = document.getElementById('requestsList');
 const data = currentTab === 'pending' ? pendingData : archiveData;
@@ -994,20 +970,10 @@ const statusFilter = document.getElementById('filterStatus').value;
 let filtered = data.filter(function(r) {
 if (dateFrom || dateTo) {
 const ts = new Date(r.Timestamp || 0);
-if (dateFrom) {
-const df = new Date(dateFrom);
-df.setHours(0,0,0,0);
-if (ts < df) return false;
+if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
+if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
 }
-if (dateTo) {
-const dt = new Date(dateTo);
-dt.setHours(23,59,59,999);
-if (ts > dt) return false;
-}
-}
-if (deptFilter) {
-if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false;
-}
+if (deptFilter) { if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false; }
 if (statusFilter) {
 const status = cleanText(r.Status || "");
 if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
@@ -1038,6 +1004,7 @@ document.getElementById('filterDept').value = "";
 document.getElementById('filterStatus').value = "";
 renderFilteredRequests();
 }
+
 function processAction(requestId, actionType, extraData = {}) {
 const nowStr = new Date().toLocaleString();
 db.collection("requests").doc(requestId).get().then((doc) => {
@@ -1046,55 +1013,143 @@ let req = doc.data();
 let updates = {};
 let history = req.History || [];
 if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
-const CENTRAL_FINANCE_ROLE = "رئيس الإدارة المركزية للشئون المالية والإدارية";
-const CHAIRMAN_ROLE = "رئيس مجلس الإدارة";
+const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role);
+
 if (actionType === 'gm_approve') {
 db.collection("users").where("centralManager", "==", req.parentDepartment).get().then((querySnapshot) => {
 let nextManager = CENTRAL_FINANCE_ROLE;
 if(!querySnapshot.empty && querySnapshot.docs[0].data().nextManager) {
 nextManager = cleanText(querySnapshot.docs[0].data().nextManager);
 }
-updates = { Current_Stage: "مراجعة " + nextManager, Gm_Date: nowStr, Status: "قيد الانتظار - موافقة " + req.parentDepartment, Central_Manager_Name: nextManager, History: history };
+updates = {
+Current_Stage: "مراجعة " + nextManager,
+Current_Owner_Role: nextManager,
+Gm_Date: nowStr,
+Status: "موافقة - " + myRole + " / قيد الانتظار - " + nextManager,
+History: history
+};
 executeUpdate(requestId, updates);
 });
 return;
-} else if (actionType === 'central_to_finance') {
-updates = { Current_Stage: "مراجعة " + CENTRAL_FINANCE_ROLE, Central_Date: nowStr, Status: "قيد الانتظار - موافقة " + CENTRAL_FINANCE_ROLE, Central_Manager_Name: CENTRAL_FINANCE_ROLE, Previous_Central: req.Central_Manager_Name || cleanText(loggedInUser.centralManager || loggedInUser.role), History: history };
-} else if (actionType === 'central_approve') {
-updates = { Current_Stage: "مراجعة " + CENTRAL_FINANCE_ROLE, Central_Date: nowStr, Status: "قيد الانتظار - موافقة " + CENTRAL_FINANCE_ROLE, Central_Manager_Name: CENTRAL_FINANCE_ROLE, History: history };
-} else if (actionType === 'finance_transfer') {
-let deptNamesStr = extraData.targetDepts.join(" و ");
+}
+else if (actionType === 'other_central_to_finance') {
+updates = {
+Current_Stage: "مراجعة " + CENTRAL_FINANCE_ROLE,
+Current_Owner_Role: CENTRAL_FINANCE_ROLE,
+Central_Date: nowStr,
+Status: "قيد الانتظار - " + CENTRAL_FINANCE_ROLE,
+Previous_Central: myRole,
+History: history
+};
+}
+else if (actionType === 'central_to_finance_only') {
+const financeDept = "مدير عام الشئون المالية";
 let transferObj = {};
-extraData.targetDepts.forEach(dept => { transferObj[dept] = { decision: "pending", date: nowStr }; });
-updates = { Current_Stage: "بانتظار رأي " + deptNamesStr, Transfer_State: JSON.stringify(transferObj), Status: "قيد الانتظار - أخذ رأي " + deptNamesStr, Central_Manager_Name: CENTRAL_FINANCE_ROLE, Saved_By_Central: CENTRAL_FINANCE_ROLE, History: history };
-} else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
+transferObj[financeDept] = { decision: "pending", date: nowStr };
+updates = {
+Current_Stage: "بانتظار رأي " + financeDept,
+Current_Owner_Role: financeDept,
+Transfer_State: JSON.stringify(transferObj),
+Status: "قيد الانتظار - أخذ رأي " + financeDept,
+Central_Manager_Name: CENTRAL_FINANCE_ROLE,
+Saved_By_Central: myRole,
+History: history
+};
+}
+else if (actionType === 'central_to_planning_only') {
+const planningDept = "مدير عام التخطيط والمتابعة";
+let transferObj = {};
+transferObj[planningDept] = { decision: "pending", date: nowStr };
+updates = {
+Current_Stage: "بانتظار رأي " + planningDept,
+Current_Owner_Role: planningDept,
+Transfer_State: JSON.stringify(transferObj),
+Status: "قيد الانتظار - أخذ رأي " + planningDept,
+Central_Manager_Name: CENTRAL_FINANCE_ROLE,
+Saved_By_Central: myRole,
+History: history
+};
+}
+else if (actionType === 'central_to_both') {
+const financeDept = "مدير عام الشئون المالية";
+const planningDept = "مدير عام التخطيط والمتابعة";
+let transferObj = {};
+transferObj[financeDept] = { decision: "pending", date: nowStr };
+transferObj[planningDept] = { decision: "pending", date: nowStr };
+updates = {
+Current_Stage: "بانتظار رأي " + financeDept + " و " + planningDept,
+Current_Owner_Role: "كلاهما",
+Transfer_State: JSON.stringify(transferObj),
+Status: "قيد الانتظار - أخذ رأي " + financeDept + " و " + planningDept,
+Central_Manager_Name: CENTRAL_FINANCE_ROLE,
+Saved_By_Central: myRole,
+History: history
+};
+}
+else if (actionType === 'central_approve_to_chairman') {
+updates = {
+Current_Stage: "مراجعة " + CHAIRMAN_ROLE,
+Current_Owner_Role: CHAIRMAN_ROLE,
+Central_Final_Date: nowStr,
+Status: "قيد الانتظار - " + CHAIRMAN_ROLE,
+History: history
+};
+}
+else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
 let currentState = {};
 try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 let updatedState = { ...currentState };
-const myRole = cleanText(loggedInUser.role);
 for (let key in updatedState) {
-if ((myRole.includes("مالية") || myRole.includes("الشؤون المالية")) && (key.includes("مالية") || key.includes("الشؤون"))) {
-updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-updatedState[key].date = nowStr;
-if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-} else if (myRole.includes("تخطيط") && key.includes("تخطيط")) {
+const keyNorm = normalizeRole(key);
+const myRoleNorm = normalizeRole(myRole);
+let matched = false;
+if (myRoleNorm.includes("مالية") && (keyNorm.includes("مالية") || keyNorm.includes("الشئون"))) matched = true;
+else if (myRoleNorm.includes("تخطيط") && keyNorm.includes("تخطيط")) matched = true;
+if (matched) {
 updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
 updatedState[key].date = nowStr;
 if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
 }
 }
-let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-let originalCentral = CENTRAL_FINANCE_ROLE;
-updates = { Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + originalCentral, Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + originalCentral, Transfer_State: JSON.stringify(updatedState), Central_Manager_Name: originalCentral, History: history };
-} else if (actionType === 'finance_approve') {
-updates = { Current_Stage: "مراجعة " + CENTRAL_FINANCE_ROLE + " (الاعتماد النهائي)", Finance_Date: nowStr, Status: "قيد الانتظار - موافقة " + CENTRAL_FINANCE_ROLE, Central_Manager_Name: CENTRAL_FINANCE_ROLE, History: history };
-} else if (actionType === 'central_final_approve') {
-updates = { Current_Stage: "مراجعة " + CHAIRMAN_ROLE, Central_Final_Date: nowStr, Status: "قيد الانتظار - موافقة " + CHAIRMAN_ROLE, History: history };
-} else if (actionType === 'chairman_direct_approve') {
-updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
-} else if (actionType === 'reject') {
-const rejecterRole = cleanText(loggedInUser.centralManager || loggedInUser.role || "مسؤول");
-updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Rejected_By_Role: rejecterRole, Status: "مرفوض - " + rejecterRole, History: history };
+const allResolved = Object.keys(updatedState).every(k => updatedState[k].decision !== 'pending');
+const decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض مسبب";
+if (allResolved) {
+updates = {
+Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + CENTRAL_FINANCE_ROLE,
+Current_Owner_Role: CENTRAL_FINANCE_ROLE,
+Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + CENTRAL_FINANCE_ROLE,
+Transfer_State: JSON.stringify(updatedState),
+Central_Manager_Name: CENTRAL_FINANCE_ROLE,
+History: history
+};
+} else {
+const pendingKeys = Object.keys(updatedState).filter(k => updatedState[k].decision === 'pending').join(" و ");
+updates = {
+Current_Stage: "بانتظار رأي " + pendingKeys,
+Status: "تم أخذ رأي " + myRole + " (" + decisionText + ") - بانتظار رأي " + pendingKeys,
+Transfer_State: JSON.stringify(updatedState),
+History: history
+};
+}
+}
+else if (actionType === 'chairman_approve') {
+updates = {
+Current_Stage: "معتمد نهائياً",
+Current_Owner_Role: "",
+Chairman_Date: nowStr,
+Status: "معتمد نهائياً",
+History: history
+};
+}
+else if (actionType === 'reject') {
+updates = {
+Current_Stage: "مرفوض",
+Current_Owner_Role: "",
+Reject_Reason: extraData.rejectReason,
+Rejected_By_Role: myRole,
+Status: "مرفوض - " + myRole,
+History: history
+};
 }
 executeUpdate(requestId, updates);
 });
@@ -1109,6 +1164,7 @@ console.error("Error: ", error);
 showCustomAlert("خطأ", "تعذر تحديث الطلب.");
 });
 }
+
 function promptReject(requestId, actionName = "reject") {
 const existing = document.getElementById("rejectModal");
 if (existing) existing.remove();
@@ -1136,126 +1192,103 @@ let actionToUse = actionName === 'dept_reject' ? 'dept_reject' : 'reject';
 processAction(requestId, actionToUse, { rejectReason: reason });
 };
 }
-function promptFinanceTransfer(requestId) {
-const existing = document.getElementById("transferModal");
+
+function promptCentralAction(requestId) {
+const existing = document.getElementById("centralActionModal");
 if (existing) existing.remove();
 const overlay = document.createElement("div");
-overlay.id = "transferModal";
+overlay.id = "centralActionModal";
 overlay.className = "custom-modal-overlay";
 overlay.innerHTML = `
-<div class="custom-modal-box" style="max-width:520px;">
-<div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
-<div class="custom-modal-body" style="text-align:right;">
-<p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (مدير عام الشئون المالية أو التخطيط والمتابعة):</p>
-<label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
-<label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>
+<div class="custom-modal-box" style="max-width:560px;">
+<div class="custom-modal-header"><i class="fas fa-tasks" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">اختر الإجراء المطلوب</h3></div>
+<div class="custom-modal-body" style="text-align:right; padding: 0; background:transparent;">
+<label class="transfer-option" style="margin-bottom:10px;">
+<input type="radio" name="centralAction" value="finance" style="width:20px; height:20px;">
+<span>تحويل إلى الشئون المالية</span>
+</label>
+<label class="transfer-option" style="margin-bottom:10px;">
+<input type="radio" name="centralAction" value="planning" style="width:20px; height:20px;">
+<span>تحويل إلى التخطيط والمتابعة</span>
+</label>
+<label class="transfer-option" style="margin-bottom:10px;">
+<input type="radio" name="centralAction" value="both" style="width:20px; height:20px;">
+<span>تحويل إلى الشئون المالية والتخطيط والمتابعة (كلاهما)</span>
+</label>
+<label class="transfer-option" style="margin-bottom:10px;">
+<input type="radio" name="centralAction" value="chairman" style="width:20px; height:20px;">
+<span>الموافقة والتحويل إلى رئيس مجلس الإدارة</span>
+</label>
 </div>
-<div style="display:flex; gap:8px;">
-<button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-<button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد التحويل</button>
+<div style="display:flex; gap:8px; margin-top:12px;">
+<button id="centralActionCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+<button id="centralActionConfirm" class="custom-modal-btn" style="background:#0d6efd;">تنفيذ</button>
 </div>
 </div>`;
 document.body.appendChild(overlay);
-document.getElementById('transferCancel').onclick = () => overlay.remove();
-document.getElementById('transferConfirm').onclick = () => {
-const selected = [];
-if (document.getElementById('chkFinance').checked) selected.push("مدير عام الشئون المالية");
-if (document.getElementById('chkPlanning').checked) selected.push("مدير عام التخطيط والمتابعة");
-if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
+document.getElementById('centralActionCancel').onclick = () => overlay.remove();
+document.getElementById('centralActionConfirm').onclick = () => {
+const selected = overlay.querySelector('input[name="centralAction"]:checked');
+if (!selected) { showCustomAlert("تنبيه", "اختر إجراءً واحداً."); return; }
+const val = selected.value;
 overlay.remove();
-processAction(requestId, "finance_transfer", { targetDepts: selected });
+if (val === 'finance') processAction(requestId, 'central_to_finance_only');
+else if (val === 'planning') processAction(requestId, 'central_to_planning_only');
+else if (val === 'both') processAction(requestId, 'central_to_both');
+else if (val === 'chairman') processAction(requestId, 'central_approve_to_chairman');
 };
 }
+
 function buildRequestCard(req, withActions) {
 const div = document.createElement('div');
 div.className = 'request-card';
 const stage = cleanText(req.Current_Stage || "");
 const status = cleanText(req.Status || "");
-const stageLower = stage.toLowerCase();
-const statusLower = status.toLowerCase();
+const ownerRole = normalizeRole(req.Current_Owner_Role || "");
+const statusNorm = normalizeRole(status);
 let badgeClass = 'badge-wait';
 if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
 else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
-else if (stage.indexOf("بانتظار") !== -1 || stage.indexOf("تعديل") !== -1) badgeClass = 'badge-info';
+else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
 let buttonsHtml = "";
 if (withActions) {
-const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
-const centralName = cleanText(req.Central_Manager_Name || "").toLowerCase();
-const CENTRAL_FINANCE_KEYWORDS = ["الشئون المالية", "الشؤون المالية", "الشئون المالية والإدارية", "الشؤون المالية والإدارية"];
-const isFinanceCentral = CENTRAL_FINANCE_KEYWORDS.some(k => managerCentral.includes(k.toLowerCase()));
-const isOtherCentral = managerCentral.includes("رئيس الإدارة المركزية") && !isFinanceCentral;
-const isChairman = managerCentral.includes("رئيس مجلس الإدارة");
+const iAmChairman = isChairmanRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmCentralFinance = isFinanceCentralRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmFinanceMgr = isFinanceManagerRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmPlanningMgr = isPlanningManagerRole(loggedInUser.centralManager || loggedInUser.role);
+const iAmOtherCentral = isOtherCentralRole(loggedInUser.centralManager || loggedInUser.role);
+const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role);
 let isMyTurn = false;
 let actionType = null;
-const stageIsAwaitingOpinion = stageLower.includes("بانتظار رأي") || stageLower.includes("أخذ رأي") || stageLower.includes("أخذ الرأي");
-const stageIsAfterOpinion = stageLower.includes("بعد أخذ الرأي") || statusLower.includes("تم أخذ الرأي");
-const stageHasFinanceCentral = stageLower.includes("الشئون المالية") || stageLower.includes("الشؤون المالية");
-const stageHasChairman = stageLower.includes("رئيس مجلس الإدارة");
-if (isChairman) {
-if (stageHasChairman) { isMyTurn = true; actionType = 'chairman'; }
-} else if (isFinanceCentral) {
-if (stageIsAfterOpinion) {
-isMyTurn = true; actionType = 'central_final';
-} else if (stageIsAwaitingOpinion) {
-if (managerCentral.includes("مالية") && !managerCentral.includes("رئيس")) {
+
+if (iAmChairman && ownerRole.includes(normalizeRole(CHAIRMAN_ROLE))) {
+isMyTurn = true; actionType = 'chairman';
+} else if (iAmCentralFinance && ownerRole === normalizeRole(CENTRAL_FINANCE_ROLE)) {
+isMyTurn = true; actionType = 'central';
+} else if (iAmFinanceMgr && ownerRole.includes("مدير عام") && (ownerRole.includes("مالية") || ownerRole.includes("الشئون"))) {
 isMyTurn = true; actionType = 'dept_opinion';
-}
-} else if (stageHasFinanceCentral) {
-isMyTurn = true; actionType = 'finance';
-} else if (stageHasChairman) {
-isMyTurn = true; actionType = 'central_final_approve';
-}
-} else if (managerCentral.includes("مالية") && (stageIsAwaitingOpinion || stageLower.includes("مالية"))) {
-let state = {};
-try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("مالية") || cleanText(k).toLowerCase().includes("الشئون"));
-if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
+} else if (iAmPlanningMgr && ownerRole.includes("تخطيط")) {
 isMyTurn = true; actionType = 'dept_opinion';
-}
-} else if ((managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة"))) {
-let state = {};
-try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("تخطيط"));
-if ((stageIsAwaitingOpinion || stageLower.includes("تخطيط")) && (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending"))) {
-isMyTurn = true; actionType = 'dept_opinion';
-}
-} else if (isOtherCentral) {
-if (stageLower.includes(managerCentral) || stageIsAwaitingOpinion || (!stageHasFinanceCentral && !stageHasChairman && stageLower.includes("مراجعة"))) {
+} else if (iAmOtherCentral && (ownerRole === normalizeRole(myRole) || ownerRole.includes(normalizeRole(myRole)))) {
 isMyTurn = true; actionType = 'other_central';
 }
-} else if (stageLower.includes(managerCentral)) {
-isMyTurn = true; actionType = 'gm';
-}
+
 if (isMyTurn) {
-if (actionType === 'dept_opinion') {
+if (actionType === 'chairman') {
+buttonsHtml = `<div class="req-actions">
+<button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
+<button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض مسبب</button>
+</div>`;
+} else if (actionType === 'central') {
+buttonsHtml = `<button class="action-menu-btn" onclick="promptCentralAction('${req.Request_ID}')"><i class="fas fa-tasks"></i> اتخاذ إجراء</button>`;
+} else if (actionType === 'dept_opinion') {
 buttonsHtml = `<div class="req-actions">
 <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
 <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
 </div>`;
-} else if (actionType === 'chairman') {
-buttonsHtml = `<div class="req-actions">
-<button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
-<button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
-</div>`;
-} else if (actionType === 'finance') {
-buttonsHtml = `<div class="req-actions">
-<button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للجهة المختصة</button>
-<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي (الشئون المالية / التخطيط)</button>
-<button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-</div>`;
-} else if (actionType === 'central_final') {
-buttonsHtml = `<div class="req-actions">
-<button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد الرأيين وتحويل لرئيس مجلس الإدارة</button>
-<button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
-</div>`;
-} else if (actionType === 'central_final_approve') {
-buttonsHtml = `<div class="req-actions">
-<button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
-<button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-</div>`;
 } else if (actionType === 'other_central') {
 buttonsHtml = `<div class="req-actions">
-<button class="main-btn" style="background:#0d6efd;" onclick="processAction('${req.Request_ID}', 'central_to_finance')"><i class="fas fa-exchange-alt"></i> تحويل لرئيس الإدارة المركزية للشئون المالية والإدارية</button>
+<button class="main-btn" style="background:#0d6efd;" onclick="processAction('${req.Request_ID}', 'other_central_to_finance')"><i class="fas fa-exchange-alt"></i> تحويل لرئيس الإدارة المركزية للشئون المالية والإدارية</button>
 <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
 </div>`;
 } else {
@@ -1285,6 +1318,7 @@ ${buttonsHtml}
 `;
 return div;
 }
+
 function startAutoRefresh() {
 if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
 _autoRefreshTimer = setInterval(function() {
@@ -1296,6 +1330,7 @@ loadReviewRequests();
 function stopAutoRefresh() {
 if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
 }
+
 function printSpecificRequestFromCard(reqId) {
 let req = activeRequestsData.find(r => r.Request_ID === reqId);
 if (!req) {
@@ -1325,23 +1360,23 @@ const rejectBox = document.getElementById('printRejectBox');
 if (req.Reject_Reason) {
 rejectBox.style.display = "block";
 document.getElementById('printRejectReason').textContent = cleanText(req.Reject_Reason);
-} else {
-rejectBox.style.display = "none";
-}
+} else { rejectBox.style.display = "none"; }
+
 const wm = document.getElementById('printWatermark');
 const statusText = cleanText(req.Status || "");
 if (statusText.includes("مرفوض")) {
 wm.style.display = 'block';
-const rejectedByRole = cleanText(req.Rejected_By_Role || req.Rejected_By || "المسؤول المختص");
+const rejectedByRole = cleanText(req.Rejected_By_Role || "المسؤول المختص");
 wm.textContent = "مرفوض - " + rejectedByRole;
 wm.style.color = "#dc3545";
-} else if (statusText.includes("معتمد")) {
+} else if (statusText.includes("معتمد نهائياً")) {
 wm.style.display = 'none';
 } else {
 wm.style.display = 'block';
-wm.textContent = statusText;
+wm.textContent = statusText || "قيد الانتظار";
 wm.style.color = "#b45309";
 }
+
 const deptRepliesBox = document.getElementById('printDeptRepliesBox');
 const deptRepliesBody = document.getElementById('printDeptRepliesBody');
 if (req.Transfer_State) {
@@ -1362,6 +1397,7 @@ if (rowsHtml !== "") { deptRepliesBody.innerHTML = rowsHtml; deptRepliesBox.styl
 else { deptRepliesBox.style.display = 'none'; }
 } catch(e) { deptRepliesBox.style.display = 'none'; }
 } else { deptRepliesBox.style.display = 'none'; }
+
 let itemsHtml = '';
 try {
 let items = JSON.parse(req.itemsList || "[]");
@@ -1378,6 +1414,7 @@ document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
 document.getElementById('printRequestTotalCost').textContent = cleanText(req.totalCost || "0") + " ج.م";
 window.print();
 }
+
 function exportToExcel() {
 const data = currentTab === 'pending' ? pendingData : archiveData;
 if (data.length === 0) { showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها."); return; }
@@ -1435,6 +1472,7 @@ const fileName = `طلبات_${currentTab === 'pending' ? 'معلقة' : 'أرش
 XLSX.writeFile(wb, fileName);
 showSuccess("تم بنجاح", "تم تصدير البيانات إلى ملف Excel.");
 }
+
 function trackLogin() {
 const nationalId = document.getElementById('trackNationalId').value.trim();
 const password = document.getElementById('trackPassword').value.trim();
