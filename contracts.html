@@ -981,8 +981,14 @@
                 let state = {};
                 try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 
+                // مطابقة الأدوار الذكية
                 if (managerCentral.includes("الموارد البشرية") && stage.includes("الموارد البشرية")) {
                     isMyTurnNow = true;
+                }
+                else if (managerCentral.includes("رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية")) {
+                    if (stage.includes("رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية") || stage.includes("بعد أخذ الرأي")) {
+                        isMyTurnNow = true;
+                    }
                 }
                 else if (managerCentral.includes("الشئون المالية") || managerCentral.includes("الشؤون المالية")) {
                     if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("الشئون المالية") || stage.includes("مالية")) {
@@ -1000,8 +1006,8 @@
                         }
                     }
                 }
-                else if (managerCentral.includes("رئيس الإدارة المركزية") || managerCentral.includes("رئيس مجلس الإدارة")) {
-                    if (stage.includes("رئيس مجلس الإدارة") || stage.includes("رئيس الإدارة المركزية")) {
+                else if (managerCentral.includes("رئيس مجلس الإدارة")) {
+                    if (stage.includes("رئيس مجلس الإدارة")) {
                         isMyTurnNow = true;
                     }
                 }
@@ -1099,34 +1105,21 @@
             let history = req.History || [];
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
+            const centralFinanceManagerName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+
             if (actionType === 'gm_approve') {
-                // جلب المسؤول التالي من جدول users بناءً على department (المدير العام المختار في تقديم الطلب)
-                db.collection("users").where("centralManager", "==", req.parentDepartment).get().then((querySnapshot) => {
-                    let nextManager = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
-                    if(!querySnapshot.empty && querySnapshot.docs[0].data().nextManager) {
-                        nextManager = cleanText(querySnapshot.docs[0].data().nextManager);
-                    }
-                    
-                    updates = { 
-                        Current_Stage: "مراجعة " + nextManager, 
-                        Gm_Date: nowStr, 
-                        Status: "قيد الانتظار - موافقة " + req.parentDepartment,
-                        Central_Manager_Name: nextManager,
-                        History: history
-                    };
-                    executeUpdate(requestId, updates);
-                });
-                return;
-            } 
-            else if (actionType === 'central_approve') {
+                // القاعدة العامة: تحويل جميع الطلبات لرئيس الإدارة المركزية للشئون المالية والإدارية أولاً
                 updates = { 
-                    Current_Stage: "مراجعة رئيس الإدارة المركزية", 
-                    Central_Date: nowStr, 
-                    Status: "قيد الانتظار - رئيس الإدارة المركزية", 
-                    History: history 
+                    Current_Stage: "مراجعة " + centralFinanceManagerName, 
+                    Gm_Date: nowStr, 
+                    Status: "قيد الانتظار - موافقة " + req.parentDepartment,
+                    Original_Requester_Manager: req.parentDepartment,
+                    Central_Manager_Name: centralFinanceManagerName,
+                    History: history
                 };
             } 
-            else if (actionType === 'finance_transfer') {
+            else if (actionType === 'central_finance_transfer') {
+                // تحويل لأخذ الرأي من الشئون المالية أو التخطيط
                 let deptNamesStr = extraData.targetDepts.join(" و ");
                 let transferObj = {};
                 extraData.targetDepts.forEach(dept => {
@@ -1159,25 +1152,16 @@
                 }
                 
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 
                 updates = { 
-                    Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + originalCentral, 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + originalCentral,
+                    Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + centralFinanceManagerName, 
+                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد الشئون المالية",
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
             }
-            else if (actionType === 'finance_approve') {
-                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
-                updates = { 
-                    Current_Stage: "مراجعة " + originalCentral + " (الاعتماد النهائي)", 
-                    Finance_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة " + originalCentral, 
-                    History: history 
-                };
-            }
-            else if (actionType === 'central_final_approve') {
+            else if (actionType === 'central_finance_final_approve') {
+                // اعتماد الرأيين وتحويلها بالموافقة إلى رئيس مجلس الإدارة
                 updates = { 
                     Current_Stage: "مراجعة رئيس مجلس الإدارة", 
                     Central_Final_Date: nowStr, 
@@ -1189,8 +1173,14 @@
                 updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
             } 
             else if (actionType === 'reject') {
-                let rejecterName = loggedInUser.name || loggedInUser.role;
-                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
+                // قاعدة الرفض: تظهر العلامة المائية بالمسمى الوظيفي وليس الاسم الشخصي
+                let rejecterRole = loggedInUser.role || "المسؤول المختص";
+                updates = { 
+                    Current_Stage: "مرفوض", 
+                    Reject_Reason: extraData.rejectReason, 
+                    Status: "مرفوض من " + rejecterRole, 
+                    History: history 
+                };
             }
             
             executeUpdate(requestId, updates);
@@ -1247,7 +1237,7 @@
           <div class="custom-modal-box" style="max-width:520px;">
             <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
             <div class="custom-modal-body" style="text-align:right;">
-              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (مدير عام الشئون المالية أو التخطيط والمتابعة):</p>
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة المطلوب أخذ رأيها:</p>
               <label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
               <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>
             </div>
@@ -1264,7 +1254,7 @@
             if (document.getElementById('chkPlanning').checked) selected.push("مدير عام التخطيط والمتابعة");
             if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
             overlay.remove();
-            processAction(requestId, "finance_transfer", { targetDepts: selected });
+            processAction(requestId, "central_finance_transfer", { targetDepts: selected });
         };
     }
 
@@ -1283,7 +1273,6 @@
         let buttonsHtml = "";
         if (withActions) {
             const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
-            const centralName = cleanText(req.Central_Manager_Name || "").toLowerCase();
             
             let isMyTurn = false;
             let actionType = null;
@@ -1292,33 +1281,21 @@
                 isMyTurn = true;
                 actionType = 'gm';
             }
+            else if (managerCentral.includes("رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية")) {
+                if (stageLower.includes("رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية") || stageLower.includes("بعد أخذ الرأي")) {
+                    isMyTurn = true;
+                    actionType = 'central_finance';
+                }
+            }
             else if (stageLower.includes("بانتظار رأي") && (managerCentral.includes("مالية") || managerCentral.includes("تخطيط") || managerCentral.includes("الشؤون"))) {
                 isMyTurn = true;
                 actionType = 'dept_opinion';
             }
             else if (managerCentral.includes("رئيس مجلس الإدارة")) {
-                if (stageLower.includes("رئيس مجلس الإدارة") && !stageLower.includes("الشئون")) {
+                if (stageLower.includes("رئيس مجلس الإدارة")) {
                     isMyTurn = true;
                     actionType = 'chairman';
                 }
-            }
-            else if (stageLower.includes("بعد أخذ الرأي") || statusLower.includes("تم أخذ الرأي")) {
-                isMyTurn = true;
-                actionType = 'central_final';
-            }
-            else if (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية")) {
-                if (stageLower.includes("الشئون المالية") || (stageLower.includes("مالية") && !stageLower.includes("أخذ الرأي"))) {
-                    isMyTurn = true;
-                    actionType = 'finance';
-                }
-            }
-            else if (stageLower.includes("الاعتماد النهائي")) {
-                isMyTurn = true;
-                actionType = 'central_final_approve';
-            }
-            else if (managerCentral.includes("رئيس الإدارة المركزية")) {
-                isMyTurn = true;
-                actionType = 'central';
             }
             else if (stageLower.includes(managerCentral)) {
                 isMyTurn = true;
@@ -1338,29 +1315,16 @@
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
                     </div>`;
                 }
-                else if (actionType === 'finance') {
+                else if (actionType === 'central_finance') {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve')"><i class="fas fa-check"></i> اعتماد وتحويل للجهة المختصة</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_finance_final_approve')"><i class="fas fa-check"></i> اعتماد الرأيين وتحويل لرئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي (الشئون المالية / التخطيط)</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                    </div>`;
-                }
-                else if (actionType === 'central') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد مباشر</button>
-                        <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي (الشئون المالية / التخطيط)</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                    </div>`;
-                }
-                else if (actionType === 'central_final' || actionType === 'central_final_approve') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_final_approve')"><i class="fas fa-check"></i> اعتماد وتحويل لرئيس مجلس الإدارة</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
                     </div>`;
                 }
                 else {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل للمسؤول التالي</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية للشئون المالية</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
                     </div>`;
                 }
@@ -1823,4 +1787,3 @@
     </script>
 </body>
 </html>
-
