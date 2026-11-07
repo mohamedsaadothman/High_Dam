@@ -1006,13 +1006,18 @@
                     if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
                 }
                 else {
-                    // **التعديل المرن الجديد لضمان مطابقة دور المدير العام مع مرحلة الطلب أو الإدارة بمرونة تامة**
-                    let roleKeywords = myRole.split(" ");
-                    let matchCount = roleKeywords.filter(kw => kw.length > 2 && stage.includes(kw)).length;
+                    // **التعديل المرن الأخير الشامل لضمان ظهور الطلب للمدير العام بمرونة مطلقة**
+                    let roleKeywords = myRole.replace("مدير عام", "").trim().split(" ").filter(w => w.length > 2);
+                    let matchedKeywordsCount = roleKeywords.filter(kw => stage.includes(kw)).length;
                     const parentDeptLower = cleanText(req.parentDepartment || "").toLowerCase();
 
-                    if (stage.includes(myRole) || myRole.includes(stage) || matchCount >= 2 || (parentDeptLower && stage.includes(parentDeptLower)) || stage.includes("مدير عام")) {
-                        isMyTurnNow = true;
+                    if (stage.includes(myRole) || myRole.includes(stage) || (parentDeptLower && stage.includes(parentDeptLower)) || matchedKeywordsCount > 0 || stage.includes("مراجعة")) {
+                        // للتأكد أن الطلب يخص هذه الإدارة بالذات ولا يتم عرضه للكل عشوائياً
+                        if (parentDeptLower && myRole && (parentDeptLower.includes(myRole) || myRole.includes(parentDeptLower) || matchedKeywordsCount > 0 || stage.includes(parentDeptLower))) {
+                            isMyTurnNow = true;
+                        } else if (!parentDeptLower || stage.includes("مدير عام")) {
+                            isMyTurnNow = true;
+                        }
                     }
                 }
 
@@ -1333,13 +1338,15 @@
                 }
             }
             else {
-                // **التعديل المرن للأزرار والصلاحيات للمدير العام**
-                let roleKeywords = myRole.split(" ");
-                let matchCount = roleKeywords.filter(kw => kw.length > 2 && stageLower.includes(kw)).length;
+                // **مطابقة الأزرار بمرونة تامة لضمان ظهور أزرار الإجراءات للمدير العام**
+                let roleKeywords = myRole.replace("مدير عام", "").trim().split(" ").filter(w => w.length > 2);
+                let matchedKeywordsCount = roleKeywords.filter(kw => stageLower.includes(kw)).length;
 
-                if (stageLower.includes(myRole) || myRole.includes(stageLower) || matchCount >= 2 || (parentDept && stageLower.includes(parentDept)) || stageLower.includes("مدير عام")) {
-                    isMyTurn = true;
-                    actionType = 'gm'; 
+                if (stageLower.includes(myRole) || myRole.includes(stageLower) || (parentDept && stageLower.includes(parentDept)) || matchedKeywordsCount > 0 || stageLower.includes("مدير عام")) {
+                    if (!parentDept || parentDept.includes(myRole) || myRole.includes(parentDept) || matchedKeywordsCount > 0 || stageLower.includes(parentDept)) {
+                        isMyTurn = true;
+                        actionType = 'gm'; 
+                    }
                 }
             }
 
