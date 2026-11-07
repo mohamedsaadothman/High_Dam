@@ -965,7 +965,6 @@
             pendingData = [];
             archiveData = [];
 
-            const myRole = cleanText(loggedInUser.role).toLowerCase();
             const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
 
             querySnapshot.forEach((doc) => {
@@ -982,7 +981,7 @@
                 let state = {};
                 try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 
-                if (myRole.includes("الشئون المالية") || myRole.includes("مدير عام الشئون المالية") || myRole.includes("الشؤون المالية")) {
+                if (managerCentral.includes("الشئون المالية") || managerCentral.includes("الشؤون المالية")) {
                     if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("الشئون المالية")) {
                         let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("مالية") || cleanText(k).toLowerCase().includes("الشئون"));
                         if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
@@ -990,7 +989,7 @@
                         }
                     }
                 }
-                else if (myRole.includes("التخطيط والمتابعة") || myRole.includes("تخطيط")) {
+                else if (managerCentral.includes("التخطيط والمتابعة") || managerCentral.includes("تخطيط")) {
                     if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("تخطيط")) {
                         let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("تخطيط"));
                         if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
@@ -998,30 +997,21 @@
                         }
                     }
                 }
-                else if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (req.centralManager && myRole.includes(cleanText(req.centralManager).toLowerCase()))) {
-                    if (stage.includes("أخذ الرأي") || stage.includes("أخذ رأي") || stage.includes("بانتظار اعتماد") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية") || status.includes("بانتظار اعتماد رئيس الإدارة المركزية")) {
+                else if (managerCentral.includes("رئيس الإدارة المركزية") || managerCentral.includes("رئيس مجلس الإدارة")) {
+                    if (stage.includes("رئيس مجلس الإدارة") || stage.includes("رئيس الإدارة المركزية")) {
                         isMyTurnNow = true;
                     }
                 }
-                else if (myRole.includes("رئيس مجلس الإدارة")) {
-                    if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
-                }
                 else {
-                    // **المقارنة الذكية المباشرة والمرنة بين centralManager والـ Current_Stage**
-                    if (managerCentral) {
-                        let cleanCentral = managerCentral.replace("مدير عام", "").trim();
-                        let stageClean = stage.replace("مراجعة", "").trim();
-
-                        if (stage.includes(managerCentral) || 
-                            stageClean.includes(cleanCentral) || 
-                            managerCentral.includes(stageClean) ||
-                            stage.includes(cleanCentral)) {
-                            isMyTurnNow = true;
-                        }
+                    // **المقارنة الصريحة المباشرة بناءً على ما ظهر في الكونسول تماماً**
+                    if (managerCentral.includes("الموارد البشرية") && stage.includes("الموارد البشرية")) {
+                        isMyTurnNow = true;
+                    } else if (stage.includes(managerCentral)) {
+                        isMyTurnNow = true;
                     }
                 }
 
-                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole) && !myRole.includes("مالية") && !myRole.includes("تخطيط"));
+                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(managerCentral));
                 
                 if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
@@ -1291,65 +1281,48 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            const myRole = cleanText(loggedInUser.role).toLowerCase();
             const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
             const centralName = cleanText(req.Central_Manager_Name || "").toLowerCase();
             
             let isMyTurn = false;
             let actionType = null;
 
-            if (stageLower.includes("بانتظار رأي") && (myRole.includes("مالية") || myRole.includes("تخطيط") || myRole.includes("الشؤون"))) {
-                if (stageLower.includes(myRole) || 
-                    ((myRole.includes("مالية") || myRole.includes("الشؤون")) && (stageLower.includes("مالية") || stageLower.includes("الشؤون"))) || 
-                    (myRole.includes("تخطيط") && stageLower.includes("تخطيط"))) {
-                    isMyTurn = true;
-                    actionType = 'dept_opinion';
-                }
+            if (stageLower.includes("بانتظار رأي") && (managerCentral.includes("مالية") || managerCentral.includes("تخطيط") || managerCentral.includes("الشؤون"))) {
+                isMyTurn = true;
+                actionType = 'dept_opinion';
             }
-            else if (myRole.includes("رئيس مجلس الإدارة") || myRole.includes("chairman")) {
+            else if (managerCentral.includes("رئيس مجلس الإدارة")) {
                 if (stageLower.includes("رئيس مجلس الإدارة") && !stageLower.includes("الشئون")) {
                     isMyTurn = true;
                     actionType = 'chairman';
                 }
             }
             else if (stageLower.includes("بعد أخذ الرأي") || statusLower.includes("تم أخذ الرأي")) {
-                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
-                    isMyTurn = true;
-                    actionType = 'central_final';
-                }
+                isMyTurn = true;
+                actionType = 'central_final';
             }
-            else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
-                if (stageLower.includes("الشئون المالية") || 
-                    (stageLower.includes("مالية") && !stageLower.includes("أخذ الرأي"))) {
+            else if (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية")) {
+                if (stageLower.includes("الشئون المالية") || (stageLower.includes("مالية") && !stageLower.includes("أخذ الرأي"))) {
                     isMyTurn = true;
                     actionType = 'finance';
                 }
             }
             else if (stageLower.includes("الاعتماد النهائي")) {
-                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
-                    isMyTurn = true;
-                    actionType = 'central_final_approve';
-                }
+                isMyTurn = true;
+                actionType = 'central_final_approve';
             }
-            else if (stageLower.includes("رئيس الإدارة المركزية") || myRole.includes("مركزية")) {
-                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
-                    isMyTurn = true;
-                    actionType = 'central';
-                }
+            else if (managerCentral.includes("رئيس الإدارة المركزية")) {
+                isMyTurn = true;
+                actionType = 'central';
             }
             else {
-                // **مطابقة الأزرار بناءً على centralManager**
-                if (managerCentral) {
-                    let cleanCentral = managerCentral.replace("مدير عام", "").trim();
-                    let stageClean = stageLower.replace("مراجعة", "").trim();
-
-                    if (stageLower.includes(managerCentral) || 
-                        stageClean.includes(cleanCentral) || 
-                        managerCentral.includes(stageClean) ||
-                        stageLower.includes(cleanCentral)) {
-                        isMyTurn = true;
-                        actionType = 'gm'; 
-                    }
+                // **مقارنة الأزرار الصريحة للمدير العام**
+                if (managerCentral.includes("الموارد البشرية") && stageLower.includes("الموارد البشرية")) {
+                    isMyTurn = true;
+                    actionType = 'gm'; 
+                } else if (stageLower.includes(managerCentral)) {
+                    isMyTurn = true;
+                    actionType = 'gm';
                 }
             }
 
