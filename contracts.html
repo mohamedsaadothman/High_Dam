@@ -1019,13 +1019,11 @@ if (!history.includes(loggedInUser.uid)) history.push(loggedInUser.uid);
 const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role);
 
 if (actionType === 'gm_approve') {
-// جلب department الخاص بالمدير الحالي من users
 const managerDeptValue = await getManagerDepartment(loggedInUser.uid);
 if (!managerDeptValue) {
-showCustomAlert("خطأ", "لم يتم العثور على الإدارة التالية في بيانات المدير. يرجى مراجعة حقل department.");
+showCustomAlert("خطأ", "لم يتم العثور على الإدارة التالية في بيانات المدير.");
 return;
 }
-// البحث عن المسؤول اللي حقل department بتاعه يطابق القيمة دي
 const nextManager = await getNextManagerData(managerDeptValue);
 if (!nextManager) {
 showCustomAlert("خطأ", "لم يتم العثور على المسؤول التالي المطابق لـ: " + managerDeptValue);
@@ -1095,7 +1093,7 @@ updates = {
 Current_Stage: "بانتظار رأي " + financeDept + " و " + planningDept,
 Current_Owner_Role: "كلاهما",
 Current_Owner_Uid: financeMgr ? financeMgr.uid : "", 
-Planning_Owner_Uid: planningMgr ? planningMgr.uid : "", // حفظ uid التخطيط أيضاً
+Planning_Owner_Uid: planningMgr ? planningMgr.uid : "",
 Transfer_State: JSON.stringify(transferObj),
 Status: "قيد الانتظار - أخذ رأي " + financeDept + " و " + planningDept,
 Central_Manager_Name: "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية",
@@ -1104,7 +1102,8 @@ History: history
 };
 }
 else if (actionType === 'central_approve_to_chairman') {
-const chairmanName = "رئيس مجلس الإدارة";
+const managerDeptValue = await getManagerDepartment(loggedInUser.uid);
+const chairmanName = managerDeptValue || "رئيس مجلس الإدارة";
 const nextManager = await getNextManagerData(chairmanName);
 updates = {
 Current_Stage: "مراجعة " + chairmanName,
@@ -1134,10 +1133,11 @@ if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].re
 const allResolved = Object.keys(updatedState).every(k => updatedState[k].decision !== 'pending');
 const decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض مسبب";
 if (allResolved) {
-const centralMgr = await getNextManagerData("رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية");
+const centralName = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+const centralMgr = await getNextManagerData(centralName);
 updates = {
-Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد رئيس الإدارة المركزية",
-Current_Owner_Role: "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية",
+Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + centralName,
+Current_Owner_Role: centralName,
 Current_Owner_Uid: centralMgr ? centralMgr.uid : "",
 Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار الاعتماد",
 Transfer_State: JSON.stringify(updatedState),
@@ -1289,7 +1289,6 @@ else if (req.Current_Owner_Role.includes("رئيس الإدارة المركزي
 else if (req.Current_Owner_Role.includes("مدير عام الشئون المالية") || req.Current_Owner_Role.includes("مدير عام التخطيط")) actionType = 'dept_opinion';
 else actionType = 'gm';
 } else {
-// حالة "كلاهما" - مطابقة الـ uid للمالية أو التخطيط
 if (req.Current_Owner_Role === "كلاهما") {
 let transferState = {};
 try { transferState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
