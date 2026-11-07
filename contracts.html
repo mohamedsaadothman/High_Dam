@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -422,7 +423,7 @@
                 </div>
 
                 <div id="printDeptRepliesBox" style="display:none; border: 1px solid #000; padding: 8px 10px; border-radius: 4px; margin-top: 12px; background: transparent; font-weight: 700; position: relative; z-index: 2; direction: rtl;">
-                    <h4 style="font-size: 11px; font-weight: 900; margin-bottom: 4px; text-align: center; text-decoration: underline;">آراء الإدارات (الميزانية / التخطيط والمتابعة)</h4>
+                    <h4 style="font-size: 11px; font-weight: 900; margin-bottom: 4px; text-align: center; text-decoration: underline;">آراء الإدارات (مدير عام الشئون المالية / مدير عام التخطيط والمتابعة)</h4>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-weight: 700; margin-top: 5px;">
                         <thead>
                             <tr style="border-bottom: 1px solid #333;">
@@ -655,9 +656,10 @@
             let usersSet = new Set();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                // التعديل هنا: القراءة من حقل department بدلاً من centralManager
-                if (data.department && data.department.trim() !== "") {
-                    usersSet.add(cleanText(data.department));
+                let managerVal = data.centralManager;
+                let cleanVal = cleanText(managerVal);
+                if (cleanVal !== "") {
+                    usersSet.add(cleanVal);
                 }
             });
             
@@ -667,7 +669,7 @@
                 if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
                 else reviewUserSelect.setOptions(usersList, true);
             }
-        }).catch(err => console.error("خطأ:", err));
+        }).catch(err => console.error("خطأ في تحميل قائمة المسؤولين:", err));
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -856,12 +858,13 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        // التعديل هنا: البحث في حقل department
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let foundDoc = null;
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (cleanText(data.department) === selectedName) {
+                let centralVal = cleanText(data.centralManager || "");
+                let nameVal = cleanText(data.name || "");
+                if (centralVal === selectedName || nameVal === selectedName) {
                     foundDoc = doc;
                 }
             });
@@ -912,9 +915,8 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
-        // التعديل هنا: الاسم والدور ياخدوا من department
-        const realName = cleanText(userData.name || userData.department || "مسؤول النظام");
-        const userRole = cleanText(userData.department || userData.role || "مسؤول");
+        const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
+        const userRole = cleanText(userData.centralManager || userData.role || "مسؤول");
 
         loggedInUser = {
             uid: uid,
@@ -927,6 +929,7 @@
         
         document.getElementById('loginBox').style.display = 'none';
         document.getElementById('dashboard').style.display = 'block';
+        
         document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + (loggedInUser.role ? " (" + loggedInUser.role + ")" : "");
         
         loadReviewRequests();
@@ -963,6 +966,7 @@
             archiveData = [];
 
             const myRole = cleanText(loggedInUser.role).toLowerCase();
+            const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
 
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
@@ -970,8 +974,6 @@
                 
                 const stage = cleanText(req.Current_Stage || "").toLowerCase();
                 const status = cleanText(req.Status || "").toLowerCase();
-                const parentDept = cleanText(req.parentDepartment || "").toLowerCase();
-                const centralName = cleanText(req.Central_Manager_Name || "").toLowerCase();
                 let history = req.History || [];
                 
                 let isMyTurnNow = false;
@@ -980,25 +982,46 @@
                 let state = {};
                 try { state = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
 
-                if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (centralName && myRole.includes(centralName))) {
+                if (myRole.includes("الشئون المالية") || myRole.includes("مدير عام الشئون المالية") || myRole.includes("الشؤون المالية")) {
+                    if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("الشئون المالية")) {
+                        let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("مالية") || cleanText(k).toLowerCase().includes("الشئون"));
+                        if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
+                            isMyTurnNow = true;
+                        }
+                    }
+                }
+                else if (myRole.includes("التخطيط والمتابعة") || myRole.includes("تخطيط")) {
+                    if (stage.includes("أخذ رأي") || stage.includes("أخذ الرأي") || stage.includes("تخطيط")) {
+                        let matchedKey = Object.keys(state).find(k => cleanText(k).toLowerCase().includes("تخطيط"));
+                        if (!matchedKey || (state[matchedKey] && state[matchedKey].decision === "pending")) {
+                            isMyTurnNow = true;
+                        }
+                    }
+                }
+                else if (myRole.includes("مركزية") || myRole.includes("رئيس") || myRole.includes("الموارد البشرية") || (req.centralManager && myRole.includes(cleanText(req.centralManager).toLowerCase()))) {
                     if (stage.includes("أخذ الرأي") || stage.includes("أخذ رأي") || stage.includes("بانتظار اعتماد") || stage.includes("الاعتماد النهائي") || stage.includes("رئيس الإدارة المركزية") || status.includes("بانتظار اعتماد رئيس الإدارة المركزية")) {
                         isMyTurnNow = true;
                     }
-                } else if (myRole.includes("رئيس مجلس الإدارة")) {
+                }
+                else if (myRole.includes("رئيس مجلس الإدارة")) {
                     if (stage.includes("رئيس مجلس الإدارة")) isMyTurnNow = true;
-                } else if (myRole.includes("مالية") || myRole.includes("إدارية") || myRole.includes("الشئون المالية")) {
-                    if (stage.includes("الشئون المالية") || (stage.includes("مالية") && !stage.includes("أخذ الرأي") && !status.includes("تم أخذ الرأي"))) {
-                        isMyTurnNow = true;
-                    }
-                } else {
-                    if (stage.includes(myRole) || myRole.includes(stage) || stage.includes(parentDept) || parentDept.includes(myRole) || myRole.includes(parentDept)) {
-                        if (stage.includes("مراجعة") || stage.includes("مدير عام") || stage.includes("موافقة")) {
+                }
+                else {
+                    // **المقارنة الذكية المباشرة والمرنة بين centralManager والـ Current_Stage**
+                    if (managerCentral) {
+                        let cleanCentral = managerCentral.replace("مدير عام", "").trim();
+                        let stageClean = stage.replace("مراجعة", "").trim();
+
+                        if (stage.includes(managerCentral) || 
+                            stageClean.includes(cleanCentral) || 
+                            managerCentral.includes(stageClean) ||
+                            stage.includes(cleanCentral)) {
                             isMyTurnNow = true;
                         }
                     }
                 }
 
-                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole) && !myRole.includes("مالية"));
+                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole) && !myRole.includes("مالية") && !myRole.includes("تخطيط"));
                 
                 if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
@@ -1087,7 +1110,7 @@
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
             if (actionType === 'gm_approve') {
-                db.collection("users").where("role", "==", loggedInUser.role).get().then((querySnapshot) => {
+                db.collection("users").where("name", "==", loggedInUser.role).get().then((querySnapshot) => {
                     let centralName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
                     if(!querySnapshot.empty && querySnapshot.docs[0].data().centralManager) {
                         centralName = cleanText(querySnapshot.docs[0].data().centralManager);
@@ -1106,9 +1129,9 @@
             } 
             else if (actionType === 'central_approve') {
                 updates = { 
-                    Current_Stage: "مراجعة الإدارة المركزية للشئون المالية والإدارية", 
+                    Current_Stage: "مراجعة رئيس الإدارة المركزية", 
                     Central_Date: nowStr, 
-                    Status: "قيد الانتظار - الشئون المالية والإدارية", 
+                    Status: "قيد الانتظار - رئيس الإدارة المركزية", 
                     History: history 
                 };
             } 
@@ -1233,8 +1256,8 @@
           <div class="custom-modal-box" style="max-width:520px;">
             <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
             <div class="custom-modal-body" style="text-align:right;">
-              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة:</p>
-              <label class="transfer-option"><input type="checkbox" id="chkBudget" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (مدير عام الشئون المالية أو التخطيط والمتابعة):</p>
+              <label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
               <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>
             </div>
             <div style="display:flex; gap:8px;">
@@ -1246,7 +1269,7 @@
         document.getElementById('transferCancel').onclick = () => overlay.remove();
         document.getElementById('transferConfirm').onclick = () => {
             const selected = [];
-            if (document.getElementById('chkBudget').checked) selected.push("مدير عام الشئون المالية");
+            if (document.getElementById('chkFinance').checked) selected.push("مدير عام الشئون المالية");
             if (document.getElementById('chkPlanning').checked) selected.push("مدير عام التخطيط والمتابعة");
             if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
             overlay.remove();
@@ -1269,7 +1292,7 @@
         let buttonsHtml = "";
         if (withActions) {
             const myRole = cleanText(loggedInUser.role).toLowerCase();
-            const parentDept = cleanText(req.parentDepartment || "").toLowerCase();
+            const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
             const centralName = cleanText(req.Central_Manager_Name || "").toLowerCase();
             
             let isMyTurn = false;
@@ -1315,9 +1338,18 @@
                 }
             }
             else {
-                if (stageLower.includes(myRole) || myRole.includes(stageLower) || (parentDept && stageLower.includes(parentDept)) || myRole.includes(parentDept) || parentDept.includes(myRole)) {
-                    isMyTurn = true;
-                    actionType = 'gm';
+                // **مطابقة الأزرار بناءً على centralManager**
+                if (managerCentral) {
+                    let cleanCentral = managerCentral.replace("مدير عام", "").trim();
+                    let stageClean = stageLower.replace("مراجعة", "").trim();
+
+                    if (stageLower.includes(managerCentral) || 
+                        stageClean.includes(cleanCentral) || 
+                        managerCentral.includes(stageClean) ||
+                        stageLower.includes(cleanCentral)) {
+                        isMyTurn = true;
+                        actionType = 'gm'; 
+                    }
                 }
             }
 
@@ -1798,7 +1830,7 @@
                     <div class="req-row"><strong>التكلفة:</strong> <span>${cleanText(req.totalCost)} ج.م</span></div>
                     <div class="req-actions">
                         <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
-                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                        <button class="print-print-btn print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
                     </div>
                 `;
                 container.appendChild(div);
@@ -1819,3 +1851,4 @@
     </script>
 </body>
 </html>
+
