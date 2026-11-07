@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl"> 
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -500,6 +500,22 @@ function isOtherCentralRole(role) {
 const r = normalizeRole(role);
 return r.includes("رئيس الإدارة المركزية") && !isFinanceCentralRole(role);
 }
+function matchesFinanceCentral(ownerRoleNorm) {
+if (!ownerRoleNorm) return false;
+return ownerRoleNorm.includes("رئيس الإدارة المركزية") && (ownerRoleNorm.includes("الشئون المالية") || ownerRoleNorm.includes("الشؤون المالية"));
+}
+function matchesChairman(ownerRoleNorm) {
+if (!ownerRoleNorm) return false;
+return ownerRoleNorm.includes("رئيس مجلس الإدارة") || ownerRoleNorm.includes("رئيس مجلس الادارة");
+}
+function matchesFinanceMgr(ownerRoleNorm) {
+if (!ownerRoleNorm) return false;
+return ownerRoleNorm.includes("مدير عام") && (ownerRoleNorm.includes("الشئون المالية") || ownerRoleNorm.includes("الشؤون المالية")) && !ownerRoleNorm.includes("رئيس الإدارة المركزية");
+}
+function matchesPlanningMgr(ownerRoleNorm) {
+if (!ownerRoleNorm) return false;
+return ownerRoleNorm.includes("مدير عام") && ownerRoleNorm.includes("التخطيط والمتابعة");
+}
 
 window.addEventListener('DOMContentLoaded', () => {
 const savedUser = localStorage.getItem('reviewUser');
@@ -919,17 +935,17 @@ const statusNorm = normalizeRole(req.Status || "");
 let isMyTurnNow = false;
 
 if (iAmChairman) {
-if (ownerRoleNorm.includes(normalizeRole(CHAIRMAN_ROLE))) isMyTurnNow = true;
+if (matchesChairman(ownerRoleNorm)) isMyTurnNow = true;
 } else if (iAmCentralFinance) {
-if (ownerRoleNorm === normalizeRole(CENTRAL_FINANCE_ROLE)) isMyTurnNow = true;
+if (matchesFinanceCentral(ownerRoleNorm)) isMyTurnNow = true;
 } else if (iAmFinanceMgr) {
-if (ownerRoleNorm.includes("مدير عام") && (ownerRoleNorm.includes("الشئون المالية") || ownerRoleNorm.includes("الشؤون المالية"))) isMyTurnNow = true;
+if (matchesFinanceMgr(ownerRoleNorm)) isMyTurnNow = true;
 } else if (iAmPlanningMgr) {
-if (ownerRoleNorm.includes("مدير عام") && ownerRoleNorm.includes("التخطيط والمتابعة")) isMyTurnNow = true;
+if (matchesPlanningMgr(ownerRoleNorm)) isMyTurnNow = true;
 } else if (iAmOtherCentral) {
-if (ownerRoleNorm === myRoleNorm || (myDeptNorm && ownerRoleNorm === myDeptNorm)) isMyTurnNow = true;
+if (ownerRoleNorm === myRoleNorm || (myDeptNorm && ownerRoleNorm === myDeptNorm) || ownerRoleNorm.includes(myRoleNorm)) isMyTurnNow = true;
 } else {
-if (ownerRoleNorm === myRoleNorm || (myDeptNorm && ownerRoleNorm === myDeptNorm)) isMyTurnNow = true;
+if (ownerRoleNorm === myRoleNorm || (myDeptNorm && ownerRoleNorm === myDeptNorm) || ownerRoleNorm.includes(myRoleNorm)) isMyTurnNow = true;
 }
 
 const history = req.History || [];
@@ -1259,18 +1275,17 @@ const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role);
 let isMyTurn = false;
 let actionType = null;
 
-if (iAmChairman && ownerRoleNorm.includes(normalizeRole(CHAIRMAN_ROLE))) {
+if (iAmChairman && matchesChairman(ownerRoleNorm)) {
 isMyTurn = true; actionType = 'chairman';
-} else if (iAmCentralFinance && ownerRoleNorm === normalizeRole(CENTRAL_FINANCE_ROLE)) {
+} else if (iAmCentralFinance && matchesFinanceCentral(ownerRoleNorm)) {
 isMyTurn = true; actionType = 'central';
-} else if (iAmFinanceMgr && ownerRoleNorm.includes("مدير عام") && (ownerRoleNorm.includes("مالية") || ownerRoleNorm.includes("الشئون"))) {
+} else if (iAmFinanceMgr && matchesFinanceMgr(ownerRoleNorm)) {
 isMyTurn = true; actionType = 'dept_opinion';
-} else if (iAmPlanningMgr && ownerRoleNorm.includes("تخطيط")) {
+} else if (iAmPlanningMgr && matchesPlanningMgr(ownerRoleNorm)) {
 isMyTurn = true; actionType = 'dept_opinion';
 } else if (iAmOtherCentral && (ownerRoleNorm === myRoleNorm || ownerRoleNorm.includes(myRoleNorm))) {
 isMyTurn = true; actionType = 'other_central';
 } else if (!iAmChairman && !iAmCentralFinance && !iAmFinanceMgr && !iAmPlanningMgr && !iAmOtherCentral) {
-// مدير عام عادي: تطابق centralManager مع Current_Owner_Role أو department
 if (ownerRoleNorm === myRoleNorm || (myDeptNorm && ownerRoleNorm === myDeptNorm) || ownerRoleNorm.includes(myRoleNorm)) {
 isMyTurn = true; actionType = 'gm';
 }
