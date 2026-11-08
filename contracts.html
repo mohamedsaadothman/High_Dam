@@ -627,7 +627,6 @@
                     deptsSet.add(cleanName);
                     deptNameMap[cleanName] = cleanName; 
                     
-                    // الربط الذكي باستخدام الكلمات المفتاحية والدلالية
                     let lowerName = cleanName.toLowerCase();
                     if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
                         deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
@@ -980,7 +979,10 @@
             archiveData = [];
 
             const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
+            const myName = cleanText(loggedInUser.name).toLowerCase();
             const myDept = cleanText(loggedInUser.department).toLowerCase();
+
+            const isUserCentralManager = myRole.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية");
 
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
@@ -988,16 +990,29 @@
                 
                 const stage = cleanText(req.Current_Stage || "").toLowerCase();
                 const status = cleanText(req.Status || "").toLowerCase();
+                const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
                 const ownerRole = cleanText(req.Current_Owner_Role || "").toLowerCase();
                 let history = req.History || [];
                 
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                if (ownerRole && (myRole.includes(ownerRole) || myDept.includes(ownerRole) || ownerRole.includes(myRole) || ownerRole.includes("الشؤون المالية والإدارية والموارد البشرية"))) {
-                    isMyTurnNow = true;
-                } else if (stage.includes(myRole) || stage.includes(myDept) || stage.includes("الشؤون المالية والإدارية والموارد البشرية")) {
-                    isMyTurnNow = true;
+                // مطابقة فائقة المرونة لرئيس الإدارة المركزية
+                if (isUserCentralManager) {
+                    if (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || 
+                        stage.includes("الموارد البشرية") || status.includes("الموارد البشرية") ||
+                        stage.includes("الشؤون المالية والإدارية") || status.includes("الشؤون المالية والإدارية") ||
+                        assignedCentral.includes("رئيس الإدارة المركزية") || ownerRole.includes("رئيس الإدارة المركزية")) {
+                        isMyTurnNow = true;
+                    }
+                }
+
+                if (!isMyTurnNow) {
+                    if (ownerRole && (myRole.includes(ownerRole) || myDept.includes(ownerRole) || ownerRole.includes(myRole))) {
+                        isMyTurnNow = true;
+                    } else if (stage.includes(myRole) || stage.includes(myDept)) {
+                        isMyTurnNow = true;
+                    }
                 }
 
                 if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي")) {
@@ -1016,7 +1031,7 @@
                     }
                 }
 
-                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole));
+                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole) || (isUserCentralManager && cleanText(h).toLowerCase().includes("رئيس الإدارة المركزية")));
                 
                 if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
@@ -1282,6 +1297,7 @@
         let buttonsHtml = "";
         if (withActions) {
             const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
+            const managerName = cleanText(loggedInUser.name).toLowerCase();
             const ownerRole = cleanText(req.Current_Owner_Role || "").toLowerCase();
             
             let isMyTurn = false;
@@ -1289,11 +1305,13 @@
 
             const isPlanningUser = managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة");
             const isFinanceUser = managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية");
-            const isCentralUser = managerCentral.includes("رئيس الإدارة المركزية") || managerCentral.includes("الموارد البشرية") || managerCentral.includes("الشؤون المالية والإدارية");
+            const isCentralUser = managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerCentral.includes("الموارد البشرية") || managerCentral.includes("الشؤون المالية والإدارية");
 
-            if (ownerRole && (ownerRole.includes(managerCentral) || managerCentral.includes(ownerRole) || ownerRole.includes("الشؤون المالية والإدارية والموارد البشرية"))) {
+            if (isCentralUser) {
                 isMyTurn = true;
-            } else if (stageLower.includes(managerCentral) || stageLower.includes("الشؤون المالية والإدارية والموارد البشرية")) {
+            } else if (ownerRole && (ownerRole.includes(managerCentral) || managerCentral.includes(ownerRole))) {
+                isMyTurn = true;
+            } else if (stageLower.includes(managerCentral)) {
                 isMyTurn = true;
             } else if ((isPlanningUser && (stageLower.includes("تخطيط") || stageLower.includes("أخذ رأي"))) ||
                        (isFinanceUser && (stageLower.includes("مالية") || stageLower.includes("أخذ رأي")))) {
@@ -1806,3 +1824,4 @@
     </script>
 </body>
 </html>
+
