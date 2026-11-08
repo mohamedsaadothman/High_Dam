@@ -968,13 +968,6 @@
             const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
             const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
 
-            let myCentralType = null;
-            if (isCentralUser) {
-                if (matchesPlanning(myCentral) || matchesPlanning(myName) || matchesPlanning(myRole)) myCentralType = "تخطيط";
-                else if (matchesFinance(myCentral) || matchesFinance(myName) || matchesFinance(myRole)) myCentralType = "مالية";
-                else myCentralType = "أخرى";
-            }
-
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
                 req.Request_ID = doc.id; 
@@ -1298,6 +1291,7 @@
         };
     }
 
+    // ✅ دالة buildRequestCard المعدلة: إظهار الأزرار لكل الرؤساء
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
@@ -1333,17 +1327,23 @@
                 if (stageLower.includes("رئيس مجلس") || statusLower.includes("رئيس مجلس")) { isMyTurn = true; actionType = 'chairman'; }
             } 
             else if (isCentralUser) {
-                let myCentralType = null;
-                if (matchesPlanning(managerCentral) || matchesPlanning(managerName) || matchesPlanning(managerRole)) myCentralType = "تخطيط";
-                else if (matchesFinance(managerCentral) || matchesFinance(managerName) || matchesFinance(managerRole)) myCentralType = "مالية";
+                // ✅ التعديل: إظهار الأزرار لكل الرؤساء بدون شرط النوع
+                const isMyStage = stageLower.includes("رئيس الإدارة المركزية") || 
+                                  statusLower.includes("رئيس الإدارة المركزية") || 
+                                  stageLower.includes("بانتظار اعتماد") || 
+                                  stageLower.includes("مراجعة رئيس الإدارة المركزية") ||
+                                  stageLower.includes("عودة من المالية");
+                                  
+                const isThisMyRequest = assignedCentral === managerCentral || 
+                                        assignedCentral === managerRole || 
+                                        assignedCentral === managerName ||
+                                        stageLower.includes(managerCentral) ||
+                                        stageLower.includes(managerRole);
 
-                const reqCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
-                let reqCentralType = matchesPlanning(reqCentral) ? "تخطيط" : (matchesFinance(reqCentral) ? "مالية" : "أخرى");
-
-                const belongsToMe = (myCentralType === reqCentralType);
-                const isInMyStage = stageLower.includes("رئيس الإدارة المركزية") || statusLower.includes("رئيس الإدارة المركزية") || stageLower.includes("بانتظار اعتماد") || stageLower.includes("مراجعة رئيس الإدارة المركزية") || stageLower.includes("عودة من المالية");
-
-                if (belongsToMe && isInMyStage) { isMyTurn = true; actionType = 'central'; }
+                if (isThisMyRequest && isMyStage) { 
+                    isMyTurn = true; 
+                    actionType = 'central'; 
+                }
             } 
             else if (isPlanningUser || isFinanceUser) {
                 if (req.Transfer_State) {
