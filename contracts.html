@@ -486,17 +486,9 @@
     let trackUser = null;
     let trackRequestsCache = [];
 
-    // تنظيف وتوحيد النصوص لتلافي اختلاف الهمزات والمسافات (Normalization)
     function cleanText(txt) {
         if (!txt) return "";
-        return String(txt)
-            .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
-            .replace(/[أإآء]/g, "ا")
-            .replace(/[ةه]/g, "ه")
-            .replace(/[ىي]/g, "ي")
-            .replace(/[؟?]/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
+        return String(txt).replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -628,23 +620,20 @@
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let rawName = data.centralManager || data.name || data.role || "";
+                let rawName = data.centralManager || "";
                 let cleanName = cleanText(rawName);
                 
                 if (cleanName !== "") {
-                    let lower = cleanName.toLowerCase();
-                    // فلترة صارمة جداً لاستبعاد أي مسمى يحتوي على "رئيس الإدارة المركزية" أو "رئيس مجلس الإدارة"
-                    if (!lower.includes("رئيس الادارة المركزية") && !lower.includes("رئيس المركزية") && !lower.includes("رئيس مجلس الادارة") && !lower.includes("رئيس مجلس")) {
-                        deptsSet.add(rawName);
-                        deptNameMap[cleanName] = rawName; 
-                        
-                        if (lower.includes("موارد") || lower.includes("بشري") || lower.includes("مالي") || lower.includes("إداري") || lower.includes("الاركان")) {
-                            deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                        } else if (lower.includes("تخطيط") || lower.includes("متابعة")) {
-                            deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
-                        } else {
-                            deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                        }
+                    deptsSet.add(cleanName);
+                    deptNameMap[cleanName] = cleanName; 
+                    
+                    let lowerName = cleanName.toLowerCase();
+                    if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
+                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                    } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
+                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
+                    } else {
+                        deptParentMap[cleanName] = cleanName.includes("رئيس الإدارة المركزية") ? cleanName : "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
                     }
                 }
             });
@@ -676,10 +665,10 @@
             let usersSet = new Set();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let managerVal = data.centralManager || data.name || data.role;
+                let managerVal = data.centralManager;
                 let cleanVal = cleanText(managerVal);
                 if (cleanVal !== "") {
-                    usersSet.add(managerVal);
+                    usersSet.add(cleanVal);
                 }
             });
             
@@ -832,9 +821,10 @@
         let totalCost = 0;
         items.forEach(it => totalCost += it.cost);
         
-        const selectedDeptDisplay = document.getElementById('parentDepartment').value;
-        const selectedDeptKey = cleanText(selectedDeptDisplay);
-        const specificCentralManager = cleanText(deptParentMap[selectedDeptKey] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
+        const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
+        const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
+        
+        const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
 
         const data = {
             requestId: lastCreatedReqId,
@@ -870,7 +860,7 @@
     });
 
     function handleLogin() {
-        const selectedName = document.getElementById('reviewUsername').value.trim();
+        const selectedName = cleanText(document.getElementById('reviewUsername').value);
         const password = document.getElementById('reviewPassword').value.trim();
         
         if (!selectedName) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
@@ -880,17 +870,14 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        db.collection("users").get().then((querySnapshot) => {
+        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let foundDoc = null;
-            let cleanSelected = cleanText(selectedName);
-
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 let centralVal = cleanText(data.centralManager || "");
                 let nameVal = cleanText(data.name || "");
                 let roleVal = cleanText(data.role || "");
-                
-                if (centralVal === cleanSelected || nameVal === cleanSelected || roleVal === cleanSelected || cleanText(doc.id) === cleanSelected) {
+                if (centralVal === selectedName || nameVal === selectedName || roleVal === selectedName) {
                     foundDoc = doc;
                 }
             });
@@ -941,15 +928,15 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
-        const realName = userData.name || userData.centralManager || "مسؤول النظام";
-        const userRole = userData.role || userData.centralManager || "مسؤول";
+        const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
+        const userRole = cleanText(userData.role || userData.centralManager || "مسؤول");
 
         loggedInUser = {
             uid: uid,
             name: realName, 
             role: userRole,
-            centralManager: userData.centralManager || "",
-            department: userData.department || ""
+            centralManager: cleanText(userData.centralManager || ""),
+            department: cleanText(userData.department || "")
         };
         
         localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
@@ -983,7 +970,7 @@
     }
 
     function loadReviewRequests() {
-        if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager && !loggedInUser.name)) return;
+        if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
         
         const container = document.getElementById('requestsList');
         container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الطلبات...</p>';
@@ -992,52 +979,55 @@
             pendingData = [];
             archiveData = [];
 
-            const myCentralClean = cleanText(loggedInUser.centralManager || loggedInUser.name || loggedInUser.role || "");
+            const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+            const myName = cleanText(loggedInUser.name || "").toLowerCase();
+            const myRole = cleanText(loggedInUser.role || "").toLowerCase();
 
-            const isChairmanUser = myCentralClean.includes("رئيس مجلس الادارة") || myCentralClean.includes("رئيس مجلس");
-            const isPlanningUser = !isChairmanUser && (myCentralClean.includes("تخطيط") || myCentralClean.includes("متابعة"));
-            const isFinanceUser = !isChairmanUser && (myCentralClean.includes("مالية") || myCentralClean.includes("الشؤون المالية"));
-            const isUserCentralManager = !isChairmanUser && !isPlanningUser && !isFinanceUser && (myCentralClean.includes("رئيس الادارة المركزية") || myCentralClean.includes("رئيس المركزية"));
+            const isChairmanUser = myRole.includes("رئيس مجلس الإدارة") || myName.includes("رئيس مجلس الإدارة") || myCentral.includes("رئيس مجلس الإدارة");
+            const isUserCentralManager = !isChairmanUser && (myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية"));
+            const isPlanningUser = !isChairmanUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
+            const isFinanceUser = !isChairmanUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
                 req.Request_ID = doc.id; 
                 
-                const stageClean = cleanText(req.Current_Stage || "");
-                const statusClean = cleanText(req.Status || "");
-                const assignedCentralClean = cleanText(req.Assigned_Central_Manager || "");
-                const parentDeptClean = cleanText(req.parentDepartment || "");
+                const stage = cleanText(req.Current_Stage || "").toLowerCase();
+                const status = cleanText(req.Status || "").toLowerCase();
+                const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
+                const parentDept = cleanText(req.parentDepartment || "").toLowerCase();
                 let history = req.History || [];
                 
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
                 if (isChairmanUser) {
-                    if (stageClean.includes("رئيس مجلس الادارة") || statusClean.includes("رئيس مجلس الادارة")) {
+                    if (stage.includes("رئيس مجلس الإدارة") || status.includes("رئيس مجلس الإدارة")) {
                         isMyTurnNow = true;
                     }
                 }
                 else if (isUserCentralManager) {
-                    let belongsToMyCentral = assignedCentralClean.includes("رئيس الادارة المركزية") && 
-                        ((myCentralClean.includes("تخطيط") && assignedCentralClean.includes("تخطيط")) ||
-                         (myCentralClean.includes("مالية") && assignedCentralClean.includes("مالية")) ||
-                         (!myCentralClean.includes("تخطيط") && !assignedCentralClean.includes("تخطيط")));
+                    let myExactCentralName = myCentral || myName || myRole;
+                    let belongsToMyCentral = assignedCentral.includes("رئيس الإدارة المركزية") && 
+                        ((myExactCentralName.includes("تخطيط") && assignedCentral.includes("تخطيط")) ||
+                         (myExactCentralName.includes("مالية") && assignedCentral.includes("مالية")) ||
+                         (!myExactCentralName.includes("تخطيط") && !assignedCentral.includes("تخطيط")));
 
-                    if (belongsToMyCentral && (stageClean.includes("رئيس الادارة المركزية") || stageClean.includes("رئيس المركزية") || statusClean.includes("رئيس الادارة المركزية") || stageClean.includes("بانتظار اعتماد"))) {
+                    if (belongsToMyCentral && (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد"))) {
                         isMyTurnNow = true;
                     }
                 } 
                 else if (isPlanningUser || isFinanceUser) {
-                    if (stageClean.includes("بانتظار رأي") || statusClean.includes("أخذ رأي") || statusClean.includes("اخذ راي")) {
+                    if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي") || stage.includes("بانتظار باقي الآراء") || status.includes("تم أخذ الرأي")) {
                         if (req.Transfer_State) {
                             try {
                                 let state = JSON.parse(req.Transfer_State);
                                 for (let key in state) {
-                                    let keyClean = cleanText(key);
-                                    if (isPlanningUser && (keyClean.includes("تخطيط") || keyClean.includes("متابعة")) && state[key].decision === 'pending') {
+                                    let keyLower = key.toLowerCase();
+                                    if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
                                         isMyTurnNow = true;
                                     }
-                                    if (isFinanceUser && (keyClean.includes("مالية") || keyClean.includes("الشؤون")) && state[key].decision === 'pending') {
+                                    if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
                                         isMyTurnNow = true;
                                     }
                                 }
@@ -1046,17 +1036,16 @@
                     }
                 } 
                 else {
-                    // المدير العام المباشر
-                    if (parentDeptClean === myCentralClean || stageClean.includes(myCentralClean) || statusClean.includes(myCentralClean)) {
-                        if (stageClean.includes("مراجعة") && (parentDeptClean === myCentralClean || stageClean.includes(myCentralClean) || statusClean.includes(myCentralClean))) {
+                    if (stage.includes(myCentral) || status.includes(myCentral) || parentDept.includes(myCentral)) {
+                        if (stage.includes("مراجعة") && (stage.includes(myCentral) || status.includes(myCentral))) {
                             isMyTurnNow = true;
                         }
                     }
                 }
 
-                let passedByMe = history.some(h => cleanText(h).includes(myCentralClean));
+                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myCentral) || cleanText(h).toLowerCase().includes(myName) || cleanText(h).toLowerCase().includes(myRole));
                 
-                if (statusClean.includes("معتمد نهائياً") || statusClean.includes("مرفوض نهائياً") || statusClean.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
+                if (status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
                 }
 
@@ -1103,7 +1092,7 @@
                 if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
                 if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
                 if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("اخذ راي") === -1) return false;
+                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
             }
             if (searchFilter) {
                 const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
@@ -1160,7 +1149,6 @@
                 let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية";
                 updates = { 
                     Current_Stage: "مراجعة رئيس مجلس الإدارة", 
-                    Current_Owner_Role: "رئيس مجلس الإدارة",
                     Central_Date: nowStr, 
                     Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة (بعد اعتماد " + originalCentral + ")", 
                     History: history 
@@ -1190,15 +1178,17 @@
                 try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                 
                 let updatedState = { ...currentState };
-                const myCentralClean = cleanText(loggedInUser.centralManager || loggedInUser.name || loggedInUser.role || "");
+                const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+                const myName = cleanText(loggedInUser.name || "").toLowerCase();
+                const myRole = cleanText(loggedInUser.role || "").toLowerCase();
                 
                 for (let key in updatedState) {
-                    let keyClean = cleanText(key);
-                    if (myCentralClean.includes("مالية") && keyClean.includes("مالية")) {
+                    let keyLower = key.toLowerCase();
+                    if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                    } else if (myCentralClean.includes("تخطيط") && keyClean.includes("تخطيط")) {
+                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
@@ -1329,6 +1319,7 @@
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
         const status = cleanText(req.Status || "");
+        const stageLower = stage.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
@@ -1337,18 +1328,20 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            const myCentralClean = cleanText(loggedInUser.centralManager || loggedInUser.name || loggedInUser.role || "");
+            const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+            const managerName = cleanText(loggedInUser.name || "").toLowerCase();
+            const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
             
             let isMyTurn = false;
             let actionType = null;
 
-            const isChairmanUser = myCentralClean.includes("رئيس مجلس الادارة") || myCentralClean.includes("رئيس مجلس");
-            const isPlanningUser = !isChairmanUser && (myCentralClean.includes("تخطيط") || myCentralClean.includes("متابعة"));
-            const isFinanceUser = !isChairmanUser && (myCentralClean.includes("مالية") || myCentralClean.includes("الشؤون المالية"));
-            const isCentralUser = !isChairmanUser && !isPlanningUser && !isFinanceUser && (myCentralClean.includes("رئيس الادارة المركزية") || myCentralClean.includes("رئيس المركزية"));
+            const isChairmanUser = managerRole.includes("رئيس مجلس الإدارة") || managerName.includes("رئيس مجلس الإدارة") || managerCentral.includes("رئيس مجلس الإدارة");
+            const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
+            const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
+            const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
 
             if (isChairmanUser) {
-                if (stage.includes("رئيس مجلس الادارة") || status.includes("رئيس مجلس الادارة")) {
+                if (stageLower.includes("رئيس مجلس الإدارة") || status.toLowerCase().includes("رئيس مجلس الإدارة")) {
                     isMyTurn = true;
                     actionType = 'chairman';
                 }
@@ -1360,11 +1353,11 @@
                     try {
                         let state = JSON.parse(req.Transfer_State);
                         for (let key in state) {
-                            let keyClean = cleanText(key);
-                            if (isPlanningUser && keyClean.includes("تخطيط") && state[key].decision === 'pending') {
+                            let keyLower = key.toLowerCase();
+                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
                                 isMyTurn = true;
                             }
-                            if (isFinanceUser && keyClean.includes("مالية") && state[key].decision === 'pending') {
+                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
                                 isMyTurn = true;
                             }
                         }
@@ -1372,7 +1365,7 @@
                 }
                 if (isMyTurn) actionType = 'dept_opinion';
             } else {
-                if (stage.includes("مراجعة")) {
+                if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
                     isMyTurn = true;
                     actionType = 'gm';
                 }
@@ -1410,7 +1403,7 @@
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
-                <span class="badge ${badgeClass}">${cleanText(req.Status || req.Current_Stage || '-')}</span>
+                <span class="badge ${badgeClass}">${cleanText(status || stage || '-')}</span>
             </div>
             <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
             <div class="req-row"><strong>مقدم الطلب:</strong> <span>${cleanText(req.applicantName || '-')} (${cleanText(req.role || '-')})</span></div>
@@ -1561,7 +1554,7 @@
                 if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
                 if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
                 if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("اخذ راي") === -1) return false;
+                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
             }
             if (searchFilter) {
                 const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
@@ -1824,7 +1817,7 @@
             }
             
             let count = 0;
-            querySnapshot.forEach((doc) => {
+            querySnapshot.get.forEach((doc) => {
                 count++;
                 const req = doc.data();
                 req.Request_ID = doc.id;
@@ -1841,7 +1834,7 @@
                     <div class="req-row"><strong>التكلفة:</strong> <span>${cleanText(req.totalCost)} ج.م</span></div>
                     <div class="req-actions">
                         <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
-                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                        <button class="print-print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
                     </div>
                 `;
                 container.appendChild(div);
