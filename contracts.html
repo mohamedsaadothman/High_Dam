@@ -54,7 +54,10 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         #printableArea { display: none; }
-        .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 26px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.12; color: #b45309; letter-spacing: 1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; max-width: 80%; overflow: hidden; }
+        
+        /* ✅ التعديل: تكبير العلامة المائية وجعلها احترافية */
+        .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 40px; font-weight: 900; z-index: 0; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.15; color: #333; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; width: 100%; display: flex; justify-content: center; align-items: center; }
+        
         @media print {
             body * { visibility: hidden; }
             #printableArea, #printableArea * { visibility: visible; }
@@ -427,7 +430,7 @@
                         <thead>
                             <tr style="border-bottom: 1px solid #333;">
                                 <th style="text-align: right; padding: 4px; border: 1px solid #333;">الإدارة</th>
-                                <th style="text-align: center; padding: 4px; border: 1px solid #333;">القرار</th>
+                                <th style="text-align: center; padding: 4px; border: 1px solid #333;">القرار (التاريخ)</th>
                                 <th style="text-align: right; padding: 4px; border: 1px solid #333;">السبب / التعليق</th>
                             </tr>
                         </thead>
@@ -961,9 +964,10 @@
             const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
             const myName = cleanText(loggedInUser.name || "").toLowerCase();
             const myRole = cleanText(loggedInUser.role || "").toLowerCase();
+            const myDepartment = cleanText(loggedInUser.department || "").toLowerCase();
 
             const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
-            const isCentralUser = !isChairmanUser && (myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية"));
+            const isCentralUser = !isChairmanUser && (myRole.includes("رئيس الإدارة المركزية") || myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية"));
             const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
             const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
@@ -996,14 +1000,10 @@
                     }
                 }
                 else if (isCentralUser) {
-                    let reqCentralType = null;
-                    if (matchesPlanning(assignedCentral)) reqCentralType = "تخطيط";
-                    else if (matchesFinance(assignedCentral)) reqCentralType = "مالية";
-                    else reqCentralType = "أخرى";
+                    // ✅ المقارنة الدقيقة: هل الرئيس المعين في الطلب يطابق مسمى المستخدم الحالي؟
+                    let isThisMyRequest = (assignedCentral === myRole) || (assignedCentral === myCentral) || (assignedCentral === myName);
 
-                    const belongsToMyCentral = (myCentralType === reqCentralType);
-
-                    if (belongsToMyCentral) {
+                    if (isThisMyRequest) {
                         if (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد")) {
                             isMyTurnNow = true;
                         } else if (status.includes("معتمد") || status.includes("مرفوض") || history.some(h => h.includes(loggedInUser.centralManager) || h.includes(loggedInUser.name))) {
@@ -1119,9 +1119,9 @@
         renderFilteredRequests();
     }
 
-    // ✅ دالة processAction المعدلة للترحيل الصحيح بالـ department وتوثيق الآراء
+    // ✅ دالة processAction المعدلة للترحيل الصارم وتوثيق التواريخ
     function processAction(requestId, actionType, extraData = {}) {
-        const nowStr = new Date().toLocaleString();
+        const nowStr = new Date().toLocaleString('ar-EG');
         
         db.collection("requests").doc(requestId).get().then((doc) => {
             if (!doc.exists) return showCustomAlert("خطأ", "الطلب غير موجود في قاعدة البيانات.");
@@ -1134,8 +1134,11 @@
             if (!history.includes(officialTitle)) history.push(officialTitle);
 
             if (actionType === 'gm_approve') {
-                // ✅ الترحيل بناءً على حقل department الخاص بالمدير العام
-                let targetCentral = deptParentMap[req.parentDepartment] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                // ✅ الترحيل الصارم بناءً على حقل department الخاص بالمدير العام
+                let targetCentral = deptParentMap[req.parentDepartment];
+                if (!targetCentral) {
+                    targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                }
 
                 updates = { 
                     Current_Stage: "مراجعة " + targetCentral, 
@@ -1177,11 +1180,11 @@
                     let keyLower = key.toLowerCase();
                     if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr;
+                        updatedState[key].date = nowStr; // ✅ تسجيل التاريخ
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                     } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr;
+                        updatedState[key].date = nowStr; // ✅ تسجيل التاريخ
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                     }
                 }
@@ -1207,10 +1210,10 @@
                 updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
             }
             else if (actionType === 'chairman_reject') {
-                updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Status: "مرفوض نهائياً من " + officialTitle, History: history };
+                updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Chairman_Date: nowStr, Status: "مرفوض نهائياً من " + officialTitle, History: history };
             }
             else if (actionType === 'reject') {
-                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + officialTitle, History: history };
+                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Reject_Date: nowStr, Status: "مرفوض من " + officialTitle, History: history };
             }
 
             db.collection("requests").doc(requestId).update(updates).then(() => {
@@ -1445,6 +1448,8 @@
 
         const deptRepliesBox = document.getElementById('printDeptRepliesBox');
         const deptRepliesBody = document.getElementById('printDeptRepliesBody');
+        
+        // ✅ عرض آراء الإدارات والتواريخ في الطباعة
         if (req.Transfer_State) {
             try {
                 let state = JSON.parse(req.Transfer_State);
@@ -1453,9 +1458,11 @@
                     let s = state[key];
                     let decisionText = s.decision === 'approved' ? 'موافقة' : (s.decision === 'rejected' ? 'رفض مسبب' : 'قيد الانتظار');
                     let color = s.decision === 'approved' ? '#198754' : (s.decision === 'rejected' ? '#dc3545' : '#b45309');
+                    let dateText = s.date ? `<br><span style="font-size:9px; color:#666;">(${cleanText(s.date)})</span>` : '';
+                    
                     rowsHtml += `<tr>
                         <td style="border: 1px solid #333; padding: 4px; text-align: right;">${cleanText(key)}</td>
-                        <td style="border: 1px solid #333; padding: 4px; text-align: center; color: ${color}; font-weight: 900;">${decisionText}</td>
+                        <td style="border: 1px solid #333; padding: 4px; text-align: center; color: ${color}; font-weight: 900;">${decisionText}${dateText}</td>
                         <td style="border: 1px solid #333; padding: 4px; text-align: right; color: #dc3545;">${cleanText(s.reason || '-')}</td>
                     </tr>`;
                 }
