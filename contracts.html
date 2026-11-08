@@ -1,4 +1,4 @@
- 
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -486,9 +486,17 @@
     let trackUser = null;
     let trackRequestsCache = [];
 
+    // تنظيف وتوحيد النصوص لتلافي اختلاف الهمزات والمسافات (Normalization)
     function cleanText(txt) {
         if (!txt) return "";
-        return String(txt).replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
+        return String(txt)
+            .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
+            .replace(/[أإآء]/g, "ا")
+            .replace(/[ةه]/g, "ه")
+            .replace(/[ىي]/g, "ي")
+            .replace(/[؟?]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -620,15 +628,15 @@
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let rawName = data.centralManager || "";
+                let rawName = data.centralManager || data.name || data.role || "";
                 let cleanName = cleanText(rawName);
                 
                 if (cleanName !== "") {
                     let lower = cleanName.toLowerCase();
-                    // استبعاد رؤساء الإدارات المركزية ورئيس مجلس الإدارة تماماً لضمان عدم ظهورهم في قائمة إنشاء الطلب
-                    if (!lower.includes("رئيس الإدارة المركزية") && !lower.includes("رئيس مجلس الإدارة")) {
-                        deptsSet.add(cleanName);
-                        deptNameMap[cleanName] = cleanName; 
+                    // فلترة صارمة جداً لاستبعاد أي مسمى يحتوي على "رئيس الإدارة المركزية" أو "رئيس مجلس الإدارة"
+                    if (!lower.includes("رئيس الادارة المركزية") && !lower.includes("رئيس المركزية") && !lower.includes("رئيس مجلس الادارة") && !lower.includes("رئيس مجلس")) {
+                        deptsSet.add(rawName);
+                        deptNameMap[cleanName] = rawName; 
                         
                         if (lower.includes("موارد") || lower.includes("بشري") || lower.includes("مالي") || lower.includes("إداري") || lower.includes("الاركان")) {
                             deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
@@ -668,10 +676,10 @@
             let usersSet = new Set();
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                let managerVal = data.centralManager;
+                let managerVal = data.centralManager || data.name || data.role;
                 let cleanVal = cleanText(managerVal);
                 if (cleanVal !== "") {
-                    usersSet.add(cleanVal);
+                    usersSet.add(managerVal);
                 }
             });
             
@@ -824,10 +832,9 @@
         let totalCost = 0;
         items.forEach(it => totalCost += it.cost);
         
-        const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
-        const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
-        
-        const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
+        const selectedDeptDisplay = document.getElementById('parentDepartment').value;
+        const selectedDeptKey = cleanText(selectedDeptDisplay);
+        const specificCentralManager = cleanText(deptParentMap[selectedDeptKey] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
 
         const data = {
             requestId: lastCreatedReqId,
@@ -863,7 +870,7 @@
     });
 
     function handleLogin() {
-        const selectedName = cleanText(document.getElementById('reviewUsername').value);
+        const selectedName = document.getElementById('reviewUsername').value.trim();
         const password = document.getElementById('reviewPassword').value.trim();
         
         if (!selectedName) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
@@ -873,14 +880,17 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
+        db.collection("users").get().then((querySnapshot) => {
             let foundDoc = null;
+            let cleanSelected = cleanText(selectedName);
+
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 let centralVal = cleanText(data.centralManager || "");
                 let nameVal = cleanText(data.name || "");
                 let roleVal = cleanText(data.role || "");
-                if (centralVal === selectedName || nameVal === selectedName || roleVal === selectedName) {
+                
+                if (centralVal === cleanSelected || nameVal === cleanSelected || roleVal === cleanSelected || cleanText(doc.id) === cleanSelected) {
                     foundDoc = doc;
                 }
             });
@@ -931,15 +941,15 @@
         btn.disabled = false;
         btn.innerHTML = 'دخول';
 
-        const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
-        const userRole = cleanText(userData.role || userData.centralManager || "مسؤول");
+        const realName = userData.name || userData.centralManager || "مسؤول النظام";
+        const userRole = userData.role || userData.centralManager || "مسؤول";
 
         loggedInUser = {
             uid: uid,
             name: realName, 
             role: userRole,
-            centralManager: cleanText(userData.centralManager || ""),
-            department: cleanText(userData.department || "")
+            centralManager: userData.centralManager || "",
+            department: userData.department || ""
         };
         
         localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
@@ -973,7 +983,7 @@
     }
 
     function loadReviewRequests() {
-        if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
+        if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager && !loggedInUser.name)) return;
         
         const container = document.getElementById('requestsList');
         container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الطلبات...</p>';
@@ -982,55 +992,52 @@
             pendingData = [];
             archiveData = [];
 
-            const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-            const myName = cleanText(loggedInUser.name || "").toLowerCase();
-            const myRole = cleanText(loggedInUser.role || "").toLowerCase();
+            const myCentralClean = cleanText(loggedInUser.centralManager || loggedInUser.name || loggedInUser.role || "");
 
-            const isChairmanUser = myRole.includes("رئيس مجلس الإدارة") || myName.includes("رئيس مجلس الإدارة") || myCentral.includes("رئيس مجلس الإدارة");
-            const isPlanningUser = !isChairmanUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
-            const isFinanceUser = !isChairmanUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
-            const isUserCentralManager = !isChairmanUser && !isPlanningUser && !isFinanceUser && (myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية"));
+            const isChairmanUser = myCentralClean.includes("رئيس مجلس الادارة") || myCentralClean.includes("رئيس مجلس");
+            const isPlanningUser = !isChairmanUser && (myCentralClean.includes("تخطيط") || myCentralClean.includes("متابعة"));
+            const isFinanceUser = !isChairmanUser && (myCentralClean.includes("مالية") || myCentralClean.includes("الشؤون المالية"));
+            const isUserCentralManager = !isChairmanUser && !isPlanningUser && !isFinanceUser && (myCentralClean.includes("رئيس الادارة المركزية") || myCentralClean.includes("رئيس المركزية"));
 
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
                 req.Request_ID = doc.id; 
                 
-                const stage = cleanText(req.Current_Stage || "").toLowerCase();
-                const status = cleanText(req.Status || "").toLowerCase();
-                const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
-                const parentDept = cleanText(req.parentDepartment || "").toLowerCase();
+                const stageClean = cleanText(req.Current_Stage || "");
+                const statusClean = cleanText(req.Status || "");
+                const assignedCentralClean = cleanText(req.Assigned_Central_Manager || "");
+                const parentDeptClean = cleanText(req.parentDepartment || "");
                 let history = req.History || [];
                 
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
                 if (isChairmanUser) {
-                    if (stage.includes("رئيس مجلس الإدارة") || status.includes("رئيس مجلس الإدارة")) {
+                    if (stageClean.includes("رئيس مجلس الادارة") || statusClean.includes("رئيس مجلس الادارة")) {
                         isMyTurnNow = true;
                     }
                 }
                 else if (isUserCentralManager) {
-                    let myExactCentralName = myCentral || myName || myRole;
-                    let belongsToMyCentral = assignedCentral.includes("رئيس الإدارة المركزية") && 
-                        ((myExactCentralName.includes("تخطيط") && assignedCentral.includes("تخطيط")) ||
-                         (myExactCentralName.includes("مالية") && assignedCentral.includes("مالية")) ||
-                         (!myExactCentralName.includes("تخطيط") && !assignedCentral.includes("تخطيط")));
+                    let belongsToMyCentral = assignedCentralClean.includes("رئيس الادارة المركزية") && 
+                        ((myCentralClean.includes("تخطيط") && assignedCentralClean.includes("تخطيط")) ||
+                         (myCentralClean.includes("مالية") && assignedCentralClean.includes("مالية")) ||
+                         (!myCentralClean.includes("تخطيط") && !assignedCentralClean.includes("تخطيط")));
 
-                    if (belongsToMyCentral && (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد"))) {
+                    if (belongsToMyCentral && (stageClean.includes("رئيس الادارة المركزية") || stageClean.includes("رئيس المركزية") || statusClean.includes("رئيس الادارة المركزية") || stageClean.includes("بانتظار اعتماد"))) {
                         isMyTurnNow = true;
                     }
                 } 
                 else if (isPlanningUser || isFinanceUser) {
-                    if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي") || stage.includes("بانتظار باقي الآراء") || status.includes("تم أخذ الرأي")) {
+                    if (stageClean.includes("بانتظار رأي") || statusClean.includes("أخذ رأي") || statusClean.includes("اخذ راي")) {
                         if (req.Transfer_State) {
                             try {
                                 let state = JSON.parse(req.Transfer_State);
                                 for (let key in state) {
-                                    let keyLower = key.toLowerCase();
-                                    if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
+                                    let keyClean = cleanText(key);
+                                    if (isPlanningUser && (keyClean.includes("تخطيط") || keyClean.includes("متابعة")) && state[key].decision === 'pending') {
                                         isMyTurnNow = true;
                                     }
-                                    if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
+                                    if (isFinanceUser && (keyClean.includes("مالية") || keyClean.includes("الشؤون")) && state[key].decision === 'pending') {
                                         isMyTurnNow = true;
                                     }
                                 }
@@ -1039,17 +1046,17 @@
                     }
                 } 
                 else {
-                    let cleanMyCentralName = myCentral || myName || myRole;
-                    if (parentDept === cleanMyCentralName || stage.includes(cleanMyCentralName) || status.includes(cleanMyCentralName)) {
-                        if (stage.includes("مراجعة") && (parentDept === cleanMyCentralName || stage.includes(cleanMyCentralName) || status.includes(cleanMyCentralName))) {
+                    // المدير العام المباشر
+                    if (parentDeptClean === myCentralClean || stageClean.includes(myCentralClean) || statusClean.includes(myCentralClean)) {
+                        if (stageClean.includes("مراجعة") && (parentDeptClean === myCentralClean || stageClean.includes(myCentralClean) || statusClean.includes(myCentralClean))) {
                             isMyTurnNow = true;
                         }
                     }
                 }
 
-                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myCentral) || cleanText(h).toLowerCase().includes(myName) || cleanText(h).toLowerCase().includes(myRole));
+                let passedByMe = history.some(h => cleanText(h).includes(myCentralClean));
                 
-                if (status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
+                if (statusClean.includes("معتمد نهائياً") || statusClean.includes("مرفوض نهائياً") || statusClean.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
                 }
 
@@ -1096,7 +1103,7 @@
                 if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
                 if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
                 if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
+                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("اخذ راي") === -1) return false;
             }
             if (searchFilter) {
                 const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
@@ -1183,17 +1190,15 @@
                 try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                 
                 let updatedState = { ...currentState };
-                const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-                const myName = cleanText(loggedInUser.name || "").toLowerCase();
-                const myRole = cleanText(loggedInUser.role || "").toLowerCase();
+                const myCentralClean = cleanText(loggedInUser.centralManager || loggedInUser.name || loggedInUser.role || "");
                 
                 for (let key in updatedState) {
-                    let keyLower = key.toLowerCase();
-                    if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                    let keyClean = cleanText(key);
+                    if (myCentralClean.includes("مالية") && keyClean.includes("مالية")) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                    } else if (myCentralClean.includes("تخطيط") && keyClean.includes("تخطيط")) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
@@ -1324,7 +1329,6 @@
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
         const status = cleanText(req.Status || "");
-        const stageLower = stage.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
@@ -1333,20 +1337,18 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-            const managerName = cleanText(loggedInUser.name || "").toLowerCase();
-            const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
+            const myCentralClean = cleanText(loggedInUser.centralManager || loggedInUser.name || loggedInUser.role || "");
             
             let isMyTurn = false;
             let actionType = null;
 
-            const isChairmanUser = managerRole.includes("رئيس مجلس الإدارة") || managerName.includes("رئيس مجلس الإدارة") || managerCentral.includes("رئيس مجلس الإدارة");
-            const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
-            const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
-            const isCentralUser = !isChairmanUser && !isPlanningUser && !isFinanceUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
+            const isChairmanUser = myCentralClean.includes("رئيس مجلس الادارة") || myCentralClean.includes("رئيس مجلس");
+            const isPlanningUser = !isChairmanUser && (myCentralClean.includes("تخطيط") || myCentralClean.includes("متابعة"));
+            const isFinanceUser = !isChairmanUser && (myCentralClean.includes("مالية") || myCentralClean.includes("الشؤون المالية"));
+            const isCentralUser = !isChairmanUser && !isPlanningUser && !isFinanceUser && (myCentralClean.includes("رئيس الادارة المركزية") || myCentralClean.includes("رئيس المركزية"));
 
             if (isChairmanUser) {
-                if (stageLower.includes("رئيس مجلس الإدارة") || status.toLowerCase().includes("رئيس مجلس الإدارة")) {
+                if (stage.includes("رئيس مجلس الادارة") || status.includes("رئيس مجلس الادارة")) {
                     isMyTurn = true;
                     actionType = 'chairman';
                 }
@@ -1358,11 +1360,11 @@
                     try {
                         let state = JSON.parse(req.Transfer_State);
                         for (let key in state) {
-                            let keyLower = key.toLowerCase();
-                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
+                            let keyClean = cleanText(key);
+                            if (isPlanningUser && keyClean.includes("تخطيط") && state[key].decision === 'pending') {
                                 isMyTurn = true;
                             }
-                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
+                            if (isFinanceUser && keyClean.includes("مالية") && state[key].decision === 'pending') {
                                 isMyTurn = true;
                             }
                         }
@@ -1370,7 +1372,7 @@
                 }
                 if (isMyTurn) actionType = 'dept_opinion';
             } else {
-                if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
+                if (stage.includes("مراجعة")) {
                     isMyTurn = true;
                     actionType = 'gm';
                 }
@@ -1408,7 +1410,7 @@
         div.innerHTML = `
             <div class="req-title">
                 <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
-                <span class="badge ${badgeClass}">${cleanText(status || stage || '-')}</span>
+                <span class="badge ${badgeClass}">${cleanText(req.Status || req.Current_Stage || '-')}</span>
             </div>
             <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
             <div class="req-row"><strong>مقدم الطلب:</strong> <span>${cleanText(req.applicantName || '-')} (${cleanText(req.role || '-')})</span></div>
@@ -1559,7 +1561,7 @@
                 if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
                 if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
                 if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
+                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("اخذ راي") === -1) return false;
             }
             if (searchFilter) {
                 const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
