@@ -968,6 +968,13 @@
             const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
             const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
 
+            let myCentralType = null;
+            if (isCentralUser) {
+                if (matchesPlanning(myCentral) || matchesPlanning(myName) || matchesPlanning(myRole)) myCentralType = "تخطيط";
+                else if (matchesFinance(myCentral) || matchesFinance(myName) || matchesFinance(myRole)) myCentralType = "مالية";
+                else myCentralType = "أخرى";
+            }
+
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
                 req.Request_ID = doc.id; 
@@ -1305,12 +1312,12 @@
         else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
 
         let buttonsHtml = "";
+        // ✅ الشرط هنا: لو withActions بيساوي true، يبقى الطلب ده في قائمة "المعلقة" وده معناه إنه دور المستخدم الحالي
         if (withActions) {
             const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
             const managerName = cleanText(loggedInUser.name || "").toLowerCase();
             const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
             
-            let isMyTurn = false;
             let actionType = null;
 
             const isChairmanUser = managerRole.includes("رئيس مجلس") || managerName.includes("رئيس مجلس") || managerCentral.includes("رئيس مجلس");
@@ -1319,77 +1326,64 @@
             const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
 
             const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
-            const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
-            
             const isFinanceCentral = isCentralUser && (matchesFinance(managerCentral) || matchesFinance(managerName) || matchesFinance(managerRole));
 
+            // تحديد نوع الإجراء بناءً على دور المستخدم
             if (isChairmanUser) {
-                if (stageLower.includes("رئيس مجلس") || statusLower.includes("رئيس مجلس")) { isMyTurn = true; actionType = 'chairman'; }
+                actionType = 'chairman';
             } 
             else if (isCentralUser) {
-                // ✅ التعديل: إظهار الأزرار لكل الرؤساء بدون شرط النوع
-                const isMyStage = stageLower.includes("رئيس الإدارة المركزية") || 
-                                  statusLower.includes("رئيس الإدارة المركزية") || 
-                                  stageLower.includes("بانتظار اعتماد") || 
-                                  stageLower.includes("مراجعة رئيس الإدارة المركزية") ||
-                                  stageLower.includes("عودة من المالية");
-                                  
-                const isThisMyRequest = assignedCentral === managerCentral || 
-                                        assignedCentral === managerRole || 
-                                        assignedCentral === managerName ||
-                                        stageLower.includes(managerCentral) ||
-                                        stageLower.includes(managerRole);
-
-                if (isThisMyRequest && isMyStage) { 
-                    isMyTurn = true; 
-                    actionType = 'central'; 
-                }
+                actionType = 'central';
             } 
             else if (isPlanningUser || isFinanceUser) {
+                // لو هو مدير عام التخطيط أو المالية (معاونين)، نشوف لو فيه رأي مطلوب منه
+                let hasPendingOpinion = false;
                 if (req.Transfer_State) {
                     try {
                         let state = JSON.parse(req.Transfer_State);
                         for (let key in state) {
                             let keyLower = key.toLowerCase();
-                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') isMyTurn = true;
-                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') isMyTurn = true;
+                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') hasPendingOpinion = true;
+                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') hasPendingOpinion = true;
                         }
                     } catch(e) {}
                 }
-                if (isMyTurn) actionType = 'dept_opinion';
-            } 
-            else {
-                if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
-                    isMyTurn = true;
+                if (hasPendingOpinion) {
+                    actionType = 'dept_opinion';
+                } else {
+                    // لو مالوش رأي مطلوب، يبقى هو المدير العام صاحب الطلب
                     actionType = 'gm';
                 }
+            } 
+            else {
+                actionType = 'gm';
             }
 
-            if (isMyTurn) {
-                if (actionType === 'chairman') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
-                    </div>`;
-                } else if (actionType === 'central') {
-                    let transferBtn = isFinanceCentral ? `<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>` : '';
-                    
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير</button>
-                        ${transferBtn}
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                    </div>`;
-                } else if (actionType === 'dept_opinion') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
-                    </div>`;
-                } else if (actionType === 'gm') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
-                    </div>`;
-                }
+            // رسم الأزرار بناءً على نوع الإجراء
+            if (actionType === 'chairman') {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
+                </div>`;
+            } else if (actionType === 'central') {
+                // زر التحويل يظهر فقط لرئيس المالية
+                let transferBtn = isFinanceCentral ? `<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>` : '';
+                
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير</button>
+                    ${transferBtn}
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                </div>`;
+            } else if (actionType === 'dept_opinion') {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
+                </div>`;
+            } else if (actionType === 'gm') {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
+                </div>`;
             }
         }
 
