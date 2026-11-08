@@ -1018,7 +1018,7 @@
                     }
                 } 
                 else if (isPlanningUser || isFinanceUser) {
-                    if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي")) {
+                    if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي") || stage.includes("بانتظار باقي الآراء") || status.includes("تم أخذ الرأي")) {
                         if (req.Transfer_State) {
                             try {
                                 let state = JSON.parse(req.Transfer_State);
@@ -1159,12 +1159,10 @@
                 try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                 
                 let transferObj = { ...existingState };
-                let newDepts = [];
                 extraData.targetDepts.forEach(dept => {
                     if (!transferObj[dept]) {
                         transferObj[dept] = { decision: "pending", date: nowStr };
                     }
-                    newDepts.push(dept);
                 });
                 
                 let deptNamesStr = Object.keys(transferObj).join(" و ");
@@ -1198,10 +1196,11 @@
                 }
                 
                 let allFinished = true;
+                let activeDeptsList = [];
                 for (let key in updatedState) {
+                    activeDeptsList.push(key);
                     if (updatedState[key].decision === 'pending') {
                         allFinished = false;
-                        break;
                     }
                 }
                 
@@ -1209,8 +1208,8 @@
                 let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
 
                 updates = { 
-                    Current_Stage: allFinished ? "مراجعة " + originalCentral : "بانتظار باقي الآراء", 
-                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("تم أخذ الرأي - " + decisionText + " من " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role)),
+                    Current_Stage: allFinished ? ("مراجعة " + originalCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
+                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("قيد الانتظار - تم أخذ رأي " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role) + " (" + decisionText + ") وبانتظار بقية الإدارات"),
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
@@ -1818,7 +1817,7 @@
             }
             
             let count = 0;
-            querySnapshot.forEach((doc) => {
+            querySnapshot.get.forEach((doc) => {
                 count++;
                 const req = doc.data();
                 req.Request_ID = doc.id;
@@ -1835,7 +1834,7 @@
                     <div class="req-row"><strong>التكلفة:</strong> <span>${cleanText(req.totalCost)} ج.م</span></div>
                     <div class="req-actions">
                         <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
-                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                        <button class="print-print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
                     </div>
                 `;
                 container.appendChild(div);
