@@ -460,8 +460,7 @@
             <div id="contractPrintSection" style="display: none; position: relative; z-index: 2;"></div>
         </div>
     </div>
-    
-    <script>
+        <script>
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
         authDomain: "dam-purchases-app.firebaseapp.com",
@@ -612,6 +611,7 @@
 
     let deptSelect, titleSelect, reviewUserSelect;
 
+    // ✅ دالة loadDepartments المعدلة: قراءة حقل department من مجموعة المستخدمين
     function loadDepartments() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsSet = new Set();
@@ -637,13 +637,22 @@
                 deptsSet.add(cleanName);
                 deptNameMap[cleanName] = cleanName; 
                 
-                let lowerName = cleanName.toLowerCase();
-                if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
-                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
-                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
+                // ✅ التعديل: قراءة حقل department لتحديد الرئيس الإداري التابع له
+                let parentDeptFromDb = cleanText(data.department || "");
+                if (parentDeptFromDb !== "") {
+                    deptParentMap[cleanName] = parentDeptFromDb;
                 } else {
-                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                    // خطة بديلة في حال كان حقل department فارغاً (لمنع توقف النظام)
+                    let lowerName = cleanName.toLowerCase();
+                    if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
+                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                    } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
+                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
+                    } else if (lowerName.includes("توشكى") || lowerName.includes("توشكي")) {
+                        deptParentMap[cleanName] = "رئيس الإدارة المركزية لتوشكى والبحوث";
+                    } else {
+                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                    }
                 }
             });
 
@@ -816,6 +825,8 @@
         
         const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
         const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
+        
+        // ✅ عند إنشاء الطلب، نأخذ الرئيس الإداري من الخريطة (department)
         const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
 
         const data = {
@@ -939,7 +950,6 @@
         renderFilteredRequests();
     }
 
-    // ✅ الدالة المعدلة: أرشفة مستقلة لكل مسئول
     function loadReviewRequests() {
         if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
         const container = document.getElementById('requestsList');
@@ -954,8 +964,8 @@
 
             const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
             const isCentralUser = !isChairmanUser && (myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية"));
-            const isPlanningUser = !isChairmanUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
-            const isFinanceUser = !isChairmanUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
+            const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
+            const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
             const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
             const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
@@ -978,7 +988,6 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                // 1. رئيس مجلس الإدارة
                 if (isChairmanUser) {
                     if (stage.includes("رئيس مجلس") || status.includes("رئيس مجلس")) {
                         isMyTurnNow = true;
@@ -986,7 +995,6 @@
                         isArchivedForMe = true;
                     }
                 }
-                // 2. رئيس الإدارة المركزية (المالية أو التخطيط)
                 else if (isCentralUser) {
                     let reqCentralType = null;
                     if (matchesPlanning(assignedCentral)) reqCentralType = "تخطيط";
@@ -1003,7 +1011,6 @@
                         }
                     }
                 } 
-                // 3. مديرو العموم للرأي (التخطيط والمالية)
                 else if (isPlanningUser || isFinanceUser) {
                     let hasMyOpinion = false;
                     let isTransferredToMe = false;
@@ -1030,7 +1037,6 @@
                         else isArchivedForMe = true; 
                     }
                 } 
-                // 4. المدير العام العادي
                 else {
                     let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
                     let passedByMe = history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral));
@@ -1113,7 +1119,7 @@
         renderFilteredRequests();
     }
 
-    // ✅ الدالة المعدلة: الأرشفة الفورية + المسمى الوظيفي
+    // ✅ دالة processAction المعدلة للترحيل الصحيح بالـ department وتوثيق الآراء
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
         
@@ -1124,18 +1130,20 @@
             let updates = {};
             let history = req.History || [];
             
-            // التعديل: استخدام المسمى الوظيفي
             let officialTitle = loggedInUser.role || loggedInUser.centralManager || loggedInUser.name;
             if (!history.includes(officialTitle)) history.push(officialTitle);
 
             if (actionType === 'gm_approve') {
-                let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                // ✅ الترحيل بناءً على حقل department الخاص بالمدير العام
+                let targetCentral = deptParentMap[req.parentDepartment] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+
                 updates = { 
                     Current_Stage: "مراجعة " + targetCentral, 
                     Current_Owner_Role: targetCentral,
                     Gm_Date: nowStr, 
                     Status: "قيد الانتظار - موافقة " + targetCentral,
                     Central_Manager_Name: targetCentral,
+                    Assigned_Central_Manager: targetCentral,
                     History: history
                 };
             } 
@@ -1185,8 +1193,8 @@
                     if (updatedState[key].decision === 'pending') allFinished = false;
                 }
                 
-                let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض مسبب";
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية";
 
                 updates = { 
                     Current_Stage: allFinished ? ("مراجعة " + originalCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
@@ -1207,7 +1215,7 @@
 
             db.collection("requests").doc(requestId).update(updates).then(() => {
                 showSuccess("تم بنجاح", "تم تنفيذ الإجراء بنجاح وأرشفة الطلب.");
-                loadReviewRequests(); // الأرشفة الفورية
+                loadReviewRequests(); 
             }).catch((err) => {
                 showCustomAlert("فشل الحفظ (Firebase)", err.message);
             });
@@ -1332,7 +1340,6 @@
                 if (isMyTurn) actionType = 'dept_opinion';
             } 
             else {
-                // زر المدير العام
                 if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
                     isMyTurn = true;
                     actionType = 'gm';
@@ -1715,5 +1722,3 @@
     </script>
 </body>
 </html>
-
-    
