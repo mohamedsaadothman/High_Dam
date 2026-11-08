@@ -1155,11 +1155,19 @@
                 };
             } 
             else if (actionType === 'finance_transfer') {
-                let deptNamesStr = extraData.targetDepts.join(" و ");
-                let transferObj = {};
+                let existingState = {};
+                try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+                
+                let transferObj = { ...existingState };
+                let newDepts = [];
                 extraData.targetDepts.forEach(dept => {
-                    transferObj[dept] = { decision: "pending", date: nowStr };
+                    if (!transferObj[dept]) {
+                        transferObj[dept] = { decision: "pending", date: nowStr };
+                    }
+                    newDepts.push(dept);
                 });
+                
+                let deptNamesStr = Object.keys(transferObj).join(" و ");
                 updates = { 
                     Current_Stage: "بانتظار رأي " + deptNamesStr, 
                     Transfer_State: JSON.stringify(transferObj),
@@ -1189,12 +1197,20 @@
                     }
                 }
                 
+                let allFinished = true;
+                for (let key in updatedState) {
+                    if (updatedState[key].decision === 'pending') {
+                        allFinished = false;
+                        break;
+                    }
+                }
+                
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
                 let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
 
                 updates = { 
-                    Current_Stage: "مراجعة " + originalCentral, 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role) + " - بانتظار اعتماد " + originalCentral,
+                    Current_Stage: allFinished ? "مراجعة " + originalCentral : "بانتظار باقي الآراء", 
+                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("تم أخذ الرأي - " + decisionText + " من " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role)),
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
