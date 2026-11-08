@@ -482,7 +482,7 @@
     let pendingData = [];
     let archiveData = [];
     let deptNameMap = {}; 
-    let deptParentMap = {}; // خريطة لتخزين الرئيس المركزي لكل مدير عام
+    let deptParentMap = {}; // خريطة لتخزين الرئيس المركزي لكل مدير عام ديناميكياً
     let trackUser = null;
     let trackRequestsCache = [];
 
@@ -616,13 +616,13 @@
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsSet = new Set();
             deptNameMap = {}; 
-            deptParentMap = {};
+            deptParentMap = {}; // خريطة لتخزين الرئيس المركزي المرتبط بكل مدير عام
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 let rawName = data.centralManager || "";
                 let cleanName = cleanText(rawName);
-                let parentDept = cleanText(data.department || ""); // الرئيس المركزي المسؤول عن هذا المدير
+                let parentDept = cleanText(data.department || ""); // جلب عمود department المخزن لدى المدير العام كمرجع لرئيسه المركزي
                 
                 if (cleanName !== "") {
                     if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
@@ -630,7 +630,7 @@
                     }
                     deptsSet.add(cleanName);
                     deptNameMap[cleanName] = cleanName; 
-                    deptParentMap[cleanName] = parentDept; // ربط المدير العام برئيسه المركزي
+                    deptParentMap[cleanName] = parentDept; // ربط المدير العام برئيسه المركزي الموجود في عمود department
                 }
             });
 
@@ -820,7 +820,7 @@
         const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
         const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
         
-        // جلب الرئيس المركزي الخاص بهذا المدير العام تلقائياً من الخريطة الديناميكية
+        // جلب اسم الرئيس المركزي المسؤول عن هذا المدير العام تلقائياً من عمود department في جدول users
         const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية");
 
         const data = {
@@ -837,7 +837,7 @@
             totalCost: totalCost,
             Current_Stage: "مراجعة " + selectedDeptDisplay, 
             Status: "قيد الانتظار - موافقة " + selectedDeptDisplay,
-            Assigned_Central_Manager: specificCentralManager, // تخزين الرئيس المركزي التابع له المدير العام
+            Assigned_Central_Manager: specificCentralManager, // تخزين الرئيس المركزي الخاص بهذا المدير العام
             History: [] 
         };
 
@@ -1101,7 +1101,7 @@
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
             if (actionType === 'gm_approve') {
-                // توجيه الطلب إلى الرئيس المركزي المحدد في حقل Assigned_Custom_Manager أو الافتراضي
+                // توجيه الطلب حصرياً إلى الرئيس المركزي الخاص بهذا المدير العام والمحفوظ في الطلب
                 let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
                 updates = { 
                     Current_Stage: "مراجعة " + targetCentral, 
@@ -1745,7 +1745,7 @@
     }
 
     function logoutContract() {
-        document.getElementById('contractDashboard').style.display, 'none';
+        document.getElementById('contractDashboard').style.display = 'none';
         document.getElementById('contractLoginBox').style.display = 'block';
         document.getElementById('contractUsername').value = '';
         document.getElementById('contractPassword').value = '';
