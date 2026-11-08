@@ -611,7 +611,6 @@
 
     let deptSelect, titleSelect, reviewUserSelect;
 
-    // ============ ✅✅ [loadDepartments - معدّلة: فلترة إيجابية على "مدير عام"] ============
     function loadDepartments() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsSet = new Set();
@@ -628,7 +627,6 @@
                 
                 if (cleanName === "") return;
                 
-                // ✅ الشرط الإيجابي: يجب أن يحتوي الاسم أو الدور أو الإدارة على "مدير عام"
                 const isGeneralManager = 
                     roleTxt.includes("مدير عام") || 
                     nameTxt.includes("مدير عام") || 
@@ -636,7 +634,6 @@
                 
                 if (!isGeneralManager) return;
                 
-                // ✅ استبعاد احتياطي إضافي لأي لقب أعلى
                 if (roleTxt.includes("رئيس مجلس") || nameTxt.includes("رئيس مجلس") || centralTxt.includes("رئيس مجلس")) return;
                 if (roleTxt.includes("رئيس الإدارة المركزية") || nameTxt.includes("رئيس الإدارة المركزية") || centralTxt.includes("رئيس الإدارة المركزية")) return;
                 
@@ -659,8 +656,6 @@
                 if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
                 else deptSelect.setOptions(deptsList, true);
                 populateFilterDept(deptsList);
-            } else {
-                console.warn("⚠️ لم يتم العثور على أي مدير عام في قاعدة البيانات. تحقق من حقل role أو name.");
             }
         }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
@@ -986,7 +981,6 @@
         renderFilteredRequests();
     }
 
-    // ============ ✅ [loadReviewRequests - معدّلة: مطابقة شاملة] ============
     function loadReviewRequests() {
         if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
         
@@ -1006,7 +1000,6 @@
             const isPlanningUser = !isChairmanUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
             const isFinanceUser = !isChairmanUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
-            // ✅ دوال مساعدة للمطابقة الشاملة
             const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
             const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
 
@@ -1113,8 +1106,7 @@
             container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
         });
     }
-    
-    // ============ [renderFilteredRequests - بدون تغيير] ============
+
     function renderFilteredRequests() {
         const container = document.getElementById('requestsList');
         const data = currentTab === 'pending' ? pendingData : archiveData;
@@ -1166,12 +1158,21 @@
         renderFilteredRequests();
     }
 
-    // ============ ✅ [processAction - معدّلة] ============
     function processAction(requestId, actionType, extraData = {}) {
+        console.log("🔵 [1] بدأت الدالة processAction");
+        console.log("🔵 [2] رقم الطلب المستهدف:", requestId);
+        console.log("🔵 [3] نوع الإجراء:", actionType);
+        
         const nowStr = new Date().toLocaleString();
         
         db.collection("requests").doc(requestId).get().then((doc) => {
-            if (!doc.exists) return;
+            if (!doc.exists) {
+                console.error("🔴 [4] خطأ: الطلب غير موجود في قاعدة البيانات بهذا الرقم:", requestId);
+                showCustomAlert("خطأ", "الطلب غير موجود في قاعدة البيانات: " + requestId);
+                return;
+            }
+            
+            console.log("🟢 [4] تم جلب الطلب بنجاح من قاعدة البيانات.");
             let req = doc.data();
             let updates = {};
             
@@ -1189,6 +1190,7 @@
                     Central_Manager_Name: targetCentral,
                     History: history
                 };
+                console.log("🟡 [5] تم تجهيز التحديثات (gm_approve):", updates);
                 executeUpdate(requestId, updates);
                 return;
             } 
@@ -1201,6 +1203,7 @@
                     Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة (بعد اعتماد " + originalCentral + ")", 
                     History: history 
                 };
+                console.log("🟡 [5] تم تجهيز التحديثات (central_approve):", updates);
             } 
             else if (actionType === 'finance_transfer') {
                 let existingState = {};
@@ -1220,6 +1223,7 @@
                     Status: "قيد الانتظار - أخذ رأي " + deptNamesStr,
                     History: history
                 };
+                console.log("🟡 [5] تم تجهيز التحديثات (finance_transfer):", updates);
             }
             else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
                 let currentState = {};
@@ -1261,6 +1265,7 @@
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
+                console.log("🟡 [5] تم تجهيز التحديثات (dept_approve/dept_reject):", updates);
             }
             else if (actionType === 'chairman_approve') {
                 updates = { 
@@ -1269,6 +1274,7 @@
                     Status: "معتمد نهائياً", 
                     History: history 
                 };
+                console.log("🟡 [5] تم تجهيز التحديثات (chairman_approve):", updates);
             }
             else if (actionType === 'chairman_reject') {
                 let rejecterName = loggedInUser.name || loggedInUser.role;
@@ -1278,24 +1284,31 @@
                     Status: "مرفوض نهائياً من " + rejecterName, 
                     History: history 
                 };
+                console.log("🟡 [5] تم تجهيز التحديثات (chairman_reject):", updates);
             }
             else if (actionType === 'reject') {
                 let rejecterName = loggedInUser.name || loggedInUser.centralManager || loggedInUser.role;
                 updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
+                console.log("🟡 [5] تم تجهيز التحديثات (reject):", updates);
             }
             
             executeUpdate(requestId, updates);
+        }).catch((err) => {
+            console.error("🔴 [4-خطأ] فشل جلب الطلب من قاعدة البيانات:", err);
+            showCustomAlert("خطأ في الاتصال", "لم نتمكن من قراءة الطلب. تأكد من الإنترنت وصلاحيات قاعدة البيانات. " + err.message);
         });
     }
 
     function executeUpdate(requestId, updates) {
+        console.log("🟠 [6] جاري إرسال التحديث إلى Firebase Firestore...");
         db.collection("requests").doc(requestId).update(updates)
         .then(() => {
+            console.log("🟢 [7] نجح التحديث بنسبة 100%!");
             showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب.");
             loadReviewRequests();
         }).catch((error) => {
-            console.error("Error: ", error);
-            showCustomAlert("خطأ", "تعذر تحديث الطلب.");
+            console.error("🔴 [7-خطأ] فشل التحديث في Firestore:", error);
+            showCustomAlert("فشل التحديث", "السبب: " + error.message + "<br>الكود: " + error.code);
         });
     }
 
@@ -1363,7 +1376,6 @@
         };
     }
 
-    // ============ ✅ [buildRequestCard - معدّلة: مطابقة شاملة] ============
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
@@ -1390,7 +1402,6 @@
             const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
             const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
 
-            // ✅ دوال مساعدة للمطابقة الشاملة
             const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
             const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
 
@@ -1890,7 +1901,6 @@
         document.getElementById('contractPassword').value = '';
     }
 
-    // ============ ✅ [loadContractRequests - معدّلة: إصلاح forEach] ============
     function loadContractRequests() {
         const container = document.getElementById('contractRequestsList');
         container.innerHTML = '<p class="loading-state">جاري تحميل الطلبات المعتمدة...</p>';
@@ -1941,9 +1951,6 @@
         loadContractRequests();
     }
 
-    </script>
-</body>
-</html>    
     </script>
 </body>
 </html>
