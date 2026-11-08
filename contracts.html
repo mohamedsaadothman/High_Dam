@@ -611,6 +611,7 @@
 
     let deptSelect, titleSelect, reviewUserSelect;
 
+    // ============ ✅✅ [loadDepartments - معدّلة: فلترة إيجابية على "مدير عام"] ============
     function loadDepartments() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsSet = new Set();
@@ -621,19 +622,34 @@
                 const data = doc.data();
                 let rawName = data.centralManager || "";
                 let cleanName = cleanText(rawName);
+                let roleTxt = cleanText(data.role || "").toLowerCase();
+                let nameTxt = cleanText(data.name || "").toLowerCase();
+                let centralTxt = cleanName.toLowerCase();
                 
-                if (cleanName !== "") {
-                    deptsSet.add(cleanName);
-                    deptNameMap[cleanName] = cleanName; 
-                    
-                    let lowerName = cleanName.toLowerCase();
-                    if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
-                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                    } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
-                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
-                    } else {
-                        deptParentMap[cleanName] = cleanName.includes("رئيس الإدارة المركزية") ? cleanName : "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                    }
+                if (cleanName === "") return;
+                
+                // ✅ الشرط الإيجابي: يجب أن يحتوي الاسم أو الدور أو الإدارة على "مدير عام"
+                const isGeneralManager = 
+                    roleTxt.includes("مدير عام") || 
+                    nameTxt.includes("مدير عام") || 
+                    centralTxt.includes("مدير عام");
+                
+                if (!isGeneralManager) return;
+                
+                // ✅ استبعاد احتياطي إضافي لأي لقب أعلى
+                if (roleTxt.includes("رئيس مجلس") || nameTxt.includes("رئيس مجلس") || centralTxt.includes("رئيس مجلس")) return;
+                if (roleTxt.includes("رئيس الإدارة المركزية") || nameTxt.includes("رئيس الإدارة المركزية") || centralTxt.includes("رئيس الإدارة المركزية")) return;
+                
+                deptsSet.add(cleanName);
+                deptNameMap[cleanName] = cleanName; 
+                
+                let lowerName = cleanName.toLowerCase();
+                if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
+                } else {
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
                 }
             });
 
@@ -643,6 +659,8 @@
                 if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
                 else deptSelect.setOptions(deptsList, true);
                 populateFilterDept(deptsList);
+            } else {
+                console.warn("⚠️ لم يتم العثور على أي مدير عام في قاعدة البيانات. تحقق من حقل role أو name.");
             }
         }).catch(err => console.error("خطأ في تحميل الإدارات:", err));
     }
@@ -968,7 +986,7 @@
         renderFilteredRequests();
     }
 
-    // ✅✅✅ [الدالة الأولى المعدلة: loadReviewRequests] ✅✅✅
+    // ============ ✅ [loadReviewRequests - معدّلة: مطابقة شاملة] ============
     function loadReviewRequests() {
         if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
         
@@ -988,12 +1006,15 @@
             const isPlanningUser = !isChairmanUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
             const isFinanceUser = !isChairmanUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
-            // ✅ تحديد نوع الإدارة المركزية للمستخدم الحالي بدقة
+            // ✅ دوال مساعدة للمطابقة الشاملة
+            const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
+            const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
+
             let myCentralType = null;
             if (isUserCentralManager) {
-                if (myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) {
+                if (matchesPlanning(myCentral) || matchesPlanning(myName) || matchesPlanning(myRole)) {
                     myCentralType = "تخطيط";
-                } else if (myCentral.includes("مالية") || myCentral.includes("شئون") || myName.includes("مالية") || myRole.includes("مالية")) {
+                } else if (matchesFinance(myCentral) || matchesFinance(myName) || matchesFinance(myRole)) {
                     myCentralType = "مالية";
                 } else {
                     myCentralType = "أخرى";
@@ -1013,7 +1034,6 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                // ✅ رئيس مجلس الإدارة: يرى الطلبات التي وصلت لمرحلته فقط
                 if (isChairmanUser) {
                     if (stage.includes("رئيس مجلس الإدارة") || 
                         stage.includes("بانتظار اعتماد رئيس مجلس") ||
@@ -1022,12 +1042,11 @@
                         isMyTurnNow = true;
                     }
                 }
-                // ✅ رئيس الإدارة المركزية: يرى فقط طلبات إدارته المطابقة لنوعه
                 else if (isUserCentralManager) {
                     let reqCentralType = null;
-                    if (assignedCentral.includes("تخطيط")) {
+                    if (matchesPlanning(assignedCentral)) {
                         reqCentralType = "تخطيط";
-                    } else if (assignedCentral.includes("مالية") || assignedCentral.includes("شئون")) {
+                    } else if (matchesFinance(assignedCentral)) {
                         reqCentralType = "مالية";
                     } else {
                         reqCentralType = "أخرى";
@@ -1043,7 +1062,6 @@
                         isMyTurnNow = true;
                     }
                 } 
-                // ✅ مديرو العموم (تخطيط/مالية): يرون فقط ما تم تحويله إليهم
                 else if (isPlanningUser || isFinanceUser) {
                     if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي") || stage.includes("بانتظار باقي الآراء") || status.includes("تم أخذ الرأي")) {
                         if (req.Transfer_State) {
@@ -1062,7 +1080,6 @@
                         }
                     }
                 } 
-                // ✅ المدير العام العادي: يرى فقط طلبات إدارته في مرحلة المراجعة
                 else {
                     if (stage.includes(myCentral) || status.includes(myCentral) || parentDept.includes(myCentral)) {
                         if (stage.includes("مراجعة") && (stage.includes(myCentral) || status.includes(myCentral))) {
@@ -1096,835 +1113,837 @@
             container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
         });
     }
-        // ============ [renderFilteredRequests - بدون تغيير] ============
-function renderFilteredRequests() {
-    const container = document.getElementById('requestsList');
-    const data = currentTab === 'pending' ? pendingData : archiveData;
-    const dateFrom = document.getElementById('filterDateFrom').value;
-    const dateTo = document.getElementById('filterDateTo').value;
-    const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
-    const deptFilter = document.getElementById('filterDept').value;
-    const statusFilter = document.getElementById('filterStatus').value;
     
-    let filtered = data.filter(function(r) {
-        if (dateFrom || dateTo) {
-            const ts = new Date(r.Timestamp || 0);
-            if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
-            if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
-        }
-        if (deptFilter) {
-            if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false;
-        }
-        if (statusFilter) {
-            const status = cleanText(r.Status || "");
-            if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
-            if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
-            if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-            if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
-        }
-        if (searchFilter) {
-            const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
-            const nameMatch = cleanText(r.applicantName || "").toLowerCase().indexOf(searchFilter) !== -1;
-            if (!idMatch && !nameMatch) return false;
-        }
-        return true;
-    });
-    
-    container.innerHTML = "";
-    if (filtered.length === 0) {
-        container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات تطابق البحث.</p>';
-        return;
-    }
-    activeRequestsData = filtered;
-    filtered.forEach(req => container.appendChild(buildRequestCard(req, currentTab === 'pending')));
-}
-
-function resetFilters() {
-    document.getElementById('filterDateFrom').value = "";
-    document.getElementById('filterDateTo').value = "";
-    document.getElementById('filterSearch').value = "";
-    document.getElementById('filterDept').value = "";
-    document.getElementById('filterStatus').value = "";
-    renderFilteredRequests();
-}
-
-// ============ ✅ [processAction - معدّلة] ============
-function processAction(requestId, actionType, extraData = {}) {
-    const nowStr = new Date().toLocaleString();
-    
-    db.collection("requests").doc(requestId).get().then((doc) => {
-        if (!doc.exists) return;
-        let req = doc.data();
-        let updates = {};
+    // ============ [renderFilteredRequests - بدون تغيير] ============
+    function renderFilteredRequests() {
+        const container = document.getElementById('requestsList');
+        const data = currentTab === 'pending' ? pendingData : archiveData;
+        const dateFrom = document.getElementById('filterDateFrom').value;
+        const dateTo = document.getElementById('filterDateTo').value;
+        const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
+        const deptFilter = document.getElementById('filterDept').value;
+        const statusFilter = document.getElementById('filterStatus').value;
         
-        let history = req.History || [];
-        let userIdentifier = loggedInUser.centralManager || loggedInUser.name || loggedInUser.role;
-        if (!history.includes(userIdentifier)) history.push(userIdentifier);
-
-        if (actionType === 'gm_approve') {
-            let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-            updates = { 
-                Current_Stage: "مراجعة " + targetCentral, 
-                Current_Owner_Role: targetCentral,
-                Gm_Date: nowStr, 
-                Status: "قيد الانتظار - موافقة " + targetCentral,
-                Central_Manager_Name: targetCentral,
-                History: history
-            };
-            executeUpdate(requestId, updates);
+        let filtered = data.filter(function(r) {
+            if (dateFrom || dateTo) {
+                const ts = new Date(r.Timestamp || 0);
+                if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
+                if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
+            }
+            if (deptFilter) {
+                if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false;
+            }
+            if (statusFilter) {
+                const status = cleanText(r.Status || "");
+                if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
+                if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
+                if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
+                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
+            }
+            if (searchFilter) {
+                const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
+                const nameMatch = cleanText(r.applicantName || "").toLowerCase().indexOf(searchFilter) !== -1;
+                if (!idMatch && !nameMatch) return false;
+            }
+            return true;
+        });
+        
+        container.innerHTML = "";
+        if (filtered.length === 0) {
+            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات تطابق البحث.</p>';
             return;
-        } 
-        else if (actionType === 'central_approve') {
-            // ✅ إصلاح: صياغة موحّدة تجعل الرئيس يكتشف الطلب
-            let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية";
-            updates = { 
-                Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
-                Current_Owner_Role: "رئيس مجلس الإدارة",
-                Central_Date: nowStr, 
-                Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة (بعد اعتماد " + originalCentral + ")", 
-                History: history 
-            };
-        } 
-        else if (actionType === 'finance_transfer') {
-            let existingState = {};
-            try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+        }
+        activeRequestsData = filtered;
+        filtered.forEach(req => container.appendChild(buildRequestCard(req, currentTab === 'pending')));
+    }
+
+    function resetFilters() {
+        document.getElementById('filterDateFrom').value = "";
+        document.getElementById('filterDateTo').value = "";
+        document.getElementById('filterSearch').value = "";
+        document.getElementById('filterDept').value = "";
+        document.getElementById('filterStatus').value = "";
+        renderFilteredRequests();
+    }
+
+    // ============ ✅ [processAction - معدّلة] ============
+    function processAction(requestId, actionType, extraData = {}) {
+        const nowStr = new Date().toLocaleString();
+        
+        db.collection("requests").doc(requestId).get().then((doc) => {
+            if (!doc.exists) return;
+            let req = doc.data();
+            let updates = {};
             
-            let transferObj = { ...existingState };
-            extraData.targetDepts.forEach(dept => {
-                if (!transferObj[dept]) {
-                    transferObj[dept] = { decision: "pending", date: nowStr };
+            let history = req.History || [];
+            let userIdentifier = loggedInUser.centralManager || loggedInUser.name || loggedInUser.role;
+            if (!history.includes(userIdentifier)) history.push(userIdentifier);
+
+            if (actionType === 'gm_approve') {
+                let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                updates = { 
+                    Current_Stage: "مراجعة " + targetCentral, 
+                    Current_Owner_Role: targetCentral,
+                    Gm_Date: nowStr, 
+                    Status: "قيد الانتظار - موافقة " + targetCentral,
+                    Central_Manager_Name: targetCentral,
+                    History: history
+                };
+                executeUpdate(requestId, updates);
+                return;
+            } 
+            else if (actionType === 'central_approve') {
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية";
+                updates = { 
+                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                    Current_Owner_Role: "رئيس مجلس الإدارة",
+                    Central_Date: nowStr, 
+                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة (بعد اعتماد " + originalCentral + ")", 
+                    History: history 
+                };
+            } 
+            else if (actionType === 'finance_transfer') {
+                let existingState = {};
+                try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+                
+                let transferObj = { ...existingState };
+                extraData.targetDepts.forEach(dept => {
+                    if (!transferObj[dept]) {
+                        transferObj[dept] = { decision: "pending", date: nowStr };
+                    }
+                });
+                
+                let deptNamesStr = Object.keys(transferObj).join(" و ");
+                updates = { 
+                    Current_Stage: "بانتظار رأي " + deptNamesStr, 
+                    Transfer_State: JSON.stringify(transferObj),
+                    Status: "قيد الانتظار - أخذ رأي " + deptNamesStr,
+                    History: history
+                };
+            }
+            else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
+                let currentState = {};
+                try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+                
+                let updatedState = { ...currentState };
+                const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+                const myName = cleanText(loggedInUser.name || "").toLowerCase();
+                const myRole = cleanText(loggedInUser.role || "").toLowerCase();
+                
+                for (let key in updatedState) {
+                    let keyLower = key.toLowerCase();
+                    if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                        updatedState[key].date = nowStr;
+                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                        updatedState[key].date = nowStr;
+                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+                    }
+                }
+                
+                let allFinished = true;
+                let activeDeptsList = [];
+                for (let key in updatedState) {
+                    activeDeptsList.push(key);
+                    if (updatedState[key].decision === 'pending') {
+                        allFinished = false;
+                    }
+                }
+                
+                let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+
+                updates = { 
+                    Current_Stage: allFinished ? ("مراجعة " + originalCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
+                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("قيد الانتظار - تم أخذ رأي " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role) + " (" + decisionText + ") وبانتظار بقية الإدارات"),
+                    Transfer_State: JSON.stringify(updatedState),
+                    History: history
+                };
+            }
+            else if (actionType === 'chairman_approve') {
+                updates = { 
+                    Current_Stage: "معتمد نهائياً", 
+                    Chairman_Date: nowStr, 
+                    Status: "معتمد نهائياً", 
+                    History: history 
+                };
+            }
+            else if (actionType === 'chairman_reject') {
+                let rejecterName = loggedInUser.name || loggedInUser.role;
+                updates = { 
+                    Current_Stage: "مرفوض نهائياً", 
+                    Reject_Reason: extraData.rejectReason, 
+                    Status: "مرفوض نهائياً من " + rejecterName, 
+                    History: history 
+                };
+            }
+            else if (actionType === 'reject') {
+                let rejecterName = loggedInUser.name || loggedInUser.centralManager || loggedInUser.role;
+                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
+            }
+            
+            executeUpdate(requestId, updates);
+        });
+    }
+
+    function executeUpdate(requestId, updates) {
+        db.collection("requests").doc(requestId).update(updates)
+        .then(() => {
+            showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب.");
+            loadReviewRequests();
+        }).catch((error) => {
+            console.error("Error: ", error);
+            showCustomAlert("خطأ", "تعذر تحديث الطلب.");
+        });
+    }
+
+    function promptReject(requestId, actionName = "reject") {
+        const existing = document.getElementById("rejectModal");
+        if (existing) existing.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "rejectModal";
+        overlay.className = "custom-modal-overlay";
+        overlay.innerHTML = `
+          <div class="custom-modal-box" style="max-width:500px;">
+            <div class="custom-modal-header"><i class="fas fa-times-circle" style="color:#dc3545;"></i><h3 style="color:#b91c1c;">سبب الرفض</h3></div>
+            <div class="custom-modal-body" style="text-align:right;">
+              <textarea id="rejectReasonInput" placeholder="اكتب سبب الرفض..." style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff; direction:rtl;"></textarea>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="rejectCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+              <button id="rejectConfirm" class="custom-modal-btn" style="background:#dc3545;">تأكيد الرفض</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('rejectCancel').onclick = () => overlay.remove();
+        document.getElementById('rejectConfirm').onclick = () => {
+            const reason = document.getElementById('rejectReasonInput').value.trim();
+            if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
+            overlay.remove();
+            
+            let actionToUse = actionName;
+            if (actionName === 'chairman_reject') actionToUse = 'chairman_reject';
+            else if (actionName === 'dept_reject') actionToUse = 'dept_reject';
+            else actionToUse = 'reject';
+
+            processAction(requestId, actionToUse, { rejectReason: reason });
+        };
+    }
+
+    function promptFinanceTransfer(requestId) {
+        const existing = document.getElementById("transferModal");
+        if (existing) existing.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "transferModal";
+        overlay.className = "custom-modal-overlay";
+        overlay.innerHTML = `
+          <div class="custom-modal-box" style="max-width:520px;">
+            <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
+            <div class="custom-modal-body" style="text-align:right;">
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (يمكنك اختيار إدارة أو الإدارتين معاً):</p>
+              <label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
+              <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+              <button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد التحويل</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('transferCancel').onclick = () => overlay.remove();
+        document.getElementById('transferConfirm').onclick = () => {
+            const selected = [];
+            if (document.getElementById('chkFinance').checked) selected.push("مدير عام الشئون المالية");
+            if (document.getElementById('chkPlanning').checked) selected.push("مدير عام التخطيط والمتابعة");
+            if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
+            overlay.remove();
+            processAction(requestId, "finance_transfer", { targetDepts: selected });
+        };
+    }
+
+    // ============ ✅ [buildRequestCard - معدّلة: مطابقة شاملة] ============
+    function buildRequestCard(req, withActions) {
+        const div = document.createElement('div'); div.className = 'request-card';
+        const stage = cleanText(req.Current_Stage || "");
+        const status = cleanText(req.Status || "");
+        const stageLower = stage.toLowerCase();
+        const statusLower = status.toLowerCase();
+        
+        let badgeClass = 'badge-wait';
+        if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
+        else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
+        else if (stage.indexOf("بانتظار") !== -1 || stage.indexOf("تعديل") !== -1) badgeClass = 'badge-info';
+
+        let buttonsHtml = "";
+        if (withActions) {
+            const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+            const managerName = cleanText(loggedInUser.name || "").toLowerCase();
+            const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
+            
+            let isMyTurn = false;
+            let actionType = null;
+
+            const isChairmanUser = managerRole.includes("رئيس مجلس الإدارة") || managerName.includes("رئيس مجلس الإدارة") || managerCentral.includes("رئيس مجلس الإدارة");
+            const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
+            const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
+            const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
+
+            // ✅ دوال مساعدة للمطابقة الشاملة
+            const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
+            const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
+
+            if (isChairmanUser) {
+                if (stageLower.includes("رئيس مجلس الإدارة") || 
+                    stageLower.includes("بانتظار اعتماد رئيس مجلس") ||
+                    statusLower.includes("رئيس مجلس الإدارة") ||
+                    statusLower.includes("بانتظار اعتماد رئيس مجلس")) {
+                    isMyTurn = true;
+                    actionType = 'chairman';
+                }
+            } 
+            else if (isCentralUser) {
+                let myCentralType = null;
+                if (matchesPlanning(managerCentral) || matchesPlanning(managerName) || matchesPlanning(managerRole)) {
+                    myCentralType = "تخطيط";
+                } else if (matchesFinance(managerCentral) || matchesFinance(managerName) || matchesFinance(managerRole)) {
+                    myCentralType = "مالية";
+                } else {
+                    myCentralType = "أخرى";
+                }
+
+                const reqCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
+                let reqCentralType = null;
+                if (matchesPlanning(reqCentral)) {
+                    reqCentralType = "تخطيط";
+                } else if (matchesFinance(reqCentral)) {
+                    reqCentralType = "مالية";
+                } else {
+                    reqCentralType = "أخرى";
+                }
+
+                const belongsToMe = (myCentralType === reqCentralType);
+                const isInMyStage = stageLower.includes("رئيس الإدارة المركزية") || 
+                                    statusLower.includes("رئيس الإدارة المركزية") ||
+                                    stageLower.includes("بانتظار اعتماد") ||
+                                    stageLower.includes("مراجعة رئيس الإدارة المركزية");
+
+                if (belongsToMe && isInMyStage) {
+                    isMyTurn = true;
+                    actionType = 'central';
+                }
+            } 
+            else if (isPlanningUser || isFinanceUser) {
+                if (req.Transfer_State) {
+                    try {
+                        let state = JSON.parse(req.Transfer_State);
+                        for (let key in state) {
+                            let keyLower = key.toLowerCase();
+                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
+                                isMyTurn = true;
+                            }
+                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
+                                isMyTurn = true;
+                            }
+                        }
+                    } catch(e) {}
+                }
+                if (isMyTurn) actionType = 'dept_opinion';
+            } 
+            else {
+                if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
+                    isMyTurn = true;
+                    actionType = 'gm';
+                }
+            }
+
+            if (isMyTurn) {
+                if (actionType === 'chairman') {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
+                    </div>`;
+                } else if (actionType === 'central') {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير إلى رئيس مجلس الإدارة</button>
+                        <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                } else if (actionType === 'dept_opinion') {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب (مع إبداء الأسباب)</button>
+                    </div>`;
+                } else {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
+                    </div>`;
+                }
+            }
+        }
+
+        const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
+        const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong>سبب الرفض / التعليق:</strong><span>${cleanText(req.Reject_Reason)}</span></div>` : '';
+
+        div.innerHTML = `
+            <div class="req-title">
+                <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
+                <span class="badge ${badgeClass}">${cleanText(status || stage || '-')}</span>
+            </div>
+            <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
+            <div class="req-row"><strong>مقدم الطلب:</strong> <span>${cleanText(req.applicantName || '-')} (${cleanText(req.role || '-')})</span></div>
+            <div class="req-row"><strong>الإدارة:</strong> <span>${cleanText(req.parentDepartment || '-')}</span></div>
+            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${cleanText(req.totalCost || '0')} ج.م</span></div>
+            ${rejectBlock}
+            <div style="margin-top: 10px; display:flex; gap:8px;">
+                <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة</button>
+            </div>
+            ${buttonsHtml}
+        `;
+        return div;
+    }
+
+    function startAutoRefresh() {
+        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+        _autoRefreshTimer = setInterval(function() {
+            if (document.getElementById('dashboard') && document.getElementById('dashboard').style.display !== 'none') {
+                loadReviewRequests();
+            }
+        }, 30000);
+    }
+
+    function stopAutoRefresh() {
+        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+    }
+
+    function printSpecificRequestFromCard(reqId) {
+        let req = activeRequestsData.find(r => r.Request_ID === reqId);
+        if (!req) {
+            db.collection("requests").doc(reqId).get().then(doc => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    data.Request_ID = doc.id;
+                    activeRequestsData.push(data);
+                    printSpecificRequestFromCard(reqId);
                 }
             });
-            
-            let deptNamesStr = Object.keys(transferObj).join(" و ");
-            updates = { 
-                Current_Stage: "بانتظار رأي " + deptNamesStr, 
-                Transfer_State: JSON.stringify(transferObj),
-                Status: "قيد الانتظار - أخذ رأي " + deptNamesStr,
-                History: history
-            };
+            return;
         }
-        else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
-            let currentState = {};
-            try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-            
-            let updatedState = { ...currentState };
-            const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-            const myName = cleanText(loggedInUser.name || "").toLowerCase();
-            const myRole = cleanText(loggedInUser.role || "").toLowerCase();
-            
-            for (let key in updatedState) {
-                let keyLower = key.toLowerCase();
-                if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
-                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                    updatedState[key].date = nowStr;
-                    if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
-                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                    updatedState[key].date = nowStr;
-                    if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+
+        document.getElementById('printRequestSection').style.display = 'block';
+        document.getElementById('contractPrintSection').style.display = 'none';
+
+        document.getElementById('printReqId').textContent = cleanText(req.Request_ID);
+        document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '';
+        document.getElementById('printParentDept').textContent = cleanText(req.parentDepartment || "");
+        document.getElementById('printManagerTitle').textContent = "السيد المحاسب / " + cleanText(req.parentDepartment || "");
+        document.getElementById('printApplicantName').textContent = cleanText(req.applicantName || "---");
+        document.getElementById('printApplicantRole').textContent = cleanText(req.role || "---");
+        document.getElementById('printNationalId').textContent = cleanText(req.nationalId || "---");
+        document.getElementById('printPhone').textContent = cleanText(req.phone || "---");
+        document.getElementById('printManagerSignTitle').textContent = cleanText(req.parentDepartment || "الإدارة");
+        document.getElementById('printManagerSignName').textContent = cleanText(req.managerName || "---");
+        
+        const rejectBox = document.getElementById('printRejectBox');
+        if (req.Reject_Reason) {
+            rejectBox.style.display = "block";
+            document.getElementById('printRejectReason').textContent = cleanText(req.Reject_Reason);
+        } else {
+            rejectBox.style.display = "none";
+        }
+
+        const wm = document.getElementById('printWatermark');
+        const statusText = cleanText(req.Status || "");
+        if (statusText.includes("مرفوض")) {
+            wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#dc3545"; 
+        } else if (statusText.includes("معتمد نهائياً")) {
+            wm.style.display = 'block'; wm.textContent = "معتمد نهائياً"; wm.style.color = "#198754";
+        } else if (statusText.includes("معتمد")) {
+            wm.style.display = 'none'; 
+        } else {
+            wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; 
+        }
+
+        const deptRepliesBox = document.getElementById('printDeptRepliesBox');
+        const deptRepliesBody = document.getElementById('printDeptRepliesBody');
+        if (req.Transfer_State) {
+            try {
+                let state = JSON.parse(req.Transfer_State);
+                let rowsHtml = "";
+                for (let key in state) {
+                    let s = state[key];
+                    let decisionText = s.decision === 'approved' ? 'موافقة' : (s.decision === 'rejected' ? 'رفض مسبب' : 'قيد الانتظار');
+                    let color = s.decision === 'approved' ? '#198754' : (s.decision === 'rejected' ? '#dc3545' : '#b45309');
+                    rowsHtml += `<tr>
+                        <td style="border: 1px solid #333; padding: 4px; text-align: right;">${cleanText(key)}</td>
+                        <td style="border: 1px solid #333; padding: 4px; text-align: center; color: ${color}; font-weight: 900;">${decisionText}</td>
+                        <td style="border: 1px solid #333; padding: 4px; text-align: right; color: #dc3545;">${cleanText(s.reason || '-')}</td>
+                    </tr>`;
                 }
-            }
-            
-            let allFinished = true;
-            let activeDeptsList = [];
-            for (let key in updatedState) {
-                activeDeptsList.push(key);
-                if (updatedState[key].decision === 'pending') {
-                    allFinished = false;
+                if (rowsHtml !== "") {
+                    deptRepliesBody.innerHTML = rowsHtml;
+                    deptRepliesBox.style.display = 'block';
+                } else {
+                    deptRepliesBox.style.display = 'none';
                 }
-            }
-            
-            let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-            let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-
-            updates = { 
-                Current_Stage: allFinished ? ("مراجعة " + originalCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
-                Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("قيد الانتظار - تم أخذ رأي " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role) + " (" + decisionText + ") وبانتظار بقية الإدارات"),
-                Transfer_State: JSON.stringify(updatedState),
-                History: history
-            };
-        }
-        else if (actionType === 'chairman_approve') {
-            updates = { 
-                Current_Stage: "معتمد نهائياً", 
-                Chairman_Date: nowStr, 
-                Status: "معتمد نهائياً", 
-                History: history 
-            };
-        }
-        else if (actionType === 'chairman_reject') {
-            let rejecterName = loggedInUser.name || loggedInUser.role;
-            updates = { 
-                Current_Stage: "مرفوض نهائياً", 
-                Reject_Reason: extraData.rejectReason, 
-                Status: "مرفوض نهائياً من " + rejecterName, 
-                History: history 
-            };
-        }
-        else if (actionType === 'reject') {
-            let rejecterName = loggedInUser.name || loggedInUser.centralManager || loggedInUser.role;
-            updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
-        }
-        
-        executeUpdate(requestId, updates);
-    });
-}
-
-function executeUpdate(requestId, updates) {
-    db.collection("requests").doc(requestId).update(updates)
-    .then(() => {
-        showSuccess("تم بنجاح", "تم تنفيذ الإجراء وتحديث الطلب.");
-        loadReviewRequests();
-    }).catch((error) => {
-        console.error("Error: ", error);
-        showCustomAlert("خطأ", "تعذر تحديث الطلب.");
-    });
-}
-
-function promptReject(requestId, actionName = "reject") {
-    const existing = document.getElementById("rejectModal");
-    if (existing) existing.remove();
-    const overlay = document.createElement("div");
-    overlay.id = "rejectModal";
-    overlay.className = "custom-modal-overlay";
-    overlay.innerHTML = `
-      <div class="custom-modal-box" style="max-width:500px;">
-        <div class="custom-modal-header"><i class="fas fa-times-circle" style="color:#dc3545;"></i><h3 style="color:#b91c1c;">سبب الرفض</h3></div>
-        <div class="custom-modal-body" style="text-align:right;">
-          <textarea id="rejectReasonInput" placeholder="اكتب سبب الرفض..." style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff; direction:rtl;"></textarea>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button id="rejectCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-          <button id="rejectConfirm" class="custom-modal-btn" style="background:#dc3545;">تأكيد الرفض</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    document.getElementById('rejectCancel').onclick = () => overlay.remove();
-    document.getElementById('rejectConfirm').onclick = () => {
-        const reason = document.getElementById('rejectReasonInput').value.trim();
-        if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
-        overlay.remove();
-        
-        let actionToUse = actionName;
-        if (actionName === 'chairman_reject') actionToUse = 'chairman_reject';
-        else if (actionName === 'dept_reject') actionToUse = 'dept_reject';
-        else actionToUse = 'reject';
-
-        processAction(requestId, actionToUse, { rejectReason: reason });
-    };
-}
-
-function promptFinanceTransfer(requestId) {
-    const existing = document.getElementById("transferModal");
-    if (existing) existing.remove();
-    const overlay = document.createElement("div");
-    overlay.id = "transferModal";
-    overlay.className = "custom-modal-overlay";
-    overlay.innerHTML = `
-      <div class="custom-modal-box" style="max-width:520px;">
-        <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
-        <div class="custom-modal-body" style="text-align:right;">
-          <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (يمكنك اختيار إدارة أو الإدارتين معاً):</p>
-          <label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
-          <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button id="transferCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
-          <button id="transferConfirm" class="custom-modal-btn" style="background:#0d6efd;">تأكيد التحويل</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    document.getElementById('transferCancel').onclick = () => overlay.remove();
-    document.getElementById('transferConfirm').onclick = () => {
-        const selected = [];
-        if (document.getElementById('chkFinance').checked) selected.push("مدير عام الشئون المالية");
-        if (document.getElementById('chkPlanning').checked) selected.push("مدير عام التخطيط والمتابعة");
-        if (selected.length === 0) { showCustomAlert("تنبيه", "اختر إدارة واحدة على الأقل."); return; }
-        overlay.remove();
-        processAction(requestId, "finance_transfer", { targetDepts: selected });
-    };
-}
-
-// ============ ✅✅ [buildRequestCard - معدّلة] ============
-function buildRequestCard(req, withActions) {
-    const div = document.createElement('div'); div.className = 'request-card';
-    const stage = cleanText(req.Current_Stage || "");
-    const status = cleanText(req.Status || "");
-    const stageLower = stage.toLowerCase();
-    const statusLower = status.toLowerCase();
-    
-    let badgeClass = 'badge-wait';
-    if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
-    else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
-    else if (stage.indexOf("بانتظار") !== -1 || stage.indexOf("تعديل") !== -1) badgeClass = 'badge-info';
-
-    let buttonsHtml = "";
-    if (withActions) {
-        const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-        const managerName = cleanText(loggedInUser.name || "").toLowerCase();
-        const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
-        
-        let isMyTurn = false;
-        let actionType = null;
-
-        const isChairmanUser = managerRole.includes("رئيس مجلس الإدارة") || managerName.includes("رئيس مجلس الإدارة") || managerCentral.includes("رئيس مجلس الإدارة");
-        const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
-        const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
-        const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
-
-        // ✅ رئيس مجلس الإدارة: أزرار الاعتماد النهائي
-        if (isChairmanUser) {
-            if (stageLower.includes("رئيس مجلس الإدارة") || 
-                stageLower.includes("بانتظار اعتماد رئيس مجلس") ||
-                statusLower.includes("رئيس مجلس الإدارة") ||
-                statusLower.includes("بانتظار اعتماد رئيس مجلس")) {
-                isMyTurn = true;
-                actionType = 'chairman';
-            }
-        } 
-        // ✅ رئيس الإدارة المركزية: مطابقة نوع الإدارة + الأزرار
-        else if (isCentralUser) {
-            let myCentralType = null;
-            if (managerCentral.includes("تخطيط") || managerName.includes("تخطيط") || managerRole.includes("تخطيط")) {
-                myCentralType = "تخطيط";
-            } else if (managerCentral.includes("مالية") || managerCentral.includes("شئون") || managerName.includes("مالية") || managerRole.includes("مالية")) {
-                myCentralType = "مالية";
-            } else {
-                myCentralType = "أخرى";
-            }
-
-            const reqCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
-            let reqCentralType = null;
-            if (reqCentral.includes("تخطيط")) {
-                reqCentralType = "تخطيط";
-            } else if (reqCentral.includes("مالية") || reqCentral.includes("شئون")) {
-                reqCentralType = "مالية";
-            } else {
-                reqCentralType = "أخرى";
-            }
-
-            const belongsToMe = (myCentralType === reqCentralType);
-            const isInMyStage = stageLower.includes("رئيس الإدارة المركزية") || 
-                                statusLower.includes("رئيس الإدارة المركزية") ||
-                                stageLower.includes("بانتظار اعتماد") ||
-                                stageLower.includes("مراجعة رئيس الإدارة المركزية");
-
-            if (belongsToMe && isInMyStage) {
-                isMyTurn = true;
-                actionType = 'central';
-            }
-        } 
-        // ✅ مديرو العموم (تخطيط/مالية): أزرار إبداء الرأي
-        else if (isPlanningUser || isFinanceUser) {
-            if (req.Transfer_State) {
-                try {
-                    let state = JSON.parse(req.Transfer_State);
-                    for (let key in state) {
-                        let keyLower = key.toLowerCase();
-                        if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
-                            isMyTurn = true;
-                        }
-                        if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
-                            isMyTurn = true;
-                        }
-                    }
-                } catch(e) {}
-            }
-            if (isMyTurn) actionType = 'dept_opinion';
-        } 
-        // ✅ مدير عام عادي
-        else {
-            if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
-                isMyTurn = true;
-                actionType = 'gm';
-            }
-        }
-
-        if (isMyTurn) {
-            if (actionType === 'chairman') {
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
-                </div>`;
-            } else if (actionType === 'central') {
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير إلى رئيس مجلس الإدارة</button>
-                    <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                </div>`;
-            } else if (actionType === 'dept_opinion') {
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب (مع إبداء الأسباب)</button>
-                </div>`;
-            } else {
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
-                </div>`;
-            }
-        }
-    }
-
-    const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
-    const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong>سبب الرفض / التعليق:</strong><span>${cleanText(req.Reject_Reason)}</span></div>` : '';
-
-    div.innerHTML = `
-        <div class="req-title">
-            <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
-            <span class="badge ${badgeClass}">${cleanText(status || stage || '-')}</span>
-        </div>
-        <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
-        <div class="req-row"><strong>مقدم الطلب:</strong> <span>${cleanText(req.applicantName || '-')} (${cleanText(req.role || '-')})</span></div>
-        <div class="req-row"><strong>الإدارة:</strong> <span>${cleanText(req.parentDepartment || '-')}</span></div>
-        <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${cleanText(req.totalCost || '0')} ج.م</span></div>
-        ${rejectBlock}
-        <div style="margin-top: 10px; display:flex; gap:8px;">
-            <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة</button>
-        </div>
-        ${buttonsHtml}
-    `;
-    return div;
-}
-
-function startAutoRefresh() {
-    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
-    _autoRefreshTimer = setInterval(function() {
-        if (document.getElementById('dashboard') && document.getElementById('dashboard').style.display !== 'none') {
-            loadReviewRequests();
-        }
-    }, 30000);
-}
-
-function stopAutoRefresh() {
-    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
-}
-
-// ============ [printSpecificRequestFromCard - بدون تغيير] ============
-function printSpecificRequestFromCard(reqId) {
-    let req = activeRequestsData.find(r => r.Request_ID === reqId);
-    if (!req) {
-        db.collection("requests").doc(reqId).get().then(doc => {
-            if (doc.exists) {
-                const data = doc.data();
-                data.Request_ID = doc.id;
-                activeRequestsData.push(data);
-                printSpecificRequestFromCard(reqId);
-            }
-        });
-        return;
-    }
-
-    document.getElementById('printRequestSection').style.display = 'block';
-    document.getElementById('contractPrintSection').style.display = 'none';
-
-    document.getElementById('printReqId').textContent = cleanText(req.Request_ID);
-    document.getElementById('printDate').textContent = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '';
-    document.getElementById('printParentDept').textContent = cleanText(req.parentDepartment || "");
-    document.getElementById('printManagerTitle').textContent = "السيد المحاسب / " + cleanText(req.parentDepartment || "");
-    document.getElementById('printApplicantName').textContent = cleanText(req.applicantName || "---");
-    document.getElementById('printApplicantRole').textContent = cleanText(req.role || "---");
-    document.getElementById('printNationalId').textContent = cleanText(req.nationalId || "---");
-    document.getElementById('printPhone').textContent = cleanText(req.phone || "---");
-    document.getElementById('printManagerSignTitle').textContent = cleanText(req.parentDepartment || "الإدارة");
-    document.getElementById('printManagerSignName').textContent = cleanText(req.managerName || "---");
-    
-    const rejectBox = document.getElementById('printRejectBox');
-    if (req.Reject_Reason) {
-        rejectBox.style.display = "block";
-        document.getElementById('printRejectReason').textContent = cleanText(req.Reject_Reason);
-    } else {
-        rejectBox.style.display = "none";
-    }
-
-    const wm = document.getElementById('printWatermark');
-    const statusText = cleanText(req.Status || "");
-    if (statusText.includes("مرفوض")) {
-        wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#dc3545"; 
-    } else if (statusText.includes("معتمد نهائياً")) {
-        wm.style.display = 'block'; wm.textContent = "معتمد نهائياً"; wm.style.color = "#198754";
-    } else if (statusText.includes("معتمد")) {
-        wm.style.display = 'none'; 
-    } else {
-        wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; 
-    }
-
-    const deptRepliesBox = document.getElementById('printDeptRepliesBox');
-    const deptRepliesBody = document.getElementById('printDeptRepliesBody');
-    if (req.Transfer_State) {
-        try {
-            let state = JSON.parse(req.Transfer_State);
-            let rowsHtml = "";
-            for (let key in state) {
-                let s = state[key];
-                let decisionText = s.decision === 'approved' ? 'موافقة' : (s.decision === 'rejected' ? 'رفض مسبب' : 'قيد الانتظار');
-                let color = s.decision === 'approved' ? '#198754' : (s.decision === 'rejected' ? '#dc3545' : '#b45309');
-                rowsHtml += `<tr>
-                    <td style="border: 1px solid #333; padding: 4px; text-align: right;">${cleanText(key)}</td>
-                    <td style="border: 1px solid #333; padding: 4px; text-align: center; color: ${color}; font-weight: 900;">${decisionText}</td>
-                    <td style="border: 1px solid #333; padding: 4px; text-align: right; color: #dc3545;">${cleanText(s.reason || '-')}</td>
-                </tr>`;
-            }
-            if (rowsHtml !== "") {
-                deptRepliesBody.innerHTML = rowsHtml;
-                deptRepliesBox.style.display = 'block';
-            } else {
+            } catch(e) {
                 deptRepliesBox.style.display = 'none';
             }
-        } catch(e) {
+        } else {
             deptRepliesBox.style.display = 'none';
         }
-    } else {
-        deptRepliesBox.style.display = 'none';
-    }
 
-    let itemsHtml = '';
-    try {
-        let items = JSON.parse(req.itemsList || "[]");
-        items.forEach(it => {
-            itemsHtml += `<tr>
-                <td style="border: 1px solid #333; padding: 6px 8px;">${cleanText(it.item)}</td>
-                <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${cleanText(it.qty)}</td>
-                <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${cleanText(it.cost)}</td>
-                <td style="border: 1px solid #333; padding: 6px 8px;">${cleanText(it.purpose)}</td>
-            </tr>`;
-        });
-    } catch(_) {}
-    
-    document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
-    document.getElementById('printRequestTotalCost').textContent = cleanText(req.totalCost || "0") + " ج.م";
-    
-    window.print();
-}
-
-// ============ [exportToExcel - بدون تغيير] ============
-function exportToExcel() {
-    const data = currentTab === 'pending' ? pendingData : archiveData;
-    if (data.length === 0) {
-        showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها.");
-        return;
-    }
-
-    const dateFrom = document.getElementById('filterDateFrom').value;
-    const dateTo = document.getElementById('filterDateTo').value;
-    const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
-    const deptFilter = document.getElementById('filterDept').value;
-    const statusFilter = document.getElementById('filterStatus').value;
-
-    let filtered = data.filter(function(r) {
-        if (dateFrom || dateTo) {
-            const ts = new Date(r.Timestamp || 0);
-            if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
-            if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
-        }
-        if (deptFilter) {
-            if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false;
-        }
-        if (statusFilter) {
-            const status = cleanText(r.Status || "");
-            if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
-            if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
-            if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-            if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
-        }
-        if (searchFilter) {
-            const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
-            const nameMatch = cleanText(r.applicantName || "").toLowerCase().indexOf(searchFilter) !== -1;
-            if (!idMatch && !nameMatch) return false;
-        }
-        return true;
-    });
-
-    if (filtered.length === 0) {
-        showCustomAlert("تنبيه", "لا توجد بيانات تطابق الفلاتر الحالية.");
-        return;
-    }
-
-    const exportData = filtered.map(r => {
-        let itemsText = "";
+        let itemsHtml = '';
         try {
-            const items = JSON.parse(r.itemsList || "[]");
-            itemsText = items.map(it => `${it.item} (${it.qty}) - ${it.cost} ج.م`).join(" | ");
+            let items = JSON.parse(req.itemsList || "[]");
+            items.forEach(it => {
+                itemsHtml += `<tr>
+                    <td style="border: 1px solid #333; padding: 6px 8px;">${cleanText(it.item)}</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${cleanText(it.qty)}</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px; text-align: center;">${cleanText(it.cost)}</td>
+                    <td style="border: 1px solid #333; padding: 6px 8px;">${cleanText(it.purpose)}</td>
+                </tr>`;
+            });
         } catch(_) {}
         
-        return {
-            "رقم الطلب": cleanText(r.Request_ID || ""),
-            "التاريخ": r.Timestamp ? new Date(r.Timestamp).toLocaleDateString('ar-EG') : "",
-            "اسم مقدم الطلب": cleanText(r.applicantName || ""),
-            "الوظيفة": cleanText(r.role || ""),
-            "الإدارة": cleanText(r.parentDepartment || ""),
-            "الرقم القومي": cleanText(r.nationalId || ""),
-            "الهاتف": cleanText(r.phone || ""),
-            "اسم المدير": cleanText(r.managerName || ""),
-            "الأصناف": itemsText,
-            "إجمالي التكلفة": r.totalCost || 0,
-            "الحالة": cleanText(r.Status || ""),
-            "المرحلة الحالية": cleanText(r.Current_Stage || ""),
-            "سبب الرفض": cleanText(r.Reject_Reason || "")
-        };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, currentTab === 'pending' ? "المعلقة" : "الأرشيف");
-    
-    ws['!cols'] = [
-        { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 18 }, { wch: 22 },
-        { wch: 16 }, { wch: 14 }, { wch: 20 }, { wch: 40 }, { wch: 14 },
-        { wch: 25 }, { wch: 30 }, { wch: 25 }
-    ];
-
-    const fileName = `طلبات_${currentTab === 'pending' ? 'معلقة' : 'أرشيف'}_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-    showSuccess("تم بنجاح", "تم تصدير البيانات إلى ملف Excel.");
-}
-
-// ============ [trackLogin - بدون تغيير] ============
-function trackLogin() {
-    const nationalId = document.getElementById('trackNationalId').value.trim();
-    const password = document.getElementById('trackPassword').value.trim();
-
-    if (nationalId.length !== 14) {
-        showCustomAlert("تنبيه", "الرقم القومي يجب أن يكون 14 رقماً.");
-        return;
-    }
-    if (!password) {
-        showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
-        return;
+        document.getElementById('printRequestItemsBody').innerHTML = itemsHtml;
+        document.getElementById('printRequestTotalCost').textContent = cleanText(req.totalCost || "0") + " ج.م";
+        
+        window.print();
     }
 
-    const btn = document.getElementById('trackLoginBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
-
-    db.collection("users").where("nationalId", "==", nationalId).get()
-    .then((querySnapshot) => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-
-        if (querySnapshot.empty) {
-            showCustomAlert("خطأ", "هذا الرقم القومي غير مسجل.");
+    function exportToExcel() {
+        const data = currentTab === 'pending' ? pendingData : archiveData;
+        if (data.length === 0) {
+            showCustomAlert("تنبيه", "لا توجد بيانات لتصديرها.");
             return;
         }
 
-        const userData = querySnapshot.docs[0].data();
-        const storedPassword = userData.password ? String(userData.password) : "";
-        const validPassword = password === storedPassword || password === nationalId;
+        const dateFrom = document.getElementById('filterDateFrom').value;
+        const dateTo = document.getElementById('filterDateTo').value;
+        const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
+        const deptFilter = document.getElementById('filterDept').value;
+        const statusFilter = document.getElementById('filterStatus').value;
 
-        if (!validPassword) {
-            showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
-            return;
-        }
-
-        trackUser = {
-            nationalId: nationalId,
-            name: cleanText(userData.name || ""),
-            role: cleanText(userData.role || "")
-        };
-
-        sessionStorage.setItem('trackUser', JSON.stringify(trackUser));
-
-        document.getElementById('trackLoginBox').style.display = 'none';
-        document.getElementById('trackDashboard').style.display = 'block';
-        document.getElementById('trackWelcomeTitle').innerText = "مرحباً: " + trackUser.name;
-
-        loadTrackRequestsForUser();
-    })
-    .catch((err) => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-        console.error("Error:", err);
-        showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
-    });
-}
-
-function loadTrackRequestsForUser() {
-    if (!trackUser) return;
-
-    const container = document.getElementById('trackRequestsList');
-    container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل طلباتك...</p>';
-
-    db.collection("requests").where("nationalId", "==", trackUser.nationalId).get()
-    .then((querySnapshot) => {
-        trackRequestsCache = [];
-        querySnapshot.forEach(doc => {
-            const req = doc.data();
-            req.Request_ID = doc.id;
-            trackRequestsCache.push(req);
+        let filtered = data.filter(function(r) {
+            if (dateFrom || dateTo) {
+                const ts = new Date(r.Timestamp || 0);
+                if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
+                if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
+            }
+            if (deptFilter) {
+                if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false;
+            }
+            if (statusFilter) {
+                const status = cleanText(r.Status || "");
+                if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
+                if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
+                if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
+                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
+            }
+            if (searchFilter) {
+                const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
+                const nameMatch = cleanText(r.applicantName || "").toLowerCase().indexOf(searchFilter) !== -1;
+                if (!idMatch && !nameMatch) return false;
+            }
+            return true;
         });
 
-        trackRequestsCache.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
-
-        container.innerHTML = "";
-
-        if (trackRequestsCache.length === 0) {
-            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات مسجلة بهذا الرقم القومي.</p>';
+        if (filtered.length === 0) {
+            showCustomAlert("تنبيه", "لا توجد بيانات تطابق الفلاتر الحالية.");
             return;
         }
 
-        activeRequestsData = trackRequestsCache.slice();
-
-        trackRequestsCache.forEach(req => {
-            container.appendChild(buildTrackRequestCard(req));
+        const exportData = filtered.map(r => {
+            let itemsText = "";
+            try {
+                const items = JSON.parse(r.itemsList || "[]");
+                itemsText = items.map(it => `${it.item} (${it.qty}) - ${it.cost} ج.م`).join(" | ");
+            } catch(_) {}
+            
+            return {
+                "رقم الطلب": cleanText(r.Request_ID || ""),
+                "التاريخ": r.Timestamp ? new Date(r.Timestamp).toLocaleDateString('ar-EG') : "",
+                "اسم مقدم الطلب": cleanText(r.applicantName || ""),
+                "الوظيفة": cleanText(r.role || ""),
+                "الإدارة": cleanText(r.parentDepartment || ""),
+                "الرقم القومي": cleanText(r.nationalId || ""),
+                "الهاتف": cleanText(r.phone || ""),
+                "اسم المدير": cleanText(r.managerName || ""),
+                "الأصناف": itemsText,
+                "إجمالي التكلفة": r.totalCost || 0,
+                "الحالة": cleanText(r.Status || ""),
+                "المرحلة الحالية": cleanText(r.Current_Stage || ""),
+                "سبب الرفض": cleanText(r.Reject_Reason || "")
+            };
         });
-    })
-    .catch((err) => {
-        console.error("Error:", err);
-        container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
-    });
-}
 
-function buildTrackRequestCard(req) {
-    const div = document.createElement('div');
-    div.className = 'request-card';
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, currentTab === 'pending' ? "المعلقة" : "الأرشيف");
+        
+        ws['!cols'] = [
+            { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 18 }, { wch: 22 },
+            { wch: 16 }, { wch: 14 }, { wch: 20 }, { wch: 40 }, { wch: 14 },
+            { wch: 25 }, { wch: 30 }, { wch: 25 }
+        ];
 
-    const status = cleanText(req.Status || "");
-    const stage = cleanText(req.Current_Stage || "");
+        const fileName = `طلبات_${currentTab === 'pending' ? 'معلقة' : 'أرشيف'}_${new Date().toLocaleDateString('ar-EG').replace(/\//g, '-')}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        showSuccess("تم بنجاح", "تم تصدير البيانات إلى ملف Excel.");
+    }
 
-    let badgeClass = 'badge-wait';
-    if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
-    else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
-    else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
+    function trackLogin() {
+        const nationalId = document.getElementById('trackNationalId').value.trim();
+        const password = document.getElementById('trackPassword').value.trim();
 
-    const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
-    const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong>سبب الرفض:</strong><span>${cleanText(req.Reject_Reason)}</span></div>` : '';
+        if (nationalId.length !== 14) {
+            showCustomAlert("تنبيه", "الرقم القومي يجب أن يكون 14 رقماً.");
+            return;
+        }
+        if (!password) {
+            showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
+            return;
+        }
 
-    let itemsSummary = "";
-    try {
-        const items = JSON.parse(req.itemsList || "[]");
-        itemsSummary = items.map(it => `${it.item} (${it.qty})`).join(" • ");
-    } catch(_) {}
+        const btn = document.getElementById('trackLoginBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-    div.innerHTML = `
-        <div class="req-title">
-            <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
-            <span class="badge ${badgeClass}">${cleanText(status || stage || '-')}</span>
-        </div>
-        <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
-        <div class="req-row"><strong>الإدارة:</strong> <span>${cleanText(req.parentDepartment || '-')}</span></div>
-        <div class="req-row"><strong>المرحلة الحالية:</strong> <span>${cleanText(stage || '-')}</span></div>
-        <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${cleanText(req.totalCost || '0')} ج.م</span></div>
-        <div class="req-row" style="flex-direction:column; align-items:flex-start;"><strong>الأصناف:</strong> <span style="color:#cbd5e1;">${itemsSummary || '-'}</span></div>
-        ${rejectBlock}
-        <div style="margin-top: 10px;">
-            <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة / حفظ PDF</button>
-        </div>
-    `;
-    return div;
-}
+        db.collection("users").where("nationalId", "==", nationalId).get()
+        .then((querySnapshot) => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
 
-function trackLogout() {
-    trackUser = null;
-    trackRequestsCache = [];
-    sessionStorage.removeItem('trackUser');
+            if (querySnapshot.empty) {
+                showCustomAlert("خطأ", "هذا الرقم القومي غير مسجل.");
+                return;
+            }
 
-    document.getElementById('trackPassword').value = '';
-    document.getElementById('trackNationalId').value = '';
-    document.getElementById('trackDashboard').style.display = 'none';
-    document.getElementById('trackLoginBox').style.display = 'block';
-}
+            const userData = querySnapshot.docs[0].data();
+            const storedPassword = userData.password ? String(userData.password) : "";
+            const validPassword = password === storedPassword || password === nationalId;
 
-window.addEventListener('DOMContentLoaded', () => {
-    const savedTrack = sessionStorage.getItem('trackUser');
-    if (savedTrack) {
-        trackUser = JSON.parse(savedTrack);
-        if (document.getElementById('trackView').classList.contains('active')) {
+            if (!validPassword) {
+                showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
+                return;
+            }
+
+            trackUser = {
+                nationalId: nationalId,
+                name: cleanText(userData.name || ""),
+                role: cleanText(userData.role || "")
+            };
+
+            sessionStorage.setItem('trackUser', JSON.stringify(trackUser));
+
             document.getElementById('trackLoginBox').style.display = 'none';
             document.getElementById('trackDashboard').style.display = 'block';
             document.getElementById('trackWelcomeTitle').innerText = "مرحباً: " + trackUser.name;
+
             loadTrackRequestsForUser();
-        }
-    }
-});
-
-function handleContractLogin() {
-    const username = document.getElementById('contractUsername').value.trim();
-    const password = document.getElementById('contractPassword').value.trim();
-    
-    if (!username || !password) return showCustomAlert("تنبيه", "يرجى إدخال اسم المستخدم وكلمة المرور.");
-
-    db.collection("users_contract").where("username", "==", username).get()
-    .then((querySnapshot) => {
-        if (querySnapshot.empty) {
-            showCustomAlert("خطأ", "اسم المستخدم غير موجود.");
-            return;
-        }
-        
-        const userData = querySnapshot.docs[0].data();
-        const storedPassword = String(userData.password || "");
-        const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
-        
-        if (password === storedPassword || finalPassword === storedPassword || password === "123") {
-            document.getElementById('contractLoginBox').style.display = 'none';
-            document.getElementById('contractDashboard').style.display = 'block';
-            document.getElementById('contractWelcomeTitle').innerText = "مرحباً: " + cleanText(userData.name);
-            loadContractRequests();
-        } else {
-            showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
-        }
-    }).catch((error) => {
-        console.error("Error:", error);
-        showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
-    });
-}
-
-function logoutContract() {
-    document.getElementById('contractDashboard').style.display = 'none';
-    document.getElementById('contractLoginBox').style.display = 'block';
-    document.getElementById('contractUsername').value = '';
-    document.getElementById('contractPassword').value = '';
-}
-
-function loadContractRequests() {
-    const container = document.getElementById('contractRequestsList');
-    container.innerHTML = '<p class="loading-state">جاري تحميل الطلبات المعتمدة...</p>';
-    
-    db.collection("requests").where("Status", "==", "معتمد نهائياً").get()
-    .then((querySnapshot) => {
-        container.innerHTML = "";
-        if (querySnapshot.empty) {
-            container.innerHTML = '<p class="empty-state">لا توجد طلبات معتمدة حالياً.</p>';
-            document.getElementById('contractPendingCount').textContent = "0";
-            return;
-        }
-        
-        let count = 0;
-        querySnapshot.forEach((doc) => {
-            count++;
-            const req = doc.data();
-            req.Request_ID = doc.id;
-            
-            const div = document.createElement('div');
-            div.className = 'request-card';
-            div.innerHTML = `
-                <div class="req-title">
-                    <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
-                    <span class="badge badge-ok">${cleanText(req.Status)}</span>
-                </div>
-                <div class="req-row"><strong>مقدم الطلب:</strong> <span>${cleanText(req.applicantName)}</span></div>
-                <div class="req-row"><strong>الإدارة:</strong> <span>${cleanText(req.parentDepartment)}</span></div>
-                <div class="req-row"><strong>التكلفة:</strong> <span>${cleanText(req.totalCost)} ج.م</span></div>
-                <div class="req-actions">
-                    <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
-                    <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
-                </div>
-            `;
-            container.appendChild(div);
+        })
+        .catch((err) => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+            console.error("Error:", err);
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
         });
-        
-        document.getElementById('contractPendingCount').textContent = count;
-    }).catch((error) => {
-        console.error("Error:", error);
-        container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
-    });
-}
+    }
 
-function switchContractTab(tab) {
-    document.getElementById('tabContractPending').classList.add('active');
-    document.getElementById('tabContractArchive').classList.remove('active');
-    loadContractRequests();
-}
+    function loadTrackRequestsForUser() {
+        if (!trackUser) return;
+
+        const container = document.getElementById('trackRequestsList');
+        container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل طلباتك...</p>';
+
+        db.collection("requests").where("nationalId", "==", trackUser.nationalId).get()
+        .then((querySnapshot) => {
+            trackRequestsCache = [];
+            querySnapshot.forEach(doc => {
+                const req = doc.data();
+                req.Request_ID = doc.id;
+                trackRequestsCache.push(req);
+            });
+
+            trackRequestsCache.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
+
+            container.innerHTML = "";
+
+            if (trackRequestsCache.length === 0) {
+                container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات مسجلة بهذا الرقم القومي.</p>';
+                return;
+            }
+
+            activeRequestsData = trackRequestsCache.slice();
+
+            trackRequestsCache.forEach(req => {
+                container.appendChild(buildTrackRequestCard(req));
+            });
+        })
+        .catch((err) => {
+            console.error("Error:", err);
+            container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
+        });
+    }
+
+    function buildTrackRequestCard(req) {
+        const div = document.createElement('div');
+        div.className = 'request-card';
+
+        const status = cleanText(req.Status || "");
+        const stage = cleanText(req.Current_Stage || "");
+
+        let badgeClass = 'badge-wait';
+        if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
+        else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
+        else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
+
+        const dateStr = req.Timestamp ? new Date(req.Timestamp).toLocaleDateString('ar-EG') : '-';
+        const rejectBlock = req.Reject_Reason ? `<div class="reject-block"><strong>سبب الرفض:</strong><span>${cleanText(req.Reject_Reason)}</span></div>` : '';
+
+        let itemsSummary = "";
+        try {
+            const items = JSON.parse(req.itemsList || "[]");
+            itemsSummary = items.map(it => `${it.item} (${it.qty})`).join(" • ");
+        } catch(_) {}
+
+        div.innerHTML = `
+            <div class="req-title">
+                <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
+                <span class="badge ${badgeClass}">${cleanText(status || stage || '-')}</span>
+            </div>
+            <div class="req-row"><strong>التاريخ:</strong> <span>${dateStr}</span></div>
+            <div class="req-row"><strong>الإدارة:</strong> <span>${cleanText(req.parentDepartment || '-')}</span></div>
+            <div class="req-row"><strong>المرحلة الحالية:</strong> <span>${cleanText(stage || '-')}</span></div>
+            <div class="req-row"><strong>إجمالي التكلفة:</strong> <span>${cleanText(req.totalCost || '0')} ج.م</span></div>
+            <div class="req-row" style="flex-direction:column; align-items:flex-start;"><strong>الأصناف:</strong> <span style="color:#cbd5e1;">${itemsSummary || '-'}</span></div>
+            ${rejectBlock}
+            <div style="margin-top: 10px;">
+                <button class="print-btn" style="margin-top:0;" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-file-pdf"></i> طباعة / حفظ PDF</button>
+            </div>
+        `;
+        return div;
+    }
+
+    function trackLogout() {
+        trackUser = null;
+        trackRequestsCache = [];
+        sessionStorage.removeItem('trackUser');
+
+        document.getElementById('trackPassword').value = '';
+        document.getElementById('trackNationalId').value = '';
+        document.getElementById('trackDashboard').style.display = 'none';
+        document.getElementById('trackLoginBox').style.display = 'block';
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedTrack = sessionStorage.getItem('trackUser');
+        if (savedTrack) {
+            trackUser = JSON.parse(savedTrack);
+            if (document.getElementById('trackView').classList.contains('active')) {
+                document.getElementById('trackLoginBox').style.display = 'none';
+                document.getElementById('trackDashboard').style.display = 'block';
+                document.getElementById('trackWelcomeTitle').innerText = "مرحباً: " + trackUser.name;
+                loadTrackRequestsForUser();
+            }
+        }
+    });
+
+    function handleContractLogin() {
+        const username = document.getElementById('contractUsername').value.trim();
+        const password = document.getElementById('contractPassword').value.trim();
+        
+        if (!username || !password) return showCustomAlert("تنبيه", "يرجى إدخال اسم المستخدم وكلمة المرور.");
+
+        db.collection("users_contract").where("username", "==", username).get()
+        .then((querySnapshot) => {
+            if (querySnapshot.empty) {
+                showCustomAlert("خطأ", "اسم المستخدم غير موجود.");
+                return;
+            }
+            
+            const userData = querySnapshot.docs[0].data();
+            const storedPassword = String(userData.password || "");
+            const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
+            
+            if (password === storedPassword || finalPassword === storedPassword || password === "123") {
+                document.getElementById('contractLoginBox').style.display = 'none';
+                document.getElementById('contractDashboard').style.display = 'block';
+                document.getElementById('contractWelcomeTitle').innerText = "مرحباً: " + cleanText(userData.name);
+                loadContractRequests();
+            } else {
+                showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
+            }
+        }).catch((error) => {
+            console.error("Error:", error);
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
+        });
+    }
+
+    function logoutContract() {
+        document.getElementById('contractDashboard').style.display = 'none';
+        document.getElementById('contractLoginBox').style.display = 'block';
+        document.getElementById('contractUsername').value = '';
+        document.getElementById('contractPassword').value = '';
+    }
+
+    // ============ ✅ [loadContractRequests - معدّلة: إصلاح forEach] ============
+    function loadContractRequests() {
+        const container = document.getElementById('contractRequestsList');
+        container.innerHTML = '<p class="loading-state">جاري تحميل الطلبات المعتمدة...</p>';
+        
+        db.collection("requests").where("Status", "==", "معتمد نهائياً").get()
+        .then((querySnapshot) => {
+            container.innerHTML = "";
+            if (querySnapshot.empty) {
+                container.innerHTML = '<p class="empty-state">لا توجد طلبات معتمدة حالياً.</p>';
+                document.getElementById('contractPendingCount').textContent = "0";
+                return;
+            }
+            
+            let count = 0;
+            querySnapshot.forEach((doc) => {
+                count++;
+                const req = doc.data();
+                req.Request_ID = doc.id;
+                
+                const div = document.createElement('div');
+                div.className = 'request-card';
+                div.innerHTML = `
+                    <div class="req-title">
+                        <span><i class="fas fa-file-invoice"></i> ${cleanText(req.Request_ID)}</span>
+                        <span class="badge badge-ok">${cleanText(req.Status)}</span>
+                    </div>
+                    <div class="req-row"><strong>مقدم الطلب:</strong> <span>${cleanText(req.applicantName)}</span></div>
+                    <div class="req-row"><strong>الإدارة:</strong> <span>${cleanText(req.parentDepartment)}</span></div>
+                    <div class="req-row"><strong>التكلفة:</strong> <span>${cleanText(req.totalCost)} ج.م</span></div>
+                    <div class="req-actions">
+                        <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
+                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            
+            document.getElementById('contractPendingCount').textContent = count;
+        }).catch((error) => {
+            console.error("Error:", error);
+            container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
+        });
+    }
+
+    function switchContractTab(tab) {
+        document.getElementById('tabContractPending').classList.add('active');
+        document.getElementById('tabContractArchive').classList.remove('active');
+        loadContractRequests();
+    }
+
+    </script>
+</body>
+</html>    
     </script>
 </body>
 </html>
