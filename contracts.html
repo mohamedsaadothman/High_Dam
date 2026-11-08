@@ -978,11 +978,13 @@
             pendingData = [];
             archiveData = [];
 
-            const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
-            const myName = cleanText(loggedInUser.name).toLowerCase();
-            const myDept = cleanText(loggedInUser.department).toLowerCase();
+            const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+            const myName = cleanText(loggedInUser.name || "").toLowerCase();
+            const myRole = cleanText(loggedInUser.role || "").toLowerCase();
 
-            const isUserCentralManager = myRole.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية");
+            const isUserCentralManager = myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية");
+            const isPlanningUser = myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط");
+            const isFinanceUser = myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية");
 
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
@@ -991,47 +993,54 @@
                 const stage = cleanText(req.Current_Stage || "").toLowerCase();
                 const status = cleanText(req.Status || "").toLowerCase();
                 const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
-                const ownerRole = cleanText(req.Current_Owner_Role || "").toLowerCase();
+                const parentDept = cleanText(req.parentDepartment || "").toLowerCase();
                 let history = req.History || [];
                 
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                // مطابقة فائقة المرونة لرئيس الإدارة المركزية
+                // 1. فلترة رئيس الإدارة المركزية (لا يرى إلا ما يخص إدارته المركزية حصراً)
                 if (isUserCentralManager) {
-                    if (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || 
-                        stage.includes("الموارد البشرية") || status.includes("الموارد البشرية") ||
-                        stage.includes("الشؤون المالية والإدارية") || status.includes("الشؤون المالية والإدارية") ||
-                        assignedCentral.includes("رئيس الإدارة المركزية") || ownerRole.includes("رئيس الإدارة المركزية")) {
+                    let myExactCentralName = myCentral || myName;
+                    let belongsToMyCentral = assignedCentral.includes("رئيس الإدارة المركزية") && 
+                        ((myExactCentralName.includes("تخطيط") && assignedCentral.includes("تخطيط")) ||
+                         (myExactCentralName.includes("مالية") && assignedCentral.includes("مالية")) ||
+                         (!myExactCentralName.includes("تخطيط") && !assignedCentral.includes("تخطيط")));
+
+                    if (belongsToMyCentral && (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية"))) {
                         isMyTurnNow = true;
                     }
-                }
-
-                if (!isMyTurnNow) {
-                    if (ownerRole && (myRole.includes(ownerRole) || myDept.includes(ownerRole) || ownerRole.includes(myRole))) {
-                        isMyTurnNow = true;
-                    } else if (stage.includes(myRole) || stage.includes(myDept)) {
-                        isMyTurnNow = true;
-                    }
-                }
-
-                if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي")) {
-                    if (req.Transfer_State) {
-                        try {
-                            let state = JSON.parse(req.Transfer_State);
-                            for (let key in state) {
-                                if (myRole.includes("تخطيط") && key.includes("تخطيط") && state[key].decision === 'pending') {
-                                    isMyTurnNow = true;
+                } 
+                // 2. فلترة مدير عام التخطيط والمتابعة أو الشئون المالية (عند التحويل لأخذ الرأي)
+                else if (isPlanningUser || isFinanceUser) {
+                    if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي")) {
+                        if (req.Transfer_State) {
+                            try {
+                                let state = JSON.parse(req.Transfer_State);
+                                for (let key in state) {
+                                    let keyLower = key.toLowerCase();
+                                    if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
+                                        isMyTurnNow = true;
+                                    }
+                                    if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
+                                        isMyTurnNow = true;
+                                    }
                                 }
-                                if ((myRole.includes("مالية") || myRole.includes("الشؤون المالية")) && (key.includes("مالية") || key.includes("الشؤون")) && state[key].decision === 'pending') {
-                                    isMyTurnNow = true;
-                                }
-                            }
-                        } catch(e) {}
+                            } catch(e) {}
+                        }
+                    }
+                } 
+                // 3. فلترة المدير العام العادي (لا يرى إلا الطلبات المقدمة لإدارته حصراً)
+                else {
+                    if (stage.includes(myCentral) || status.includes(myCentral) || parentDept.includes(myCentral)) {
+                        if (stage.includes("مراجعة") && (stage.includes(myCentral) || status.includes(myCentral))) {
+                            isMyTurnNow = true;
+                        }
                     }
                 }
 
-                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole) || (isUserCentralManager && cleanText(h).toLowerCase().includes("رئيس الإدارة المركزية")));
+                // تحديد الأرشيف الخاص بكل مستخدم بناءً على مساره السابق
+                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myCentral) || cleanText(h).toLowerCase().includes(myName));
                 
                 if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
@@ -1117,7 +1126,8 @@
             let updates = {};
             
             let history = req.History || [];
-            if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
+            let userIdentifier = loggedInUser.centralManager || loggedInUser.name;
+            if (!history.includes(userIdentifier)) history.push(userIdentifier);
 
             if (actionType === 'gm_approve') {
                 let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
@@ -1158,14 +1168,16 @@
                 try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                 
                 let updatedState = { ...currentState };
-                const myRole = cleanText(loggedInUser.role);
+                const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+                const myName = cleanText(loggedInUser.name || "").toLowerCase();
                 
                 for (let key in updatedState) {
-                    if ((myRole.includes("مالية") || myRole.includes("الشؤون المالية")) && (key.includes("مالية") || key.includes("الشؤون"))) {
+                    let keyLower = key.toLowerCase();
+                    if ((myCentral.includes("مالية") || myName.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                    } else if (myRole.includes("تخطيط") && key.includes("تخطيط")) {
+                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
@@ -1177,7 +1189,7 @@
 
                 updates = { 
                     Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + originalCentral, 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار اعتماد " + originalCentral,
+                    Status: "تم أخذ الرأي - " + decisionText + " من " + (loggedInUser.name || loggedInUser.centralManager) + " - بانتظار اعتماد " + originalCentral,
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
@@ -1203,7 +1215,7 @@
                 updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
             } 
             else if (actionType === 'reject') {
-                let rejecterName = loggedInUser.name || loggedInUser.role;
+                let rejecterName = loggedInUser.name || loggedInUser.centralManager;
                 updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
             }
             
@@ -1287,7 +1299,6 @@
         const stage = cleanText(req.Current_Stage || "");
         const status = cleanText(req.Status || "");
         const stageLower = stage.toLowerCase();
-        const statusLower = status.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
@@ -1296,49 +1307,39 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            const managerCentral = cleanText(loggedInUser.centralManager || loggedInUser.role).toLowerCase();
-            const managerName = cleanText(loggedInUser.name).toLowerCase();
-            const ownerRole = cleanText(req.Current_Owner_Role || "").toLowerCase();
+            const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+            const managerName = cleanText(loggedInUser.name || "").toLowerCase();
             
             let isMyTurn = false;
             let actionType = null;
 
-            const isPlanningUser = managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة");
-            const isFinanceUser = managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية");
-            const isCentralUser = managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerCentral.includes("الموارد البشرية") || managerCentral.includes("الشؤون المالية والإدارية");
+            const isPlanningUser = managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط");
+            const isFinanceUser = managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية");
+            const isCentralUser = managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية");
 
             if (isCentralUser) {
                 isMyTurn = true;
-            } else if (ownerRole && (ownerRole.includes(managerCentral) || managerCentral.includes(ownerRole))) {
-                isMyTurn = true;
-            } else if (stageLower.includes(managerCentral)) {
-                isMyTurn = true;
-            } else if ((isPlanningUser && (stageLower.includes("تخطيط") || stageLower.includes("أخذ رأي"))) ||
-                       (isFinanceUser && (stageLower.includes("مالية") || stageLower.includes("أخذ رأي")))) {
+                actionType = 'central';
+            } else if (isPlanningUser || isFinanceUser) {
                 if (req.Transfer_State) {
                     try {
                         let state = JSON.parse(req.Transfer_State);
                         for (let key in state) {
-                            if (isPlanningUser && key.includes("تخطيط") && state[key].decision === 'pending') {
+                            let keyLower = key.toLowerCase();
+                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') {
                                 isMyTurn = true;
                             }
-                            if (isFinanceUser && key.includes("مالية") && state[key].decision === 'pending') {
+                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') {
                                 isMyTurn = true;
                             }
                         }
                     } catch(e) {}
                 }
-            }
-
-            if (isMyTurn) {
-                if (isCentralUser) {
-                    actionType = 'central';
-                } else if (managerCentral.includes("رئيس مجلس الإدارة")) {
-                    actionType = 'chairman';
-                } else if (isPlanningUser || isFinanceUser || stageLower.includes("بانتظار رأي") || statusLower.includes("تم أخذ الرأي")) {
-                    actionType = 'dept_opinion'; 
-                } else {
-                    actionType = 'gm'; 
+                if (isMyTurn) actionType = 'dept_opinion';
+            } else {
+                if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
+                    isMyTurn = true;
+                    actionType = 'gm';
                 }
             }
 
@@ -1353,11 +1354,6 @@
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب (مع إبداء الأسباب)</button>
-                    </div>`;
-                } else if (actionType === 'chairman') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_direct_approve')"><i class="fas fa-check-circle"></i> الموافقة النهائية</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times-circle"></i> رفض</button>
                     </div>`;
                 } else {
                     buttonsHtml = `<div class="req-actions">
@@ -1803,7 +1799,7 @@
                     <div class="req-row"><strong>التكلفة:</strong> <span>${cleanText(req.totalCost)} ج.م</span></div>
                     <div class="req-actions">
                         <button class="main-btn" style="background:#0d6efd;" onclick="alert('جاري العمل على شاشة إنشاء أمر التوريد')"><i class="fas fa-file-signature"></i> إنشاء أمر توريد</button>
-                        <button class="print-print-btn print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
+                        <button class="print-btn" onclick="printSpecificRequestFromCard('${req.Request_ID}')"><i class="fas fa-print"></i> طباعة الطلب</button>
                     </div>
                 `;
                 container.appendChild(div);
@@ -1824,4 +1820,5 @@
     </script>
 </body>
 </html>
+
 
