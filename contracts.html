@@ -478,23 +478,18 @@ function normalizeRole(txt) {
 return cleanText(txt).toLowerCase().replace(/\s+/g, " ");
 }
 
-// البحث عن مسؤول معتمد على القيم الثلاثة (اسم المستند، أو حقل uid، أو اسم الوظيفة)
+// البحث الشامل عن مسؤول
 async function getNextManagerData(targetValue) {
 if (!targetValue) return null;
 const cleanTarget = cleanText(targetValue);
 try {
-// 1. البحث بـ department
 let snap = await db.collection("users").where("department", "==", cleanTarget).get();
 if (!snap.empty) return { docId: snap.docs[0].id, data: snap.docs[0].data() };
-
-// 2. البحث بـ centralManager
 snap = await db.collection("users").where("centralManager", "==", cleanTarget).get();
 if (!snap.empty) return { docId: snap.docs[0].id, data: snap.docs[0].data() };
-
-// 3. البحث بـ uid (لو الهدف نفسه هو الـ uid)
-snap = await db.collection("users").where("uid", "==", cleanTarget).get();
+snap = await db.collection("users").where("name", "==", cleanTarget).get();
 if (!snap.empty) return { docId: snap.docs[0].id, data: snap.docs[0].data() };
-} catch(e) { console.error(e); }
+} catch(e) {}
 return null;
 }
 
@@ -873,7 +868,6 @@ btn.disabled = false;
 btn.innerHTML = 'دخول';
 const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
 const userRole = cleanText(userData.centralManager || userData.role || "مسؤول");
-// استخدام حقل uid الفعلي المخزن في المستند أو معرّف المستند نفسه
 const actualUid = cleanText(userData.uid || docId);
 loggedInUser = { 
 uid: actualUid, 
@@ -927,7 +921,6 @@ const ownerRoleNorm = normalizeRole(req.Current_Owner_Role || "");
 const statusNorm = normalizeRole(req.Status || "");
 let isMyTurnNow = false;
 
-// مقارنة الـ uid الفعلي، ثم المسميات الوظيفية كخطة بديلة
 if ((ownerUid === myUid && ownerUid !== "") || 
     (myDeptNorm && ownerRoleNorm === myDeptNorm) || 
     (myCentralNorm && ownerRoleNorm === myCentralNorm)) {
@@ -1015,7 +1008,6 @@ if (!history.includes(loggedInUser.centralManager)) history.push(loggedInUser.ce
 const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role);
 
 if (actionType === 'gm_approve') {
-// المدير العام يوافق، نرسلها مباشرة لرئيس الإدارة المركزية
 const targetName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 const nextManager = await getNextManagerData(targetName);
 let nextUid = nextManager && nextManager.data ? (nextManager.data.uid || nextManager.docId) : "";
