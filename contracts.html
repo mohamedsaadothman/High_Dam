@@ -478,15 +478,23 @@ function normalizeRole(txt) {
 return cleanText(txt).toLowerCase().replace(/\s+/g, " ");
 }
 
+// البحث عن مسؤول معتمد على القيم الثلاثة (اسم المستند، أو حقل uid، أو اسم الوظيفة)
 async function getNextManagerData(targetValue) {
 if (!targetValue) return null;
 const cleanTarget = cleanText(targetValue);
 try {
+// 1. البحث بـ department
 let snap = await db.collection("users").where("department", "==", cleanTarget).get();
-if (!snap.empty) return { uid: snap.docs[0].id, data: snap.docs[0].data() };
+if (!snap.empty) return { docId: snap.docs[0].id, data: snap.docs[0].data() };
+
+// 2. البحث بـ centralManager
 snap = await db.collection("users").where("centralManager", "==", cleanTarget).get();
-if (!snap.empty) return { uid: snap.docs[0].id, data: snap.docs[0].data() };
-} catch(e) {}
+if (!snap.empty) return { docId: snap.docs[0].id, data: snap.docs[0].data() };
+
+// 3. البحث بـ uid (لو الهدف نفسه هو الـ uid)
+snap = await db.collection("users").where("uid", "==", cleanTarget).get();
+if (!snap.empty) return { docId: snap.docs[0].id, data: snap.docs[0].data() };
+} catch(e) { console.error(e); }
 return null;
 }
 
@@ -779,7 +787,7 @@ const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment'
 const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
 
 getNextManagerData(selectedDeptDisplay).then((mgrData) => {
-let ownerUid = mgrData ? mgrData.uid : "";
+let ownerUid = mgrData && mgrData.data ? (mgrData.data.uid || mgrData.docId) : "";
 
 const data = {
 requestId: lastCreatedReqId,
@@ -865,7 +873,16 @@ btn.disabled = false;
 btn.innerHTML = 'دخول';
 const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
 const userRole = cleanText(userData.centralManager || userData.role || "مسؤول");
-loggedInUser = { uid: docId, name: realName, role: userRole, centralManager: cleanText(userData.centralManager || ""), department: cleanText(userData.department || "") };
+// استخدام حقل uid الفعلي المخزن في المستند أو معرّف المستند نفسه
+const actualUid = cleanText(userData.uid || docId);
+loggedInUser = { 
+uid: actualUid, 
+docId: docId,
+name: realName, 
+role: userRole, 
+centralManager: cleanText(userData.centralManager || ""), 
+department: cleanText(userData.department || "") 
+};
 localStorage.setItem('reviewUser', JSON.stringify(loggedInUser));
 document.getElementById('loginBox').style.display = 'none';
 document.getElementById('dashboard').style.display = 'block';
@@ -892,7 +909,7 @@ renderFilteredRequests();
 }
 
 function loadReviewRequests() {
-if (!loggedInUser || !loggedInUser.uid) return;
+if (!loggedInUser || (!loggedInUser.uid && !loggedInUser.centralManager)) return;
 const container = document.getElementById('requestsList');
 container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري تحميل الطلبات...</p>';
 db.collection("requests").get().then((querySnapshot) => {
@@ -910,6 +927,7 @@ const ownerRoleNorm = normalizeRole(req.Current_Owner_Role || "");
 const statusNorm = normalizeRole(req.Status || "");
 let isMyTurnNow = false;
 
+// مقارنة الـ uid الفعلي، ثم المسميات الوظيفية كخطة بديلة
 if ((ownerUid === myUid && ownerUid !== "") || 
     (myDeptNorm && ownerRoleNorm === myDeptNorm) || 
     (myCentralNorm && ownerRoleNorm === myCentralNorm)) {
@@ -917,7 +935,7 @@ isMyTurnNow = true;
 }
 
 const history = req.History || [];
-const passedByMe = history.includes(myUid);
+const passedByMe = history.includes(myUid) || history.includes(loggedInUser.centralManager);
 const isFinal = statusNorm.includes("معتمد نهائياً") || statusNorm.includes("مرفوض");
 const isArchivedForMe = (passedByMe && !isMyTurnNow) || isFinal;
 
@@ -993,16 +1011,18 @@ let req = doc.data();
 let updates = {};
 let history = req.History || [];
 if (!history.includes(loggedInUser.uid)) history.push(loggedInUser.uid);
+if (!history.includes(loggedInUser.centralManager)) history.push(loggedInUser.centralManager);
 const myRole = cleanText(loggedInUser.centralManager || loggedInUser.role);
 
 if (actionType === 'gm_approve') {
-// بناءً على طلبك: تحويل ثابت وقسري لرئيس الإدارة المركزية
+// المدير العام يوافق، نرسلها مباشرة لرئيس الإدارة المركزية
 const targetName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 const nextManager = await getNextManagerData(targetName);
+let nextUid = nextManager && nextManager.data ? (nextManager.data.uid || nextManager.docId) : "";
 updates = {
 Current_Stage: "مراجعة " + targetName,
 Current_Owner_Role: targetName,
-Current_Owner_Uid: nextManager ? nextManager.uid : "",
+Current_Owner_Uid: nextUid,
 Gm_Date: nowStr,
 Status: "موافقة - " + myRole + " / قيد الانتظار - " + targetName,
 History: history
@@ -1011,10 +1031,11 @@ History: history
 else if (actionType === 'other_central_to_finance') {
 const targetName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 const nextManager = await getNextManagerData(targetName);
+let nextUid = nextManager && nextManager.data ? (nextManager.data.uid || nextManager.docId) : "";
 updates = {
 Current_Stage: "مراجعة " + targetName,
 Current_Owner_Role: targetName,
-Current_Owner_Uid: nextManager ? nextManager.uid : "",
+Current_Owner_Uid: nextUid,
 Central_Date: nowStr,
 Status: "قيد الانتظار - " + targetName,
 Previous_Central: myRole,
@@ -1024,11 +1045,12 @@ History: history
 else if (actionType === 'central_to_finance_only') {
 const financeDept = "مدير عام الشئون المالية";
 const nextManager = await getNextManagerData(financeDept);
+let nextUid = nextManager && nextManager.data ? (nextManager.data.uid || nextManager.docId) : "";
 let transferObj = {}; transferObj[financeDept] = { decision: "pending", date: nowStr };
 updates = {
 Current_Stage: "بانتظار رأي " + financeDept,
 Current_Owner_Role: financeDept,
-Current_Owner_Uid: nextManager ? nextManager.uid : "",
+Current_Owner_Uid: nextUid,
 Transfer_State: JSON.stringify(transferObj),
 Status: "قيد الانتظار - أخذ رأي " + financeDept,
 Central_Manager_Name: "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية",
@@ -1039,11 +1061,12 @@ History: history
 else if (actionType === 'central_to_planning_only') {
 const planningDept = "مدير عام التخطيط والمتابعة";
 const nextManager = await getNextManagerData(planningDept);
+let nextUid = nextManager && nextManager.data ? (nextManager.data.uid || nextManager.docId) : "";
 let transferObj = {}; transferObj[planningDept] = { decision: "pending", date: nowStr };
 updates = {
 Current_Stage: "بانتظار رأي " + planningDept,
 Current_Owner_Role: planningDept,
-Current_Owner_Uid: nextManager ? nextManager.uid : "",
+Current_Owner_Uid: nextUid,
 Transfer_State: JSON.stringify(transferObj),
 Status: "قيد الانتظار - أخذ رأي " + planningDept,
 Central_Manager_Name: "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية",
@@ -1056,14 +1079,16 @@ const financeDept = "مدير عام الشئون المالية";
 const planningDept = "مدير عام التخطيط والمتابعة";
 const financeMgr = await getNextManagerData(financeDept);
 const planningMgr = await getNextManagerData(planningDept);
+let financeUid = financeMgr && financeMgr.data ? (financeMgr.data.uid || financeMgr.docId) : "";
+let planningUid = planningMgr && planningMgr.data ? (planningMgr.data.uid || planningMgr.docId) : "";
 let transferObj = {};
 transferObj[financeDept] = { decision: "pending", date: nowStr };
 transferObj[planningDept] = { decision: "pending", date: nowStr };
 updates = {
 Current_Stage: "بانتظار رأي " + financeDept + " و " + planningDept,
 Current_Owner_Role: "كلاهما",
-Current_Owner_Uid: financeMgr ? financeMgr.uid : "", 
-Planning_Owner_Uid: planningMgr ? planningMgr.uid : "",
+Current_Owner_Uid: financeUid,
+Planning_Owner_Uid: planningUid,
 Transfer_State: JSON.stringify(transferObj),
 Status: "قيد الانتظار - أخذ رأي " + financeDept + " و " + planningDept,
 Central_Manager_Name: "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية",
@@ -1072,15 +1097,15 @@ History: history
 };
 }
 else if (actionType === 'central_approve_to_chairman') {
-// هنا بنقرأ الـ department بتاع عائشة عشان نوديه لرئيس مجلس الإدارة
-const docData = await db.collection("users").doc(loggedInUser.uid).get();
+const docData = await db.collection("users").doc(loggedInUser.docId).get();
 const managerDeptValue = cleanText(docData.data().department || "");
 const chairmanName = managerDeptValue || "رئيس مجلس الإدارة";
 const nextManager = await getNextManagerData(chairmanName);
+let nextUid = nextManager && nextManager.data ? (nextManager.data.uid || nextManager.docId) : "";
 updates = {
 Current_Stage: "مراجعة " + chairmanName,
 Current_Owner_Role: chairmanName,
-Current_Owner_Uid: nextManager ? nextManager.uid : "",
+Current_Owner_Uid: nextUid,
 Central_Final_Date: nowStr,
 Status: "قيد الانتظار - " + chairmanName,
 History: history
@@ -1107,10 +1132,11 @@ const decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض م
 if (allResolved) {
 const centralName = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 const centralMgr = await getNextManagerData(centralName);
+let centralUid = centralMgr && centralMgr.data ? (centralMgr.data.uid || centralMgr.docId) : "";
 updates = {
 Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + centralName,
 Current_Owner_Role: centralName,
-Current_Owner_Uid: centralMgr ? centralMgr.uid : "",
+Current_Owner_Uid: centralUid,
 Status: "تم أخذ الرأي - " + decisionText + " من " + myRole + " - بانتظار الاعتماد",
 Transfer_State: JSON.stringify(updatedState),
 History: history
@@ -1246,15 +1272,14 @@ else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
 let buttonsHtml = "";
 if (withActions) {
 const myUid = loggedInUser.uid;
-const myRoleNorm = normalizeRole(getUserRoleKey());
+const myRoleNorm = normalizeRole(loggedInUser.centralManager);
 const myDeptNorm = normalizeRole(loggedInUser.department);
-const myCentralNorm = normalizeRole(loggedInUser.centralManager);
 const ownerUid = req.Current_Owner_Uid || "";
 const ownerRoleNorm = normalizeRole(req.Current_Owner_Role || "");
 let isMyTurn = false;
 let actionType = null;
 
-if ((ownerUid === myUid && ownerUid !== "") || (myDeptNorm && ownerRoleNorm === myDeptNorm) || (myCentralNorm && ownerRoleNorm === myCentralNorm)) {
+if ((ownerUid === myUid && ownerUid !== "") || (myDeptNorm && ownerRoleNorm === myDeptNorm) || (myRoleNorm && ownerRoleNorm === myRoleNorm)) {
 isMyTurn = true;
 if (req.Current_Owner_Role.includes("مجلس الإدارة")) actionType = 'chairman';
 else if (req.Current_Owner_Role.includes("رئيس الإدارة المركزية") || req.Current_Stage.includes("بعد أخذ الرأي")) actionType = 'central';
