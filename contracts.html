@@ -55,7 +55,7 @@
         .custom-modal-body { color: #334155; font-size: 14px; line-height: 1.8; margin-bottom: 20px; background: #f8fafc; padding: 14px; border-radius: 8px; text-align: right; font-weight: 600; }
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         #printableArea { display: none; }
-        .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 45px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.15; color: #b45309; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; width: 100%; overflow: hidden; }
+        .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 38px; font-weight: 900; z-index: 1; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.12; color: #b45309; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; max-width: 90%; overflow: hidden; }
         @media print {
             body * { visibility: hidden; }
             #printableArea, #printableArea * { visibility: visible; }
@@ -876,7 +876,8 @@
                 const data = doc.data();
                 let centralVal = cleanText(data.centralManager || "");
                 let nameVal = cleanText(data.name || "");
-                if (centralVal === selectedName || nameVal === selectedName) {
+                let roleVal = cleanText(data.role || "");
+                if (centralVal === selectedName || nameVal === selectedName || roleVal === selectedName) {
                     foundDoc = doc;
                 }
             });
@@ -928,7 +929,7 @@
         btn.innerHTML = 'دخول';
 
         const realName = cleanText(userData.name || userData.centralManager || "مسؤول النظام");
-        const userRole = cleanText(userData.centralManager || userData.role || "مسؤول");
+        const userRole = cleanText(userData.role || userData.centralManager || "مسؤول");
 
         loggedInUser = {
             uid: uid,
@@ -982,9 +983,10 @@
             const myName = cleanText(loggedInUser.name || "").toLowerCase();
             const myRole = cleanText(loggedInUser.role || "").toLowerCase();
 
-            const isUserCentralManager = myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية");
-            const isPlanningUser = myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط");
-            const isFinanceUser = myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية");
+            const isChairmanUser = myRole.includes("رئيس مجلس الإدارة") || myName.includes("رئيس مجلس الإدارة") || myCentral.includes("رئيس مجلس الإدارة");
+            const isUserCentralManager = !isChairmanUser && (myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية") || myRole.includes("رئيس الإدارة المركزية"));
+            const isPlanningUser = !isChairmanUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
+            const isFinanceUser = !isChairmanUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
             querySnapshot.forEach((doc) => {
                 const req = doc.data();
@@ -999,15 +1001,21 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                // 1. فلترة رئيس الإدارة المركزية (لا يرى إلا ما يخص إدارته المركزية حصراً)
-                if (isUserCentralManager) {
-                    let myExactCentralName = myCentral || myName;
+                // 0. فلترة رئيس مجلس الإدارة
+                if (isChairmanUser) {
+                    if (stage.includes("رئيس مجلس الإدارة") || status.includes("رئيس مجلس الإدارة")) {
+                        isMyTurnNow = true;
+                    }
+                }
+                // 1. فلترة رئيس الإدارة المركزية
+                else if (isUserCentralManager) {
+                    let myExactCentralName = myCentral || myName || myRole;
                     let belongsToMyCentral = assignedCentral.includes("رئيس الإدارة المركزية") && 
                         ((myExactCentralName.includes("تخطيط") && assignedCentral.includes("تخطيط")) ||
                          (myExactCentralName.includes("مالية") && assignedCentral.includes("مالية")) ||
                          (!myExactCentralName.includes("تخطيط") && !assignedCentral.includes("تخطيط")));
 
-                    if (belongsToMyCentral && (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية"))) {
+                    if (belongsToMyCentral && (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد"))) {
                         isMyTurnNow = true;
                     }
                 } 
@@ -1030,7 +1038,7 @@
                         }
                     }
                 } 
-                // 3. فلترة المدير العام العادي (لا يرى إلا الطلبات المقدمة لإدارته حصراً)
+                // 3. فلترة المدير العام العادي
                 else {
                     if (stage.includes(myCentral) || status.includes(myCentral) || parentDept.includes(myCentral)) {
                         if (stage.includes("مراجعة") && (stage.includes(myCentral) || status.includes(myCentral))) {
@@ -1039,10 +1047,9 @@
                     }
                 }
 
-                // تحديد الأرشيف الخاص بكل مستخدم بناءً على مساره السابق
-                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myCentral) || cleanText(h).toLowerCase().includes(myName));
+                let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myCentral) || cleanText(h).toLowerCase().includes(myName) || cleanText(h).toLowerCase().includes(myRole));
                 
-                if (status.includes("معتمد نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
+                if (status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً") || status.includes("مرفوض") || (passedByMe && !isMyTurnNow)) {
                     isArchivedForMe = true;
                 }
 
@@ -1126,7 +1133,7 @@
             let updates = {};
             
             let history = req.History || [];
-            let userIdentifier = loggedInUser.centralManager || loggedInUser.name;
+            let userIdentifier = loggedInUser.centralManager || loggedInUser.name || loggedInUser.role;
             if (!history.includes(userIdentifier)) history.push(userIdentifier);
 
             if (actionType === 'gm_approve') {
@@ -1143,10 +1150,11 @@
                 return;
             } 
             else if (actionType === 'central_approve') {
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية";
                 updates = { 
-                    Current_Stage: "مراجعة رئيس الإدارة المركزية", 
+                    Current_Stage: "مراجعة رئيس مجلس الإدارة", 
                     Central_Date: nowStr, 
-                    Status: "قيد الانتظار - رئيس الإدارة المركزية", 
+                    Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة (بعد اعتماد " + originalCentral + ")", 
                     History: history 
                 };
             } 
@@ -1170,14 +1178,15 @@
                 let updatedState = { ...currentState };
                 const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
                 const myName = cleanText(loggedInUser.name || "").toLowerCase();
+                const myRole = cleanText(loggedInUser.role || "").toLowerCase();
                 
                 for (let key in updatedState) {
                     let keyLower = key.toLowerCase();
-                    if ((myCentral.includes("مالية") || myName.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                    if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
                         updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
@@ -1188,34 +1197,31 @@
                 let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
 
                 updates = { 
-                    Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + originalCentral, 
-                    Status: "تم أخذ الرأي - " + decisionText + " من " + (loggedInUser.name || loggedInUser.centralManager) + " - بانتظار اعتماد " + originalCentral,
+                    Current_Stage: "مراجعة " + originalCentral, 
+                    Status: "تم أخذ الرأي - " + decisionText + " من " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role) + " - بانتظار اعتماد " + originalCentral,
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
             }
-            else if (actionType === 'finance_approve') {
-                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+            else if (actionType === 'chairman_approve') {
                 updates = { 
-                    Current_Stage: "مراجعة " + originalCentral + " (الاعتماد النهائي)", 
-                    Finance_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة " + originalCentral, 
+                    Current_Stage: "معتمد نهائياً", 
+                    Chairman_Date: nowStr, 
+                    Status: "معتمد نهائياً", 
                     History: history 
                 };
             }
-            else if (actionType === 'central_final_approve') {
+            else if (actionType === 'chairman_reject') {
+                let rejecterName = loggedInUser.name || loggedInUser.role;
                 updates = { 
-                    Current_Stage: "مراجعة رئيس مجلس الإدارة", 
-                    Central_Final_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة رئيس مجلس الإدارة", 
+                    Current_Stage: "مرفوض نهائياً", 
+                    Reject_Reason: extraData.rejectReason, 
+                    Status: "مرفوض نهائياً من " + rejecterName, 
                     History: history 
                 };
             }
-            else if (actionType === 'chairman_direct_approve') {
-                updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
-            } 
             else if (actionType === 'reject') {
-                let rejecterName = loggedInUser.name || loggedInUser.centralManager;
+                let rejecterName = loggedInUser.name || loggedInUser.centralManager || loggedInUser.role;
                 updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + rejecterName, History: history };
             }
             
@@ -1258,7 +1264,11 @@
             if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
             overlay.remove();
             
-            let actionToUse = actionName === 'dept_reject' ? 'dept_reject' : 'reject';
+            let actionToUse = actionName;
+            if (actionName === 'chairman_reject') actionToUse = 'chairman_reject';
+            else if (actionName === 'dept_reject') actionToUse = 'dept_reject';
+            else actionToUse = 'reject';
+
             processAction(requestId, actionToUse, { rejectReason: reason });
         };
     }
@@ -1273,7 +1283,7 @@
           <div class="custom-modal-box" style="max-width:520px;">
             <div class="custom-modal-header"><i class="fas fa-exchange-alt" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">تحويل الطلب لأخذ الرأي</h3></div>
             <div class="custom-modal-body" style="text-align:right;">
-              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (مدير عام الشئون المالية أو التخطيط والمتابعة):</p>
+              <p style="margin-bottom:12px; font-size:13px; color:#475569;">اختر الإدارة (يمكنك اختيار إدارة أو الإدارتين معاً):</p>
               <label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>
               <label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>
             </div>
@@ -1301,7 +1311,7 @@
         const stageLower = stage.toLowerCase();
         
         let badgeClass = 'badge-wait';
-        if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
+        if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
         else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
         else if (stage.indexOf("بانتظار") !== -1 || stage.indexOf("تعديل") !== -1) badgeClass = 'badge-info';
 
@@ -1309,15 +1319,22 @@
         if (withActions) {
             const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
             const managerName = cleanText(loggedInUser.name || "").toLowerCase();
+            const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
             
             let isMyTurn = false;
             let actionType = null;
 
-            const isPlanningUser = managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط");
-            const isFinanceUser = managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية");
-            const isCentralUser = managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية");
+            const isChairmanUser = managerRole.includes("رئيس مجلس الإدارة") || managerName.includes("رئيس مجلس الإدارة") || managerCentral.includes("رئيس مجلس الإدارة");
+            const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
+            const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
+            const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
 
-            if (isCentralUser) {
+            if (isChairmanUser) {
+                if (stageLower.includes("رئيس مجلس الإدارة") || status.toLowerCase().includes("رئيس مجلس الإدارة")) {
+                    isMyTurn = true;
+                    actionType = 'chairman';
+                }
+            } else if (isCentralUser) {
                 isMyTurn = true;
                 actionType = 'central';
             } else if (isPlanningUser || isFinanceUser) {
@@ -1344,9 +1361,14 @@
             }
 
             if (isMyTurn) {
-                if (actionType === 'central') {
+                if (actionType === 'chairman') {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد نهائي</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
+                    </div>`;
+                } else if (actionType === 'central') {
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير إلى رئيس مجلس الإدارة</button>
                         <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
@@ -1438,6 +1460,8 @@
         const statusText = cleanText(req.Status || "");
         if (statusText.includes("مرفوض")) {
             wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#dc3545"; 
+        } else if (statusText.includes("معتمد نهائياً")) {
+            wm.style.display = 'block'; wm.textContent = "معتمد نهائياً"; wm.style.color = "#198754";
         } else if (statusText.includes("معتمد")) {
             wm.style.display = 'none'; 
         } else {
@@ -1675,7 +1699,7 @@
         const stage = cleanText(req.Current_Stage || "");
 
         let badgeClass = 'badge-wait';
-        if (status.indexOf("معتمد") !== -1) badgeClass = 'badge-ok';
+        if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
         else if (status.indexOf("مرفوض") !== -1) badgeClass = 'badge-reject';
         else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
 
@@ -1820,5 +1844,4 @@
     </script>
 </body>
 </html>
-
 
