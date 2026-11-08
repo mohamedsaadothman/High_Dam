@@ -939,6 +939,7 @@
         renderFilteredRequests();
     }
 
+    // ✅ الدالة المعدلة: أرشفة مستقلة لكل مسئول
     function loadReviewRequests() {
         if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
         const container = document.getElementById('requestsList');
@@ -977,10 +978,15 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
+                // 1. رئيس مجلس الإدارة
                 if (isChairmanUser) {
-                    if (stage.includes("رئيس مجلس") || status.includes("رئيس مجلس")) isMyTurnNow = true;
-                    else if (status.includes("معتمد") || status.includes("مرفوض")) isArchivedForMe = true;
+                    if (stage.includes("رئيس مجلس") || status.includes("رئيس مجلس")) {
+                        isMyTurnNow = true;
+                    } else if (status.includes("معتمد") || status.includes("مرفوض") || history.some(h => h.includes("رئيس مجلس") || h.includes(loggedInUser.name))) {
+                        isArchivedForMe = true;
+                    }
                 }
+                // 2. رئيس الإدارة المركزية (المالية أو التخطيط)
                 else if (isCentralUser) {
                     let reqCentralType = null;
                     if (matchesPlanning(assignedCentral)) reqCentralType = "تخطيط";
@@ -992,33 +998,53 @@
                     if (belongsToMyCentral) {
                         if (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد")) {
                             isMyTurnNow = true;
-                        } else if (status.includes("معتمد") || status.includes("مرفوض") || history.some(h => h.includes(loggedInUser.centralManager))) {
+                        } else if (status.includes("معتمد") || status.includes("مرفوض") || history.some(h => h.includes(loggedInUser.centralManager) || h.includes(loggedInUser.name))) {
                             isArchivedForMe = true;
                         }
                     }
                 } 
+                // 3. مديرو العموم للرأي (التخطيط والمالية)
                 else if (isPlanningUser || isFinanceUser) {
-                    if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي") || stage.includes("بانتظار باقي الآراء") || status.includes("تم أخذ الرأي")) {
-                        if (req.Transfer_State) {
-                            try {
-                                let state = JSON.parse(req.Transfer_State);
-                                for (let key in state) {
-                                    let keyLower = key.toLowerCase();
-                                    if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') isMyTurnNow = true;
-                                    if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') isMyTurnNow = true;
+                    let hasMyOpinion = false;
+                    let isTransferredToMe = false;
+                    
+                    if (req.Transfer_State) {
+                        try {
+                            let state = JSON.parse(req.Transfer_State);
+                            for (let key in state) {
+                                let keyLower = key.toLowerCase();
+                                if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                                    isTransferredToMe = true;
+                                    if (state[key].decision !== 'pending') hasMyOpinion = true;
                                 }
-                            } catch(e) {}
-                        }
+                                if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                                    isTransferredToMe = true;
+                                    if (state[key].decision !== 'pending') hasMyOpinion = true;
+                                }
+                            }
+                        } catch(e) {}
+                    }
+
+                    if (isTransferredToMe) {
+                        if (!hasMyOpinion) isMyTurnNow = true; 
+                        else isArchivedForMe = true; 
                     }
                 } 
+                // 4. المدير العام العادي
                 else {
-                    if (stage.includes(myCentral) || status.includes(myCentral)) {
-                        if (stage.includes("مراجعة")) isMyTurnNow = true;
-                        else if (status.includes("معتمد") || status.includes("مرفوض")) isArchivedForMe = true;
+                    let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
+                    let passedByMe = history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral));
+
+                    if (isMyDeptRequest) {
+                        if (stage.includes("مراجعة " + myCentral) && !passedByMe) {
+                            isMyTurnNow = true;
+                        } else {
+                            isArchivedForMe = true;
+                        }
                     }
                 }
 
-                if (status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً") || status.includes("مرفوض")) {
+                if ((status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً")) && (stage.includes(myCentral) || history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral)))) {
                     isArchivedForMe = true;
                 }
 
@@ -1087,6 +1113,7 @@
         renderFilteredRequests();
     }
 
+    // ✅ الدالة المعدلة: الأرشفة الفورية + المسمى الوظيفي
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
         
@@ -1096,8 +1123,10 @@
             let req = doc.data();
             let updates = {};
             let history = req.History || [];
-            let userIdentifier = loggedInUser.centralManager || loggedInUser.name || loggedInUser.role;
-            if (!history.includes(userIdentifier)) history.push(userIdentifier);
+            
+            // التعديل: استخدام المسمى الوظيفي
+            let officialTitle = loggedInUser.role || loggedInUser.centralManager || loggedInUser.name;
+            if (!history.includes(officialTitle)) history.push(officialTitle);
 
             if (actionType === 'gm_approve') {
                 let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
@@ -1161,7 +1190,7 @@
 
                 updates = { 
                     Current_Stage: allFinished ? ("مراجعة " + originalCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
-                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("قيد الانتظار - تم أخذ رأي " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role) + " (" + decisionText + ") وبانتظار بقية الإدارات"),
+                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + originalCentral) : ("قيد الانتظار - تم أخذ رأي " + officialTitle + " (" + decisionText + ") وبانتظار بقية الإدارات"),
                     Transfer_State: JSON.stringify(updatedState),
                     History: history
                 };
@@ -1170,15 +1199,15 @@
                 updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
             }
             else if (actionType === 'chairman_reject') {
-                updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Status: "مرفوض نهائياً من " + (loggedInUser.name || loggedInUser.role), History: history };
+                updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Status: "مرفوض نهائياً من " + officialTitle, History: history };
             }
             else if (actionType === 'reject') {
-                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + (loggedInUser.name || loggedInUser.centralManager || loggedInUser.role), History: history };
+                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Status: "مرفوض من " + officialTitle, History: history };
             }
 
             db.collection("requests").doc(requestId).update(updates).then(() => {
-                showSuccess("تم بنجاح", "تم تنفيذ الإجراء بنجاح.");
-                loadReviewRequests();
+                showSuccess("تم بنجاح", "تم تنفيذ الإجراء بنجاح وأرشفة الطلب.");
+                loadReviewRequests(); // الأرشفة الفورية
             }).catch((err) => {
                 showCustomAlert("فشل الحفظ (Firebase)", err.message);
             });
@@ -1686,4 +1715,5 @@
     </script>
 </body>
 </html>
+
     
