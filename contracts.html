@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -481,6 +482,7 @@
     let pendingData = [];
     let archiveData = [];
     let deptNameMap = {}; 
+    let deptParentMap = {}; // خريطة لتخزين الرئيس المركزي لكل مدير عام
     let trackUser = null;
     let trackRequestsCache = [];
 
@@ -614,17 +616,21 @@
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsSet = new Set();
             deptNameMap = {}; 
+            deptParentMap = {};
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 let rawName = data.centralManager || "";
                 let cleanName = cleanText(rawName);
+                let parentDept = cleanText(data.department || ""); // الرئيس المركزي المسؤول عن هذا المدير
+                
                 if (cleanName !== "") {
                     if (cleanName.includes("رئيس الإدارة المركزية") || cleanName.includes("رئيس مجلس الإدارة") || cleanName.includes("رئيس مجلس الادارة")) {
                         return; 
                     }
                     deptsSet.add(cleanName);
                     deptNameMap[cleanName] = cleanName; 
+                    deptParentMap[cleanName] = parentDept; // ربط المدير العام برئيسه المركزي
                 }
             });
 
@@ -813,6 +819,9 @@
         
         const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
         const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
+        
+        // جلب الرئيس المركزي الخاص بهذا المدير العام تلقائياً من الخريطة الديناميكية
+        const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية");
 
         const data = {
             requestId: lastCreatedReqId,
@@ -828,6 +837,7 @@
             totalCost: totalCost,
             Current_Stage: "مراجعة " + selectedDeptDisplay, 
             Status: "قيد الانتظار - موافقة " + selectedDeptDisplay,
+            Assigned_Central_Manager: specificCentralManager, // تخزين الرئيس المركزي التابع له المدير العام
             History: [] 
         };
 
@@ -955,7 +965,6 @@
         renderFilteredRequests();
     }
 
-    // *** الدالة المعدلة لضمان ظهور الطلب للمدير العام أو الرئيسة ***
     function loadReviewRequests() {
         if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
         
@@ -981,11 +990,26 @@
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
 
-                // التحقق من الاسم أو المسمى أو الإدارة
                 if (ownerRole && (myRole.includes(ownerRole) || myDept.includes(ownerRole) || ownerRole.includes(myRole))) {
                     isMyTurnNow = true;
                 } else if (stage.includes(myRole) || stage.includes(myDept)) {
                     isMyTurnNow = true;
+                }
+
+                if (stage.includes("بانتظار رأي") || status.includes("أخذ رأي")) {
+                    if (req.Transfer_State) {
+                        try {
+                            let state = JSON.parse(req.Transfer_State);
+                            for (let key in state) {
+                                if (myRole.includes("تخطيط") && key.includes("تخطيط") && state[key].decision === 'pending') {
+                                    isMyTurnNow = true;
+                                }
+                                if ((myRole.includes("مالية") || myRole.includes("الشؤون المالية")) && (key.includes("مالية") || key.includes("الشؤون")) && state[key].decision === 'pending') {
+                                    isMyTurnNow = true;
+                                }
+                            }
+                        } catch(e) {}
+                    }
                 }
 
                 let passedByMe = history.some(h => cleanText(h).toLowerCase().includes(myRole));
@@ -1065,7 +1089,6 @@
         renderFilteredRequests();
     }
 
-    // *** الدالة المعدلة لضمان التحويل لرئيس الإدارة المركزية عند موافقة المدير العام ***
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString();
         
@@ -1078,14 +1101,14 @@
             if (!history.includes(loggedInUser.role)) history.push(loggedInUser.role);
 
             if (actionType === 'gm_approve') {
-                // التحويل الثابت لرئيس الإدارة المركزية
-                const centralName = "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+                // توجيه الطلب إلى الرئيس المركزي المحدد في حقل Assigned_Custom_Manager أو الافتراضي
+                let targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
                 updates = { 
-                    Current_Stage: "مراجعة " + centralName, 
-                    Current_Owner_Role: centralName,
+                    Current_Stage: "مراجعة " + targetCentral, 
+                    Current_Owner_Role: targetCentral,
                     Gm_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة " + centralName,
-                    Central_Manager_Name: centralName,
+                    Status: "قيد الانتظار - موافقة " + targetCentral,
+                    Central_Manager_Name: targetCentral,
                     History: history
                 };
                 executeUpdate(requestId, updates);
@@ -1132,7 +1155,7 @@
                 }
                 
                 let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض";
-                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
 
                 updates = { 
                     Current_Stage: "بعد أخذ الرأي - بانتظار اعتماد " + originalCentral, 
@@ -1142,7 +1165,7 @@
                 };
             }
             else if (actionType === 'finance_approve') {
-                let originalCentral = req.Central_Manager_Name || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشئون المالية والإدارية والموارد البشرية";
                 updates = { 
                     Current_Stage: "مراجعة " + originalCentral + " (الاعتماد النهائي)", 
                     Finance_Date: nowStr, 
@@ -1241,7 +1264,6 @@
         };
     }
 
-    // *** الدالة المعدلة لضمان ظهور الأزرار للمدير العام والرئيسة ***
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
@@ -1262,37 +1284,54 @@
             let isMyTurn = false;
             let actionType = null;
 
-            // مطابقة مرنة: هل أنا صاحب الدور الحالي؟
+            const isPlanningUser = managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة");
+            const isFinanceUser = managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية");
+            const isCentralUser = managerCentral.includes("رئيس الإدارة المركزية") || managerCentral.includes("الموارد البشرية");
+
             if (ownerRole && (ownerRole.includes(managerCentral) || managerCentral.includes(ownerRole))) {
                 isMyTurn = true;
             } else if (stageLower.includes(managerCentral)) {
                 isMyTurn = true;
+            } else if ((isPlanningUser && (stageLower.includes("تخطيط") || stageLower.includes("أخذ رأي"))) ||
+                       (isFinanceUser && (stageLower.includes("مالية") || stageLower.includes("أخذ رأي")))) {
+                if (req.Transfer_State) {
+                    try {
+                        let state = JSON.parse(req.Transfer_State);
+                        for (let key in state) {
+                            if (isPlanningUser && key.includes("تخطيط") && state[key].decision === 'pending') {
+                                isMyTurn = true;
+                            }
+                            if (isFinanceUser && key.includes("مالية") && state[key].decision === 'pending') {
+                                isMyTurn = true;
+                            }
+                        }
+                    } catch(e) {}
+                }
             }
 
-            // تحديد نوع الإجراء
             if (isMyTurn) {
-                if (managerCentral.includes("رئيس الإدارة المركزية")) {
+                if (isCentralUser) {
                     actionType = 'central';
                 } else if (managerCentral.includes("رئيس مجلس الإدارة")) {
                     actionType = 'chairman';
-                } else if (stageLower.includes("بانتظار رأي") || statusLower.includes("تم أخذ الرأي")) {
-                    actionType = 'dept_opinion';
+                } else if (isPlanningUser || isFinanceUser || stageLower.includes("بانتظار رأي") || statusLower.includes("تم أخذ الرأي")) {
+                    actionType = 'dept_opinion'; 
                 } else {
-                    actionType = 'gm'; // مدير عام
+                    actionType = 'gm'; 
                 }
             }
 
             if (isMyTurn) {
                 if (actionType === 'central') {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد مباشر</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> اعتماد نهائي</button>
                         <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                     </div>`;
                 } else if (actionType === 'dept_opinion') {
                     buttonsHtml = `<div class="req-actions">
                         <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب (مع إبداء الأسباب)</button>
                     </div>`;
                 } else if (actionType === 'chairman') {
                     buttonsHtml = `<div class="req-actions">
@@ -1301,7 +1340,7 @@
                     </div>`;
                 } else {
                     buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية</button>
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
                         <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
                     </div>`;
                 }
@@ -1706,7 +1745,7 @@
     }
 
     function logoutContract() {
-        document.getElementById('contractDashboard').style.display = 'none';
+        document.getElementById('contractDashboard').style.display, 'none';
         document.getElementById('contractLoginBox').style.display = 'block';
         document.getElementById('contractUsername').value = '';
         document.getElementById('contractPassword').value = '';
@@ -1764,3 +1803,4 @@
     </script>
 </body>
 </html>
+
