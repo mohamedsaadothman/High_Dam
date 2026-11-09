@@ -891,23 +891,16 @@
     function processUserLogin(userDoc, password, btn) {
         const userData = userDoc.data();
         const storedPassword = userData.password ? String(userData.password).trim() : "";
-        if (storedPassword && password !== storedPassword && password !== "123" && password !== "123456") {
+        
+        // ✅ التعديل: الدخول فقط بكلمة المرور المسجلة في قاعدة البيانات
+        if (password !== storedPassword) {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
             return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
         }
-        const fakeEmail = userDoc.id + "@dam-app.com";
-        const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
-
-        auth.signInWithEmailAndPassword(fakeEmail, finalPassword).then((userCredential) => {
-            successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-        }).catch(() => {
-            auth.createUserWithEmailAndPassword(fakeEmail, finalPassword).then((userCredential) => {
-                successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-            }).catch(() => {
-                successLoginAction(userDoc.id, userData, userDoc.id, btn);
-            });
-        });
+        
+        // تخطي Firebase Auth والاعتماد على الـ Firestore مباشرة لمنع الثغرات
+        successLoginAction(userDoc.id, userData, userDoc.id, btn);
     }
 
     function successLoginAction(docId, userData, uid, btn) {
@@ -1298,13 +1291,10 @@
         };
     }
 
-    // ✅ دالة buildRequestCard المعدلة: إظهار الأزرار بناءً على المسمى الوظيفي
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
         const status = cleanText(req.Status || "");
-        const stageLower = stage.toLowerCase();
-        const statusLower = status.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
@@ -1313,56 +1303,28 @@
 
         let buttonsHtml = "";
         if (withActions) {
-            // ✅ التعديل: الاعتماد على حقل centralManager في المقام الأول
             const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
             const managerName = cleanText(loggedInUser.name || "").toLowerCase();
             const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
             
-            // تجميع كل النصوص للتأكد من الدور
             const userIdentity = (managerCentral + " " + managerName + " " + managerRole).toLowerCase();
 
             let actionType = null;
 
-            // تحديد إذا كان رئيس مجلس الإدارة
-            const isChairmanUser = userIdentity.includes("رئيس مجلس");
-            
-            // ✅ تحديد إذا كان رئيس إدارة مركزية (بناءً على الاسم أو الدور)
-            const isCentralUser = userIdentity.includes("رئيس الإدارة المركزية") || userIdentity.includes("رئيس الادارة المركزية");
-            
-            // تحديد إذا كان رئيس المالية
-            const isFinanceCentral = isCentralUser && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
-
-            // تحديد إذا كان مدير عام (تخطيط أو مالية)
-            const isPlanningUser = !isCentralUser && !isChairmanUser && userIdentity.includes("تخطيط");
-            const isFinanceUser = !isCentralUser && !isChairmanUser && (userIdentity.includes("مالية") || userIdentity.includes("شئون"));
-
-            if (isChairmanUser) {
+            if (userIdentity.includes("رئيس مجلس")) {
                 actionType = 'chairman';
             } 
-            else if (isCentralUser) {
+            else if (userIdentity.includes("رئيس الإدارة المركزية") || userIdentity.includes("رئيس الادارة المركزية")) {
                 actionType = 'central';
             } 
-            else if (isPlanningUser || isFinanceUser) {
-                let hasPendingOpinion = false;
-                if (req.Transfer_State) {
-                    try {
-                        let state = JSON.parse(req.Transfer_State);
-                        for (let key in state) {
-                            let keyLower = key.toLowerCase();
-                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') hasPendingOpinion = true;
-                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') hasPendingOpinion = true;
-                        }
-                    } catch(e) {}
-                }
-                if (hasPendingOpinion) {
-                    actionType = 'dept_opinion';
-                } else {
-                    actionType = 'gm';
-                }
+            else if (userIdentity.includes("تخطيط") || userIdentity.includes("مالية") || userIdentity.includes("شئون")) {
+                actionType = 'dept_opinion'; 
             } 
             else {
                 actionType = 'gm';
             }
+
+            const isFinanceCentral = actionType === 'central' && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
 
             if (actionType === 'chairman') {
                 buttonsHtml = `<div class="req-actions">
@@ -1371,7 +1333,6 @@
                 </div>`;
             } else if (actionType === 'central') {
                 let transferBtn = isFinanceCentral ? `<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>` : '';
-                
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير</button>
                     ${transferBtn}
