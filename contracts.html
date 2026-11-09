@@ -55,7 +55,32 @@
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         #printableArea { display: none; }
         
-        .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 40px; font-weight: 900; z-index: 0; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.15; color: #333; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; width: 100%; display: flex; justify-content: center; align-items: center; }
+        /* ✅ تعديل: ضبط العلامة المائية بدقة داخل الورقة */
+        .print-watermark { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%) rotate(-35deg); 
+            font-size: 35px; 
+            font-weight: 900; 
+            z-index: 0; 
+            pointer-events: none; 
+            text-align: center; 
+            white-space: normal; 
+            word-break: break-word;
+            overflow-wrap: break-word;
+            max-width: 85%;
+            opacity: 0.15; 
+            color: #333; 
+            letter-spacing: 1px; 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+            font-family: 'Cairo', sans-serif; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            line-height: 1.2;
+        }
         
         @media print {
             body * { visibility: hidden; }
@@ -278,9 +303,10 @@
                             <label><i class="fas fa-calendar-alt"></i> إلى تاريخ</label>
                             <input type="date" id="filterDateTo">
                         </div>
+                        <!-- ✅ التعديل: إضافة فلتر الوظيفة -->
                         <div class="filter-group">
-                            <label><i class="fas fa-building"></i> الإدارة</label>
-                            <select id="filterDept">
+                            <label><i class="fas fa-user-tie"></i> الوظيفة</label>
+                            <select id="filterRole">
                                 <option value="">-- الكل --</option>
                             </select>
                         </div>
@@ -454,705 +480,772 @@
                         </td>
                     </tr>
                 </table>
+                
+                <!-- ✅ التعديل: إضافة جدول التواريخ والتأشيرات -->
+                <div id="printSignaturesBox" style="display:none; border-top: 2px solid #000; padding-top: 8px; margin-top: 10px; direction: rtl;">
+                    <h4 style="font-size: 11px; font-weight: 900; text-align: center; margin-bottom: 6px;">الاعتمادات والتأشيرات</h4>
+                    <div id="printFinanceNote" style="display:none; font-size: 10px; margin-bottom: 4px;"><strong>تأشيرة الشئون المالية:</strong> <span id="financeNoteText"></span></div>
+                    <div id="printChairmanNote" style="display:none; font-size: 10px; margin-bottom: 4px;"><strong>تأشيرة رئيس مجلس الإدارة:</strong> <span id="chairmanNoteText"></span></div>
+                    <div id="printApprovalText" style="display:none; font-size: 11px; font-weight: 900; text-align: center; margin-top: 10px; text-decoration: underline;"></div>
+                </div>
             </div>
 
             <div id="contractPrintSection" style="display: none; position: relative; z-index: 2;"></div>
         </div>
     </div>
-        <script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
-        authDomain: "dam-purchases-app.firebaseapp.com",
-        projectId: "dam-purchases-app",
-        storageBucket: "dam-purchases-app.appspot.com",
-        messagingSenderId: "123271128649",
-        appId: "1:123271128649:web:1096b95fc97c8575b50198"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const auth = firebase.auth();
+    <script>
+const firebaseConfig = {
+    apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
+    authDomain: "dam-purchases-app.firebaseapp.com",
+    projectId: "dam-purchases-app",
+    storageBucket: "dam-purchases-app.appspot.com",
+    messagingSenderId: "123271128649",
+    appId: "1:123271128649:web:1096b95fc97c8575b50198"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
 
-    let lastCreatedReqId = "REQ-000000";
-    let loggedInUser = {};
-    let activeRequestsData = [];
-    let _autoRefreshTimer = null;
-    let currentTab = 'pending';
-    let pendingData = [];
-    let archiveData = [];
-    let deptNameMap = {}; 
-    let deptParentMap = {}; 
-    let trackUser = null;
-    let trackRequestsCache = [];
+let lastCreatedReqId = "REQ-000000";
+let loggedInUser = {};
+let activeRequestsData = [];
+let _autoRefreshTimer = null;
+let currentTab = 'pending';
+let pendingData = [];
+let archiveData = [];
+let deptNameMap = {}; 
+let deptParentMap = {}; 
+let trackUser = null;
+let trackRequestsCache = [];
 
-    function cleanText(txt) {
-        if (!txt) return "";
-        return String(txt).replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
-    }
+function cleanText(txt) {
+    if (!txt) return "";
+    return String(txt).replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
+}
 
-    window.addEventListener('DOMContentLoaded', () => {
-        const savedUser = localStorage.getItem('reviewUser');
-        if (savedUser) {
-            loggedInUser = JSON.parse(savedUser);
-            if (document.getElementById('reviewView').classList.contains('active')) {
-                document.getElementById('loginBox').style.display = 'none';
-                document.getElementById('dashboard').style.display = 'block';
-                document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + (loggedInUser.role ? " (" + loggedInUser.role + ")" : "");
-                loadReviewRequests();
-            }
+window.addEventListener('DOMContentLoaded', () => {
+    const savedUser = localStorage.getItem('reviewUser');
+    if (savedUser) {
+        loggedInUser = JSON.parse(savedUser);
+        if (document.getElementById('reviewView').classList.contains('active')) {
+            document.getElementById('loginBox').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + (loggedInUser.role ? " (" + loggedInUser.role + ")" : "");
+            loadReviewRequests();
         }
-        ['filterDateFrom', 'filterDateTo', 'filterDept', 'filterStatus'].forEach(function(id) {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('input', renderFilteredRequests);
-        });
+    }
+    ['filterDateFrom', 'filterDateTo', 'filterRole', 'filterStatus'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', renderFilteredRequests);
+    });
 
-        const searchInput = document.getElementById('filterSearch');
-        const suggestionsBox = document.getElementById('searchSuggestions');
-        if(searchInput) {
-            searchInput.addEventListener('input', function() {
-                const query = this.value.trim().toLowerCase();
-                suggestionsBox.innerHTML = '';
-                if (query.length > 0) {
-                    const allData = pendingData.concat(archiveData);
-                    const matchedNames = new Set();
-                    allData.forEach(r => {
-                        const name = (r.applicantName || "").toString().trim();
-                        if (name.toLowerCase().includes(query)) matchedNames.add(name);
+    const searchInput = document.getElementById('filterSearch');
+    const suggestionsBox = document.getElementById('searchSuggestions');
+    if(searchInput) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.trim().toLowerCase();
+            suggestionsBox.innerHTML = '';
+            if (query.length > 0) {
+                const allData = pendingData.concat(archiveData);
+                const matchedNames = new Set();
+                allData.forEach(r => {
+                    const name = (r.applicantName || "").toString().trim();
+                    if (name.toLowerCase().includes(query)) matchedNames.add(name);
+                });
+                if (matchedNames.size > 0) {
+                    matchedNames.forEach(name => {
+                        const div = document.createElement('div');
+                        div.className = 'autocomplete-suggestion-item';
+                        div.textContent = name;
+                        div.onclick = function() {
+                            searchInput.value = name;
+                            suggestionsBox.style.display = 'none';
+                            renderFilteredRequests();
+                        };
+                        suggestionsBox.appendChild(div);
                     });
-                    if (matchedNames.size > 0) {
-                        matchedNames.forEach(name => {
-                            const div = document.createElement('div');
-                            div.className = 'autocomplete-suggestion-item';
-                            div.textContent = name;
-                            div.onclick = function() {
-                                searchInput.value = name;
-                                suggestionsBox.style.display = 'none';
-                                renderFilteredRequests();
-                            };
-                            suggestionsBox.appendChild(div);
-                        });
-                        suggestionsBox.style.display = 'block';
-                    } else suggestionsBox.style.display = 'none';
+                    suggestionsBox.style.display = 'block';
                 } else suggestionsBox.style.display = 'none';
-                renderFilteredRequests();
-            });
+            } else suggestionsBox.style.display = 'none';
+            renderFilteredRequests();
+        });
 
-            document.addEventListener('click', function(e) {
-                if (e.target !== searchInput && !suggestionsBox.contains(e.target)) {
-                    suggestionsBox.style.display = 'none';
-                }
-            });
-        }
-    });
-
-    class CustomSelect {
-        constructor(wrapId, options = [], defaultValue = "") {
-            this.wrap = document.getElementById(wrapId);
-            this.trigger = this.wrap.querySelector('.custom-select-trigger');
-            this.menu = this.wrap.querySelector('.custom-select-menu');
-            this.labelEl = this.trigger.querySelector('.custom-select-label');
-            this.hiddenInput = this.wrap.querySelector('input[type="hidden"]');
-            this.placeholder = this.wrap.dataset.placeholder || "اختر...";
-            this.options = options;
-            this._render();
-            this._bind();
-            if (defaultValue) this.setValue(defaultValue, false);
-            else this._applyPlaceholder();
-        }
-        _bind() {
-            this.trigger.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
-            this.trigger.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggle(); }
-                if (e.key === 'Escape') this.close();
-            });
-            document.addEventListener('click', (e) => { if (!this.wrap.contains(e.target)) this.close(); });
-        }
-        setOptions(opts, keepValue = false) {
-            this.options = opts;
-            const currentValue = keepValue ? this.hiddenInput.value : "";
-            this._render();
-            if (currentValue) this.setValue(currentValue, false);
-        }
-        _render() {
-            this.menu.innerHTML = "";
-            if (this.options.length === 0) {
-                this.menu.innerHTML = '<div style="padding:14px;text-align:center;color:#64748b;font-size:12px;">لا توجد خيارات</div>';
-                return;
+        document.addEventListener('click', function(e) {
+            if (e.target !== searchInput && !suggestionsBox.contains(e.target)) {
+                suggestionsBox.style.display = 'none';
             }
-            this.options.forEach((opt) => {
-                const div = document.createElement('div');
-                div.className = 'custom-select-option';
-                div.textContent = opt;
-                div.dataset.value = opt;
-                if (this.hiddenInput.value === opt) div.classList.add('selected');
-                div.addEventListener('click', (e) => { e.stopPropagation(); this.setValue(opt); this.close(); });
-                this.menu.appendChild(div);
-            });
-        }
-        setValue(value, fireEvents = true) {
-            this.hiddenInput.value = value;
-            if (value) { this.labelEl.textContent = value; this.trigger.classList.remove('placeholder'); }
-            else { this._applyPlaceholder(); }
-            this.menu.querySelectorAll('.custom-select-option').forEach(el => {
-                el.classList.toggle('selected', el.dataset.value === value);
-            });
-            if (fireEvents) this.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        _applyPlaceholder() { this.labelEl.textContent = this.placeholder; this.trigger.classList.add('placeholder'); }
-        getValue() { return this.hiddenInput.value; }
-        toggle() { this.menu.classList.contains('open') ? this.close() : this.open(); }
-        open() {
-            document.querySelectorAll('.custom-select-menu.open').forEach(m => { if (m !== this.menu) m.classList.remove('open'); });
-            document.querySelectorAll('.custom-select-trigger.open').forEach(t => { if (t !== this.trigger) t.classList.remove('open'); });
-            this.menu.classList.add('open'); this.trigger.classList.add('open');
-        }
-        close() { this.menu.classList.remove('open'); this.trigger.classList.remove('open'); }
-    }
-
-    let deptSelect, titleSelect, reviewUserSelect;
-
-    function loadDepartments() {
-        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
-            let deptsSet = new Set();
-            deptNameMap = {}; 
-            deptParentMap = {};
-            
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                let rawName = data.centralManager || "";
-                let cleanName = cleanText(rawName);
-                let roleTxt = cleanText(data.role || "").toLowerCase();
-                let nameTxt = cleanText(data.name || "").toLowerCase();
-                let centralTxt = cleanName.toLowerCase();
-                
-                if (cleanName === "") return;
-                
-                const isGeneralManager = roleTxt.includes("مدير عام") || nameTxt.includes("مدير عام") || centralTxt.includes("مدير عام");
-                if (!isGeneralManager) return;
-                
-                if (roleTxt.includes("رئيس مجلس") || nameTxt.includes("رئيس مجلس") || centralTxt.includes("رئيس مجلس")) return;
-                if (roleTxt.includes("رئيس الإدارة المركزية") || nameTxt.includes("رئيس الإدارة المركزية") || centralTxt.includes("رئيس الإدارة المركزية")) return;
-                
-                deptsSet.add(cleanName);
-                deptNameMap[cleanName] = cleanName; 
-                
-                let parentDeptFromDb = cleanText(data.department || "");
-                if (parentDeptFromDb !== "") {
-                    deptParentMap[cleanName] = parentDeptFromDb;
-                } else {
-                    let lowerName = cleanName.toLowerCase();
-                    if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
-                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                    } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
-                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
-                    } else if (lowerName.includes("توشكى") || lowerName.includes("توشكي")) {
-                        deptParentMap[cleanName] = "رئيس الإدارة المركزية لتوشكى والبحوث";
-                    } else {
-                        deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                    }
-                }
-            });
-
-            let deptsList = [...deptsSet].sort();
-            if (deptsList.length > 0) {
-                if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
-                else deptSelect.setOptions(deptsList, true);
-                populateFilterDept(deptsList);
-            }
-        }).catch(err => console.error("خطأ:", err));
-    }
-
-    function populateFilterDept(deptsList) {
-        const filterDept = document.getElementById('filterDept');
-        if (!filterDept) return;
-        filterDept.innerHTML = '<option value="">-- الكل --</option>';
-        deptsList.forEach(d => {
-            const opt = document.createElement('option');
-            opt.value = d;
-            opt.textContent = d;
-            filterDept.appendChild(opt);
         });
     }
+});
 
-    function loadReviewUsersList() {
-        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
-            let usersSet = new Set();
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                let managerVal = data.centralManager;
-                let cleanVal = cleanText(managerVal);
-                if (cleanVal !== "") usersSet.add(cleanVal);
-            });
-            let usersList = [...usersSet].sort();
-            if (usersList.length > 0) {
-                if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
-                else reviewUserSelect.setOptions(usersList, true);
-            }
-        }).catch(err => console.error("خطأ:", err));
+class CustomSelect {
+    constructor(wrapId, options = [], defaultValue = "") {
+        this.wrap = document.getElementById(wrapId);
+        this.trigger = this.wrap.querySelector('.custom-select-trigger');
+        this.menu = this.wrap.querySelector('.custom-select-menu');
+        this.labelEl = this.trigger.querySelector('.custom-select-label');
+        this.hiddenInput = this.wrap.querySelector('input[type="hidden"]');
+        this.placeholder = this.wrap.dataset.placeholder || "اختر...";
+        this.options = options;
+        this._render();
+        this._bind();
+        if (defaultValue) this.setValue(defaultValue, false);
+        else this._applyPlaceholder();
     }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        titleSelect = new CustomSelect('titleSelectWrap', [
-            "السيد المحاسب/", "السيد المهندس/", "السيد المحامى/", "السيد الدكتور/", "السيد الاستاذ/"
-        ], "السيد المحاسب/");
-        document.getElementById('parentDepartment').addEventListener('change', updateManagerTitle);
-        document.getElementById('managerTitlePrefix').addEventListener('change', updateManagerTitle);
-        addItemRow();
-    });
-
-    function updateManagerTitle() {
-        const prefix = document.getElementById('managerTitlePrefix').value;
-        let deptName = cleanText(document.getElementById('parentDepartment').value);
-        document.getElementById('managerTitle').value = deptName ? (prefix + " " + deptName) : "";
+    _bind() {
+        this.trigger.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
+        this.trigger.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggle(); }
+            if (e.key === 'Escape') this.close();
+        });
+        document.addEventListener('click', (e) => { if (!this.wrap.contains(e.target)) this.close(); });
     }
+    setOptions(opts, keepValue = false) {
+        this.options = opts;
+        const currentValue = keepValue ? this.hiddenInput.value : "";
+        this._render();
+        if (currentValue) this.setValue(currentValue, false);
+    }
+    _render() {
+        this.menu.innerHTML = "";
+        if (this.options.length === 0) {
+            this.menu.innerHTML = '<div style="padding:14px;text-align:center;color:#64748b;font-size:12px;">لا توجد خيارات</div>';
+            return;
+        }
+        this.options.forEach((opt) => {
+            const div = document.createElement('div');
+            div.className = 'custom-select-option';
+            div.textContent = opt;
+            div.dataset.value = opt;
+            if (this.hiddenInput.value === opt) div.classList.add('selected');
+            div.addEventListener('click', (e) => { e.stopPropagation(); this.setValue(opt); this.close(); });
+            this.menu.appendChild(div);
+        });
+    }
+    setValue(value, fireEvents = true) {
+        this.hiddenInput.value = value;
+        if (value) { this.labelEl.textContent = value; this.trigger.classList.remove('placeholder'); }
+        else { this._applyPlaceholder(); }
+        this.menu.querySelectorAll('.custom-select-option').forEach(el => {
+            el.classList.toggle('selected', el.dataset.value === value);
+        });
+        if (fireEvents) this.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    _applyPlaceholder() { this.labelEl.textContent = this.placeholder; this.trigger.classList.add('placeholder'); }
+    getValue() { return this.hiddenInput.value; }
+    toggle() { this.menu.classList.contains('open') ? this.close() : this.open(); }
+    open() {
+        document.querySelectorAll('.custom-select-menu.open').forEach(m => { if (m !== this.menu) m.classList.remove('open'); });
+        document.querySelectorAll('.custom-select-trigger.open').forEach(t => { if (t !== this.trigger) t.classList.remove('open'); });
+        this.menu.classList.add('open'); this.trigger.classList.add('open');
+    }
+    close() { this.menu.classList.remove('open'); this.trigger.classList.remove('open'); }
+}
 
-    function fetchEmployeeData() {
-        const nationalId = document.getElementById('applicantNationalId').value.trim();
-        const password = document.getElementById('userPassword').value.trim();
-        if (nationalId.length === 14 && password.length > 0) {
-            db.collection("users").where("nationalId", "==", nationalId).get().then((querySnapshot) => {
-                if (!querySnapshot.empty) {
-                    const userData = querySnapshot.docs[0].data();
-                    const storedPassword = userData.password ? String(userData.password).trim() : "";
-                    if (password === storedPassword) {
-                        document.getElementById('applicantName').value = cleanText(userData.name || "");
-                        document.getElementById('applicantName').readOnly = true;
-                        document.getElementById('applicantRole').value = ""; 
-                        document.getElementById('applicantRole').readOnly = false; 
-                    } else {
-                        showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
-                        document.getElementById('applicantName').value = "";
-                    }
+let deptSelect, titleSelect, reviewUserSelect;
+
+function loadDepartments() {
+    db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
+        let deptsSet = new Set();
+        let rolesSet = new Set();
+        deptNameMap = {}; 
+        deptParentMap = {};
+        
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            let rawName = data.centralManager || "";
+            let cleanName = cleanText(rawName);
+            let roleTxt = cleanText(data.role || "").toLowerCase();
+            let nameTxt = cleanText(data.name || "").toLowerCase();
+            let centralTxt = cleanName.toLowerCase();
+            
+            if (roleTxt && roleTxt.length > 0) rolesSet.add(cleanText(data.role));
+            if (nameTxt && nameTxt.length > 0) rolesSet.add(cleanText(data.name)); // إضافة الوظائف من حقل الاسم أيضاً
+            
+            if (cleanName === "") return;
+            
+            const isGeneralManager = roleTxt.includes("مدير عام") || nameTxt.includes("مدير عام") || centralTxt.includes("مدير عام");
+            if (!isGeneralManager) return;
+            
+            if (roleTxt.includes("رئيس مجلس") || nameTxt.includes("رئيس مجلس") || centralTxt.includes("رئيس مجلس")) return;
+            if (roleTxt.includes("رئيس الإدارة المركزية") || nameTxt.includes("رئيس الإدارة المركزية") || centralTxt.includes("رئيس الإدارة المركزية")) return;
+            
+            deptsSet.add(cleanName);
+            deptNameMap[cleanName] = cleanName; 
+            
+            let parentDeptFromDb = cleanText(data.department || "");
+            if (parentDeptFromDb !== "") {
+                deptParentMap[cleanName] = parentDeptFromDb;
+            } else {
+                let lowerName = cleanName.toLowerCase();
+                if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                } else if (lowerName.includes("تخطيط") || lowerName.includes("متابعة")) {
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للتخطيط والمتابعة";
+                } else if (lowerName.includes("توشكى") || lowerName.includes("توشكي")) {
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية لتوشكى والبحوث";
                 } else {
-                    showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل.");
+                    deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+                }
+            }
+        });
+
+        let deptsList = [...deptsSet].sort();
+        if (deptsList.length > 0) {
+            if (!deptSelect) deptSelect = new CustomSelect('deptSelectWrap', deptsList, "");
+            else deptSelect.setOptions(deptsList, true);
+            populateFilterDept(deptsList);
+        }
+
+        // ✅ تعبئة فلتر الوظائف
+        const filterRole = document.getElementById('filterRole');
+        if (filterRole) {
+            filterRole.innerHTML = '<option value="">-- الكل --</option>';
+            [...rolesSet].sort().forEach(r => {
+                if(r.length > 0) {
+                    const opt = document.createElement('option');
+                    opt.value = r;
+                    opt.textContent = r;
+                    filterRole.appendChild(opt);
+                }
+            });
+        }
+    }).catch(err => console.error("خطأ:", err));
+}
+
+function populateFilterDept(deptsList) {
+    const filterDept = document.getElementById('filterDept');
+    if (!filterDept) return;
+    filterDept.innerHTML = '<option value="">-- الكل --</option>';
+    deptsList.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        filterDept.appendChild(opt);
+    });
+}
+
+function loadReviewUsersList() {
+    db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
+        let usersSet = new Set();
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            let managerVal = data.centralManager;
+            let cleanVal = cleanText(managerVal);
+            if (cleanVal !== "") usersSet.add(cleanVal);
+        });
+        let usersList = [...usersSet].sort();
+        if (usersList.length > 0) {
+            if (!reviewUserSelect) reviewUserSelect = new CustomSelect('reviewUserSelectWrap', usersList, "");
+            else reviewUserSelect.setOptions(usersList, true);
+        }
+    }).catch(err => console.error("خطأ:", err));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    titleSelect = new CustomSelect('titleSelectWrap', [
+        "السيد المحاسب/", "السيد المهندس/", "السيد المحامى/", "السيد الدكتور/", "السيد الاستاذ/"
+    ], "السيد المحاسب/");
+    document.getElementById('parentDepartment').addEventListener('change', updateManagerTitle);
+    document.getElementById('managerTitlePrefix').addEventListener('change', updateManagerTitle);
+    addItemRow();
+});
+
+function updateManagerTitle() {
+    const prefix = document.getElementById('managerTitlePrefix').value;
+    let deptName = cleanText(document.getElementById('parentDepartment').value);
+    document.getElementById('managerTitle').value = deptName ? (prefix + " " + deptName) : "";
+}
+
+function fetchEmployeeData() {
+    const nationalId = document.getElementById('applicantNationalId').value.trim();
+    const password = document.getElementById('userPassword').value.trim();
+    if (nationalId.length === 14 && password.length > 0) {
+        db.collection("users").where("nationalId", "==", nationalId).get().then((querySnapshot) => {
+            if (!querySnapshot.empty) {
+                const userData = querySnapshot.docs[0].data();
+                const storedPassword = userData.password ? String(userData.password).trim() : "";
+                if (password === storedPassword) {
+                    document.getElementById('applicantName').value = cleanText(userData.name || "");
+                    document.getElementById('applicantName').readOnly = true;
+                    document.getElementById('applicantRole').value = ""; 
+                    document.getElementById('applicantRole').readOnly = false; 
+                } else {
+                    showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
                     document.getElementById('applicantName').value = "";
                 }
-            }).catch((err) => { console.error("خطأ:", err); });
-        }
+            } else {
+                showCustomAlert("تنبيه", "هذا الرقم القومي غير مسجل.");
+                document.getElementById('applicantName').value = "";
+            }
+        }).catch((err) => { console.error("خطأ:", err); });
     }
+}
 
-    function showCustomAlert(title, message) {
-        const existing = document.getElementById("customAlertModal");
-        if (existing) existing.remove();
-        const overlay = document.createElement("div");
-        overlay.id = "customAlertModal"; overlay.className = "custom-modal-overlay";
-        overlay.innerHTML = `<div class="custom-modal-box"><div class="custom-modal-header"><i class="fas fa-exclamation-triangle"></i><h3>${title}</h3></div><div class="custom-modal-body">${message}</div><button class="custom-modal-btn" onclick="document.getElementById('customAlertModal').remove()">حسـناً</button></div>`;
-        document.body.appendChild(overlay);
-    }
+function showCustomAlert(title, message) {
+    const existing = document.getElementById("customAlertModal");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "customAlertModal"; overlay.className = "custom-modal-overlay";
+    overlay.innerHTML = `<div class="custom-modal-box"><div class="custom-modal-header"><i class="fas fa-exclamation-triangle"></i><h3>${title}</h3></div><div class="custom-modal-body">${message}</div><button class="custom-modal-btn" onclick="document.getElementById('customAlertModal').remove()">حسـناً</button></div>`;
+    document.body.appendChild(overlay);
+}
 
-    function showSuccess(title, message) {
-        const existing = document.getElementById("customAlertModal");
-        if (existing) existing.remove();
-        const overlay = document.createElement("div");
-        overlay.id = "customAlertModal"; overlay.className = "custom-modal-overlay";
-        overlay.innerHTML = `<div class="custom-modal-box"><div class="custom-modal-header"><i class="fas fa-check-circle" style="color:#198754;"></i><h3>${title}</h3></div><div class="custom-modal-body">${message}</div><button class="custom-modal-btn" style="background:#198754;" onclick="document.getElementById('customAlertModal').remove()">حسـناً</button></div>`;
-        document.body.appendChild(overlay);
-    }
+function showSuccess(title, message) {
+    const existing = document.getElementById("customAlertModal");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "customAlertModal"; overlay.className = "custom-modal-overlay";
+    overlay.innerHTML = `<div class="custom-modal-box"><div class="custom-modal-header"><i class="fas fa-check-circle" style="color:#198754;"></i><h3>${title}</h3></div><div class="custom-modal-body">${message}</div><button class="custom-modal-btn" style="background:#198754;" onclick="document.getElementById('customAlertModal').remove()">حسـناً</button></div>`;
+    document.body.appendChild(overlay);
+}
 
-    function switchView(viewId) {
-        document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active'));
-        document.getElementById(viewId).classList.add('active');
-        window.scrollTo(0, 0);
-    }
+function switchView(viewId) {
+    document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active'));
+    document.getElementById(viewId).classList.add('active');
+    window.scrollTo(0, 0);
+}
 
-    let itemRowCount = 0;
-    function addItemRow() {
-        itemRowCount++;
-        const tbody = document.getElementById('itemsTableBody');
-        const tr = document.createElement('tr');
-        tr.id = `item_row_${itemRowCount}`;
-        tr.innerHTML = `
-            <td><input type="text" class="item-desc" placeholder="اسم الصنف..." required></td>
-            <td><input type="text" class="item-qty" placeholder="الكمية" required></td>
-            <td><input type="number" class="item-cost" placeholder="0.00" required oninput="calcTotalRequestCost()"></td>
-            <td><input type="text" class="item-purpose" placeholder="الغرض..." required></td>
-            <td><button type="button" class="back-btn" style="background:#dc3545; padding:4px 8px;" onclick="removeItemRow('${tr.id}')"><i class="fas fa-trash"></i></button></td>
-        `;
-        tbody.appendChild(tr);
-    }
+let itemRowCount = 0;
+function addItemRow() {
+    itemRowCount++;
+    const tbody = document.getElementById('itemsTableBody');
+    const tr = document.createElement('tr');
+    tr.id = `item_row_${itemRowCount}`;
+    tr.innerHTML = `
+        <td><input type="text" class="item-desc" placeholder="اسم الصنف..." required></td>
+        <td><input type="text" class="item-qty" placeholder="الكمية" required></td>
+        <td><input type="number" class="item-cost" placeholder="0.00" required oninput="calcTotalRequestCost()"></td>
+        <td><input type="text" class="item-purpose" placeholder="الغرض..." required></td>
+        <td><button type="button" class="back-btn" style="background:#dc3545; padding:4px 8px;" onclick="removeItemRow('${tr.id}')"><i class="fas fa-trash"></i></button></td>
+    `;
+    tbody.appendChild(tr);
+}
 
-    function removeItemRow(rowId) {
-        const row = document.getElementById(rowId);
-        if (row) { row.remove(); calcTotalRequestCost(); }
-    }
+function removeItemRow(rowId) {
+    const row = document.getElementById(rowId);
+    if (row) { row.remove(); calcTotalRequestCost(); }
+}
 
-    function calcTotalRequestCost() {
-        let total = 0;
-        document.querySelectorAll('.item-cost').forEach(input => { total += parseFloat(input.value) || 0; });
-        document.getElementById('totalCostDisplay').value = total.toFixed(2) + " ج.م";
-    }
+function calcTotalRequestCost() {
+    let total = 0;
+    document.querySelectorAll('.item-cost').forEach(input => { total += parseFloat(input.value) || 0; });
+    document.getElementById('totalCostDisplay').value = total.toFixed(2) + " ج.م";
+}
 
-    function resetCreateForm() {
-        document.getElementById('requestForm').reset();
-        document.getElementById('itemsTableBody').innerHTML = "";
-        itemRowCount = 0;
-        addItemRow();
-        if (deptSelect) deptSelect.setValue("", false);
-        if (titleSelect) titleSelect.setValue("السيد المحاسب/", false);
-        document.getElementById('requestFormContainer').style.display = 'block';
-        document.getElementById('successBox').style.display = 'none';
-        document.getElementById('submitBtn').innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-        document.getElementById('submitBtn').disabled = false;
-        updateManagerTitle();
-        calcTotalRequestCost();
-    }
+function resetCreateForm() {
+    document.getElementById('requestForm').reset();
+    document.getElementById('itemsTableBody').innerHTML = "";
+    itemRowCount = 0;
+    addItemRow();
+    if (deptSelect) deptSelect.setValue("", false);
+    if (titleSelect) titleSelect.setValue("السيد المحاسب/", false);
+    document.getElementById('requestFormContainer').style.display = 'block';
+    document.getElementById('successBox').style.display = 'none';
+    document.getElementById('submitBtn').innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+    document.getElementById('submitBtn').disabled = false;
+    updateManagerTitle();
+    calcTotalRequestCost();
+}
 
-    document.getElementById('requestForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const items = [];
-        let valid = true;
-        document.querySelectorAll('#itemsTableBody tr').forEach(tr => {
-            const desc = tr.querySelector('.item-desc').value.trim();
-            const qty = tr.querySelector('.item-qty').value.trim();
-            const cost = tr.querySelector('.item-cost').value.trim();
-            const purpose = tr.querySelector('.item-purpose').value.trim();
-            if (!desc || !qty || !cost || !purpose) valid = false;
-            else items.push({ item: desc, qty: qty, cost: parseFloat(cost) || 0, purpose: purpose });
-        });
-
-        if (!valid || items.length === 0) return showCustomAlert("تنبيه", "يرجى إكمال بيانات الأصناف.");
-
-        const btn = document.getElementById('submitBtn');
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
-        btn.disabled = true;
-        lastCreatedReqId = "REQ-" + Math.floor(100000 + Math.random() * 900000);
-
-        let totalCost = 0;
-        items.forEach(it => totalCost += it.cost);
-        
-        const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
-        const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
-        const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
-
-        const data = {
-            requestId: lastCreatedReqId,
-            nationalId: document.getElementById('applicantNationalId').value,
-            applicantName: cleanText(document.getElementById('applicantName').value),
-            role: cleanText(document.getElementById('applicantRole').value),
-            parentDepartment: selectedDeptDisplay, 
-            departmentKey: selectedDeptKey, 
-            phone: document.getElementById('applicantPhone').value,
-            titlePrefix: document.getElementById('managerTitle').value,
-            managerName: cleanText(document.getElementById('managerName').value),
-            itemsList: JSON.stringify(items),
-            totalCost: totalCost,
-            Current_Stage: "مراجعة " + selectedDeptDisplay, 
-            Status: "قيد الانتظار - موافقة " + selectedDeptDisplay,
-            Assigned_Central_Manager: specificCentralManager,
-            History: [] 
-        };
-
-        const requestData = { ...data, Timestamp: new Date().toISOString() };
-        db.collection("requests").doc(lastCreatedReqId).set(requestData).then(() => {
-            document.getElementById('requestFormContainer').style.display = 'none';
-            document.getElementById('successBox').style.display = 'block';
-            activeRequestsData.push({ Request_ID: lastCreatedReqId, ...requestData });
-        }).catch((error) => {
-            console.error("خطأ: ", error);
-            showCustomAlert("خطأ", "تعذر حفظ الطلب.");
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            btn.disabled = false;
-        });
+document.getElementById('requestForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const items = [];
+    let valid = true;
+    document.querySelectorAll('#itemsTableBody tr').forEach(tr => {
+        const desc = tr.querySelector('.item-desc').value.trim();
+        const qty = tr.querySelector('.item-qty').value.trim();
+        const cost = tr.querySelector('.item-cost').value.trim();
+        const purpose = tr.querySelector('.item-purpose').value.trim();
+        if (!desc || !qty || !cost || !purpose) valid = false;
+        else items.push({ item: desc, qty: qty, cost: parseFloat(cost) || 0, purpose: purpose });
     });
 
-    function handleLogin() {
-        const selectedName = cleanText(document.getElementById('reviewUsername').value);
-        const password = document.getElementById('reviewPassword').value.trim();
-        
-        if (!selectedName) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
-        if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
-        
-        const btn = document.getElementById('loginBtn');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+    if (!valid || items.length === 0) return showCustomAlert("تنبيه", "يرجى إكمال بيانات الأصناف.");
 
-        db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
-            let foundDoc = null;
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const cName = cleanText(data.centralManager || "");
-                const nName = cleanText(data.name || "");
-                const rName = cleanText(data.role || "");
-                
-                if (cName === selectedName || nName === selectedName || rName === selectedName) {
-                    foundDoc = doc;
-                }
-            });
+    const btn = document.getElementById('submitBtn');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+    btn.disabled = true;
+    lastCreatedReqId = "REQ-" + Math.floor(100000 + Math.random() * 900000);
 
-            if (!foundDoc) {
-                btn.disabled = false;
-                btn.innerHTML = 'دخول';
-                return showCustomAlert("خطأ", "اسم المستخدم غير موجود في قاعدة البيانات.");
+    let totalCost = 0;
+    items.forEach(it => totalCost += it.cost);
+    
+    const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
+    const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
+    const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
+
+    const data = {
+        requestId: lastCreatedReqId,
+        nationalId: document.getElementById('applicantNationalId').value,
+        applicantName: cleanText(document.getElementById('applicantName').value),
+        role: cleanText(document.getElementById('applicantRole').value),
+        parentDepartment: selectedDeptDisplay, 
+        departmentKey: selectedDeptKey, 
+        phone: document.getElementById('applicantPhone').value,
+        titlePrefix: document.getElementById('managerTitle').value,
+        managerName: cleanText(document.getElementById('managerName').value),
+        itemsList: JSON.stringify(items),
+        totalCost: totalCost,
+        Current_Stage: "مراجعة " + selectedDeptDisplay, 
+        Status: "قيد الانتظار - موافقة " + selectedDeptDisplay,
+        Assigned_Central_Manager: specificCentralManager,
+        History: [] 
+    };
+
+    const requestData = { ...data, Timestamp: new Date().toISOString() };
+    db.collection("requests").doc(lastCreatedReqId).set(requestData).then(() => {
+        document.getElementById('requestFormContainer').style.display = 'none';
+        document.getElementById('successBox').style.display = 'block';
+        activeRequestsData.push({ Request_ID: lastCreatedReqId, ...requestData });
+    }).catch((error) => {
+        console.error("خطأ: ", error);
+        showCustomAlert("خطأ", "تعذر حفظ الطلب.");
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+        btn.disabled = false;
+    });
+});
+
+function handleLogin() {
+    const selectedName = cleanText(document.getElementById('reviewUsername').value);
+    const password = document.getElementById('reviewPassword').value.trim();
+    
+    if (!selectedName) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
+    if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
+    
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
+
+    db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
+        let foundDoc = null;
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const cName = cleanText(data.centralManager || "");
+            const nName = cleanText(data.name || "");
+            const rName = cleanText(data.role || "");
+            
+            if (cName === selectedName || nName === selectedName || rName === selectedName) {
+                foundDoc = doc;
             }
+        });
 
-            const userData = foundDoc.data();
-            const storedPassword = String(userData.password || "").trim();
-
-            if (password !== storedPassword) {
-                btn.disabled = false;
-                btn.innerHTML = 'دخول';
-                return showCustomAlert("خطأ", "كلمة المرور غير صحيحة. يرجى كتابة كلمة المرور المسجلة في قاعدة البيانات.");
-            }
-
-            successLoginAction(foundDoc.id, userData, foundDoc.id, btn);
-
-        }).catch((error) => {
+        if (!foundDoc) {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
-            showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
-        });
-    }
+            return showCustomAlert("خطأ", "اسم المستخدم غير موجود في قاعدة البيانات.");
+        }
 
-    function successLoginAction(docId, userData, uid, btn) {
+        const userData = foundDoc.data();
+        const storedPassword = String(userData.password || "").trim();
+
+        if (password !== storedPassword) {
+            btn.disabled = false;
+            btn.innerHTML = 'دخول';
+            return showCustomAlert("خطأ", "كلمة المرور غير صحيحة. يرجى كتابة كلمة المرور المسجلة في قاعدة البيانات.");
+        }
+
+        successLoginAction(foundDoc.id, userData, foundDoc.id, btn);
+
+    }).catch((error) => {
         btn.disabled = false;
         btn.innerHTML = 'دخول';
-        loggedInUser = {
-            uid: uid,
-            name: cleanText(userData.name || userData.centralManager || "مسؤول"),
-            role: cleanText(userData.role || userData.centralManager || "مسؤول"),
-            centralManager: cleanText(userData.centralManager || ""),
-            department: cleanText(userData.department || "")
-        };
-        localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
-        document.getElementById('loginBox').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'block';
-        document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + (loggedInUser.role ? " (" + loggedInUser.role + ")" : "");
-        loadReviewRequests();
-        startAutoRefresh();
-    }
+        showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
+    });
+}
 
-    function logoutReviewUser() {
-        auth.signOut().then(() => {
-            localStorage.removeItem('reviewUser');
-            loggedInUser = {};
-            document.getElementById('dashboard').style.display = 'none';
-            document.getElementById('loginBox').style.display = 'block';
-            document.getElementById('reviewPassword').value = '';
-            if (reviewUserSelect) reviewUserSelect.setValue('', false);
-            stopAutoRefresh();
-        });
-    }
+function successLoginAction(docId, userData, uid, btn) {
+    btn.disabled = false;
+    btn.innerHTML = 'دخول';
+    loggedInUser = {
+        uid: uid,
+        name: cleanText(userData.name || userData.centralManager || "مسؤول"),
+        role: cleanText(userData.role || userData.centralManager || "مسؤول"),
+        centralManager: cleanText(userData.centralManager || ""),
+        department: cleanText(userData.department || "")
+    };
+    localStorage.setItem('reviewUser', JSON.stringify(loggedInUser)); 
+    document.getElementById('loginBox').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('welcomeTitle').innerText = "مرحباً: " + loggedInUser.name + (loggedInUser.role ? " (" + loggedInUser.role + ")" : "");
+    loadReviewRequests();
+    startAutoRefresh();
+}
 
-    function switchTab(tab) {
-        currentTab = tab;
-        document.getElementById('tabPending').classList.toggle('active', tab === 'pending');
-        document.getElementById('tabArchive').classList.toggle('active', tab === 'archive');
-        renderFilteredRequests();
-    }
+function logoutReviewUser() {
+    auth.signOut().then(() => {
+        localStorage.removeItem('reviewUser');
+        loggedInUser = {};
+        document.getElementById('dashboard').style.display = 'none';
+        document.getElementById('loginBox').style.display = 'block';
+        document.getElementById('reviewPassword').value = '';
+        if (reviewUserSelect) reviewUserSelect.setValue('', false);
+        stopAutoRefresh();
+    });
+}
 
-    function loadReviewRequests() {
-        if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
-        const container = document.getElementById('requestsList');
-        container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
+function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tabPending').classList.toggle('active', tab === 'pending');
+    document.getElementById('tabArchive').classList.toggle('active', tab === 'archive');
+    renderFilteredRequests();
+}
 
-        db.collection("requests").get().then((querySnapshot) => {
-            pendingData = [];
-            archiveData = [];
-            const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-            const myName = cleanText(loggedInUser.name || "").toLowerCase();
-            const myRole = cleanText(loggedInUser.role || "").toLowerCase();
+function loadReviewRequests() {
+    if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
+    const container = document.getElementById('requestsList');
+    container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
-            const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
-            const isCentralUser = !isChairmanUser && (myRole.includes("رئيس الإدارة المركزية") || myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية"));
-            const isFinanceCentral = isCentralUser && (myRole.includes("مالية") || myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("شئون") || myCentral.includes("شئون"));
-            const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
-            const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
+    db.collection("requests").get().then((querySnapshot) => {
+        pendingData = [];
+        archiveData = [];
+        const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+        const myName = cleanText(loggedInUser.name || "").toLowerCase();
+        const myRole = cleanText(loggedInUser.role || "").toLowerCase();
 
-            const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
-            const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
+        const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
+        const isCentralUser = !isChairmanUser && (myRole.includes("رئيس الإدارة المركزية") || myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية"));
+        const isFinanceCentral = isCentralUser && (myRole.includes("مالية") || myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("شئون") || myCentral.includes("شئون"));
+        const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
+        const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
-            querySnapshot.forEach((doc) => {
-                const req = doc.data();
-                req.Request_ID = doc.id; 
-                const stage = cleanText(req.Current_Stage || "").toLowerCase();
-                const status = cleanText(req.Status || "").toLowerCase();
-                const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
-                let history = req.History || [];
+        querySnapshot.forEach((doc) => {
+            const req = doc.data();
+            req.Request_ID = doc.id; 
+            const stage = cleanText(req.Current_Stage || "").toLowerCase();
+            const status = cleanText(req.Status || "").toLowerCase();
+            const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
+            let history = req.History || [];
+            
+            let isMyTurnNow = false;
+            let isArchivedForMe = false;
+            let iHaveActed = history.some(h => (typeof h === 'object' && h.user && (h.user.includes(loggedInUser.name) || h.user.includes(loggedInUser.role) || h.user.includes(loggedInUser.centralManager))) || (typeof h === 'string' && (h.includes(loggedInUser.name) || h.includes(loggedInUser.role) || h.includes(loggedInUser.centralManager))));
+
+            if (isChairmanUser) {
+                if (stage.includes("رئيس مجلس") || status.includes("رئيس مجلس")) {
+                    isMyTurnNow = true;
+                } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
+                    isArchivedForMe = true;
+                }
+            }
+            else if (isCentralUser) {
+                let isThisMyRequest = (assignedCentral === myRole) || (assignedCentral === myCentral) || (assignedCentral === myName);
                 
-                let isMyTurnNow = false;
-                let isArchivedForMe = false;
-                let iHaveActed = history.some(h => h.includes(loggedInUser.name) || h.includes(loggedInUser.role) || h.includes(loggedInUser.centralManager));
+                if (isFinanceCentral) {
+                    let needsFinanceReview = stage.includes("بانتظار اعتماد مالي") || status.includes("بانتظار اعتماد مالي") || stage.includes("اكتملت آراء");
+                    if (needsFinanceReview) isThisMyRequest = true;
+                }
 
-                if (isChairmanUser) {
-                    if (stage.includes("رئيس مجلس") || status.includes("رئيس مجلس")) {
+                if (isThisMyRequest) {
+                    if (stage.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد") || stage.includes("عودة من المالية") || stage.includes("اكتملت آراء")) {
                         isMyTurnNow = true;
                     } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
                         isArchivedForMe = true;
                     }
                 }
-                else if (isCentralUser) {
-                    let isThisMyRequest = (assignedCentral === myRole) || (assignedCentral === myCentral) || (assignedCentral === myName);
-                    
-                    if (isFinanceCentral) {
-                        let needsFinanceReview = stage.includes("بانتظار اعتماد مالي") || status.includes("بانتظار اعتماد مالي");
-                        if (needsFinanceReview) isThisMyRequest = true;
-                    }
 
-                    if (isThisMyRequest) {
-                        if (stage.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد") || stage.includes("عودة من المالية")) {
-                            isMyTurnNow = true;
-                        } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
-                            isArchivedForMe = true;
-                        }
-                    }
-
-                    if (iHaveActed && (stage.includes("بانتظار اعتماد مالي") || stage.includes("بانتظار رأي"))) {
-                        isMyTurnNow = false;
-                        isArchivedForMe = true;
-                    }
-                } 
-                else if (isPlanningUser || isFinanceUser) {
-                    let hasMyOpinion = false;
-                    let isTransferredToMe = false;
-                    
-                    if (req.Transfer_State) {
-                        try {
-                            let state = JSON.parse(req.Transfer_State);
-                            for (let key in state) {
-                                let keyLower = key.toLowerCase();
-                                if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
-                                    isTransferredToMe = true;
-                                    if (state[key].decision !== 'pending') hasMyOpinion = true;
-                                }
-                                if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
-                                    isTransferredToMe = true;
-                                    if (state[key].decision !== 'pending') hasMyOpinion = true;
-                                }
-                            }
-                        } catch(e) {}
-                    }
-
-                    if (isTransferredToMe) {
-                        if (!hasMyOpinion) isMyTurnNow = true; 
-                        else isArchivedForMe = true; 
-                    }
-                } 
-                else {
-                    let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
-                    if (isMyDeptRequest) {
-                        if (stage.includes("مراجعة " + myCentral) && !iHaveActed) {
-                            isMyTurnNow = true;
-                        } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
-                            isArchivedForMe = true;
-                        }
-                    }
-                }
-
-                if ((iHaveActed || status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً")) && (stage.includes(myCentral) || history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral)))) {
+                if (iHaveActed && (stage.includes("بانتظار اعتماد مالي") || stage.includes("بانتظار رأي"))) {
+                    isMyTurnNow = false;
                     isArchivedForMe = true;
                 }
-
-                if (isMyTurnNow) pendingData.push(req);
-                else if (isArchivedForMe) archiveData.push(req);
-            });
-
-            pendingData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
-            archiveData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
-
-            document.getElementById('pendingCount').textContent = pendingData.length;
-            document.getElementById('archiveCount').textContent = archiveData.length;
-            renderFilteredRequests();
-        }).catch((error) => {
-            console.error("Error: ", error);
-            container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
-        });
-    }
-
-    function renderFilteredRequests() {
-        const container = document.getElementById('requestsList');
-        const data = currentTab === 'pending' ? pendingData : archiveData;
-        const dateFrom = document.getElementById('filterDateFrom').value;
-        const dateTo = document.getElementById('filterDateTo').value;
-        const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
-        const deptFilter = document.getElementById('filterDept').value;
-        const statusFilter = document.getElementById('filterStatus').value;
-        
-        let filtered = data.filter(function(r) {
-            if (dateFrom || dateTo) {
-                const ts = new Date(r.Timestamp || 0);
-                if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
-                if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
-            }
-            if (deptFilter) { if (cleanText(r.parentDepartment || "") !== cleanText(deptFilter)) return false; }
-            if (statusFilter) {
-                const status = cleanText(r.Status || "");
-                if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
-                if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
-                if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
-                if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
-            }
-            if (searchFilter) {
-                const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
-                const nameMatch = cleanText(r.applicantName || "").toLowerCase().indexOf(searchFilter) !== -1;
-                if (!idMatch && !nameMatch) return false;
-            }
-            return true;
-        });
-        
-        container.innerHTML = "";
-        if (filtered.length === 0) {
-            container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات تطابق البحث.</p>';
-            return;
-        }
-        activeRequestsData = filtered;
-        filtered.forEach(req => container.appendChild(buildRequestCard(req, currentTab === 'pending')));
-    }
-
-    function resetFilters() {
-        document.getElementById('filterDateFrom').value = "";
-        document.getElementById('filterDateTo').value = "";
-        document.getElementById('filterSearch').value = "";
-        document.getElementById('filterDept').value = "";
-        document.getElementById('filterStatus').value = "";
-        renderFilteredRequests();
-    }
-
-    function processAction(requestId, actionType, extraData = {}) {
-        const nowStr = new Date().toLocaleString('ar-EG');
-        
-        db.collection("requests").doc(requestId).get().then((doc) => {
-            if (!doc.exists) return showCustomAlert("خطأ", "الطلب غير موجود في قاعدة البيانات.");
-            
-            let req = doc.data();
-            let updates = {};
-            let history = req.History || [];
-            
-            let officialTitle = loggedInUser.role || loggedInUser.centralManager || loggedInUser.name;
-            if (!history.includes(officialTitle)) history.push(officialTitle);
-
-            if (actionType === 'gm_approve') {
-                let targetCentral = deptParentMap[req.parentDepartment] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                updates = { 
-                    Current_Stage: "مراجعة " + targetCentral, 
-                    Current_Owner_Role: targetCentral,
-                    Gm_Date: nowStr, 
-                    Status: "قيد الانتظار - موافقة " + targetCentral,
-                    Central_Manager_Name: targetCentral,
-                    Assigned_Central_Manager: targetCentral,
-                    History: history
-                };
             } 
-            else if (actionType === 'central_approve_direct') {
-                updates = { 
-                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
-                    Current_Owner_Role: "رئيس مجلس الإدارة",
-                    Central_Date: nowStr, 
-                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
-                    History: history 
-                };
+            else if (isPlanningUser || isFinanceUser) {
+                let hasMyOpinion = false;
+                let isTransferredToMe = false;
+                
+                if (req.Transfer_State) {
+                    try {
+                        let state = JSON.parse(req.Transfer_State);
+                        for (let key in state) {
+                            let keyLower = key.toLowerCase();
+                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                                isTransferredToMe = true;
+                                if (state[key].decision !== 'pending') hasMyOpinion = true;
+                            }
+                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                                isTransferredToMe = true;
+                                if (state[key].decision !== 'pending') hasMyOpinion = true;
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                if (isTransferredToMe) {
+                    if (!hasMyOpinion) isMyTurnNow = true; 
+                    else isArchivedForMe = true; 
+                }
+            } 
+            else {
+                let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
+                if (isMyDeptRequest) {
+                    if (stage.includes("مراجعة " + myCentral) && !iHaveActed) {
+                        isMyTurnNow = true;
+                    } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
+                        isArchivedForMe = true;
+                    }
+                }
             }
-            else if (actionType === 'send_finance_review') {
-                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager;
-                updates = { 
-                    Current_Stage: "بانتظار اعتماد مالي من رئيس الإدارة المركزية للشؤون المالية", 
-                    Current_Owner_Role: "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية",
-                    Central_Date: nowStr, 
-                    Status: "قيد الانتظار - بانتظار اعتماد مالي (من " + officialTitle + ")",
-                    Finance_Review_By: originalCentral,
-                    History: history 
-                };
+
+            if ((iHaveActed || status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً")) && (stage.includes(myCentral) || history.some(h => typeof h === 'string' ? h.includes(myCentral) : (h.user && h.user.includes(myCentral))))) {
+                isArchivedForMe = true;
             }
-            else if (actionType === 'finance_approve_and_return') {
-                let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
+
+            if (isMyTurnNow) pendingData.push(req);
+            else if (isArchivedForMe) archiveData.push(req);
+        });
+
+        pendingData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
+        archiveData.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
+
+        document.getElementById('pendingCount').textContent = pendingData.length;
+        document.getElementById('archiveCount').textContent = archiveData.length;
+        renderFilteredRequests();
+    }).catch((error) => {
+        console.error("Error: ", error);
+        container.innerHTML = '<p class="empty-state" style="color:#dc3545;">تعذر تحميل الطلبات.</p>';
+    });
+}
+
+function renderFilteredRequests() {
+    const container = document.getElementById('requestsList');
+    const data = currentTab === 'pending' ? pendingData : archiveData;
+    const dateFrom = document.getElementById('filterDateFrom').value;
+    const dateTo = document.getElementById('filterDateTo').value;
+    const searchFilter = document.getElementById('filterSearch').value.trim().toLowerCase();
+    const roleFilter = document.getElementById('filterRole').value;
+    const statusFilter = document.getElementById('filterStatus').value;
+    
+    let filtered = data.filter(function(r) {
+        if (dateFrom || dateTo) {
+            const ts = new Date(r.Timestamp || 0);
+            if (dateFrom) { const df = new Date(dateFrom); df.setHours(0,0,0,0); if (ts < df) return false; }
+            if (dateTo) { const dt = new Date(dateTo); dt.setHours(23,59,59,999); if (ts > dt) return false; }
+        }
+        // ✅ الفلترة بالوظيفة
+        if (roleFilter && cleanText(r.role || "") !== cleanText(roleFilter)) return false;
+        
+        if (statusFilter) {
+            const status = cleanText(r.Status || "");
+            if (statusFilter === 'approved' && status.indexOf("معتمد") === -1) return false;
+            if (statusFilter === 'rejected' && status.indexOf("مرفوض") === -1) return false;
+            if (statusFilter === 'pending' && status.indexOf("قيد الانتظار") === -1) return false;
+            if (statusFilter === 'transferred' && status.indexOf("أخذ رأي") === -1 && status.indexOf("أخذ الرأي") === -1) return false;
+        }
+        if (searchFilter) {
+            const idMatch = cleanText(r.Request_ID || "").toLowerCase().indexOf(searchFilter) !== -1;
+            const nameMatch = cleanText(r.applicantName || "").toLowerCase().indexOf(searchFilter) !== -1;
+            if (!idMatch && !nameMatch) return false;
+        }
+        return true;
+    });
+    
+    container.innerHTML = "";
+    if (filtered.length === 0) {
+        container.innerHTML = '<p class="empty-state"><i class="fas fa-inbox"></i><br>لا توجد طلبات تطابق البحث.</p>';
+        return;
+    }
+    activeRequestsData = filtered;
+    filtered.forEach(req => container.appendChild(buildRequestCard(req, currentTab === 'pending')));
+}
+
+function resetFilters() {
+    document.getElementById('filterDateFrom').value = "";
+    document.getElementById('filterDateTo').value = "";
+    document.getElementById('filterRole').value = "";
+    document.getElementById('filterSearch').value = "";
+    document.getElementById('filterStatus').value = "";
+    renderFilteredRequests();
+}
+
+// ✅ الدالة المعدلة: تسجيل التواريخ والإجراءات وإضافة التأشيرات
+function processAction(requestId, actionType, extraData = {}) {
+    const nowStr = new Date().toLocaleString('ar-EG');
+    
+    db.collection("requests").doc(requestId).get().then((doc) => {
+        if (!doc.exists) return showCustomAlert("خطأ", "الطلب غير موجود في قاعدة البيانات.");
+        
+        let req = doc.data();
+        let updates = {};
+        let history = req.History || [];
+        
+        let officialTitle = loggedInUser.role || loggedInUser.centralManager || loggedInUser.name;
+        
+        let actionLabel = "";
+        if (actionType === 'gm_approve') actionLabel = "موافقة وتحويل للمركزية";
+        else if (actionType === 'central_approve_direct') actionLabel = "موافقة وتمرير لمجلس الإدارة";
+        else if (actionType === 'send_finance_review') actionLabel = "إرسال للاعتماد المالي";
+        else if (actionType === 'finance_approve_and_return') actionLabel = "اعتماد مالي وإرجاع للرئيس الأصلي";
+        else if (actionType === 'finance_approve_and_send_chairman') actionLabel = "اعتماد مالي نهائي وإرسال للمجلس";
+        else if (actionType === 'dept_approve') actionLabel = "موافقة / إرسال رأي";
+        else if (actionType === 'dept_reject') actionLabel = "رفض مسبب (رأي)";
+        else if (actionType === 'chairman_approve') actionLabel = "اعتماد نهائي";
+        else if (actionType === 'chairman_reject') actionLabel = "رفض نهائي";
+        else if (actionType === 'reject') actionLabel = "رفض";
+        
+        history.push({
+            user: officialTitle,
+            action: actionLabel,
+            date: nowStr,
+            reason: extraData.rejectReason || ""
+        });
+
+        if (actionType === 'gm_approve') {
+            let targetCentral = deptParentMap[req.parentDepartment] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+            updates = { 
+                Current_Stage: "مراجعة " + targetCentral, 
+                Current_Owner_Role: targetCentral,
+                Gm_Date: nowStr, 
+                Status: "قيد الانتظار - موافقة " + targetCentral,
+                Central_Manager_Name: targetCentral,
+                Assigned_Central_Manager: targetCentral,
+                History: history
+            };
+        } 
+        else if (actionType === 'central_approve_direct') {
+            updates = { 
+                Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                Current_Owner_Role: "رئيس مجلس الإدارة",
+                Central_Date: nowStr, 
+                Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                History: history 
+            };
+        }
+        else if (actionType === 'send_finance_review') {
+            let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager;
+            updates = { 
+                Current_Stage: "بانتظار اعتماد مالي من رئيس الإدارة المركزية للشؤون المالية", 
+                Current_Owner_Role: "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية",
+                Central_Date: nowStr, 
+                Status: "قيد الانتظار - بانتظار اعتماد مالي (من " + officialTitle + ")",
+                Finance_Review_By: originalCentral,
+                History: history 
+            };
+        }
+        else if (actionType === 'finance_approve_and_return') {
+            let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
+            updates = { 
+                Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
+                Current_Owner_Role: originalCentral,
+                Central_Date: nowStr, 
+                Status: "عودة من المالية - بانتظار اعتماد نهائي " + originalCentral,
+                Assigned_Central_Manager: originalCentral,
+                Finance_Note: extraData.financeNote || "", 
+                History: history 
+            };
+        }
+        else if (actionType === 'finance_approve_and_send_chairman') {
+            updates = { 
+                Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                Current_Owner_Role: "رئيس مجلس الإدارة",
+                Central_Date: nowStr, 
+                Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                Finance_Note: extraData.financeNote || "", 
+                History: history 
+            };
+        }
+        else if (actionType === 'central_approve_final') {
+            let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
+            if (originalCentral && originalCentral !== officialTitle) {
                 updates = { 
                     Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
                     Current_Owner_Role: originalCentral,
@@ -1161,8 +1254,7 @@
                     Assigned_Central_Manager: originalCentral,
                     History: history 
                 };
-            }
-            else if (actionType === 'finance_approve_and_send_chairman') {
+            } else {
                 updates = { 
                     Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
                     Current_Owner_Role: "رئيس مجلس الإدارة",
@@ -1171,106 +1263,127 @@
                     History: history 
                 };
             }
-            else if (actionType === 'central_approve_final') {
-                let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
-                if (originalCentral && originalCentral !== officialTitle) {
-                    updates = { 
-                        Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
-                        Current_Owner_Role: originalCentral,
-                        Central_Date: nowStr, 
-                        Status: "عودة من المالية - بانتظار اعتماد نهائي " + originalCentral,
-                        Assigned_Central_Manager: originalCentral,
-                        History: history 
-                    };
-                } else {
-                    updates = { 
-                        Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
-                        Current_Owner_Role: "رئيس مجلس الإدارة",
-                        Central_Date: nowStr, 
-                        Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
-                        History: history 
-                    };
+        }
+        else if (actionType === 'central_approve') {
+            updates = { 
+                Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                Current_Owner_Role: "رئيس مجلس الإدارة",
+                Central_Date: nowStr, 
+                Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                History: history 
+            };
+        }
+        else if (actionType === 'finance_transfer') {
+            let existingState = {};
+            try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+            let transferObj = { ...existingState };
+            extraData.targetDepts.forEach(dept => { if (!transferObj[dept]) transferObj[dept] = { decision: "pending", date: nowStr }; });
+            let deptNamesStr = Object.keys(transferObj).join(" و ");
+            updates = { Current_Stage: "بانتظار رأي " + deptNamesStr, Transfer_State: JSON.stringify(transferObj), Status: "قيد الانتظار - أخذ رأي " + deptNamesStr, History: history };
+        }
+        else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
+            let currentState = {};
+            try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
+            let updatedState = { ...currentState };
+            const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
+            const myName = cleanText(loggedInUser.name || "").toLowerCase();
+            const myRole = cleanText(loggedInUser.role || "").toLowerCase();
+            
+            for (let key in updatedState) {
+                let keyLower = key.toLowerCase();
+                if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                    updatedState[key].date = nowStr;
+                    if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
+                } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                    updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
+                    updatedState[key].date = nowStr;
+                    if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                 }
             }
-            else if (actionType === 'central_approve') {
-                updates = { 
-                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
-                    Current_Owner_Role: "رئيس مجلس الإدارة",
-                    Central_Date: nowStr, 
-                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
-                    History: history 
-                };
+            
+            let allFinished = true;
+            let activeDeptsList = [];
+            for (let key in updatedState) {
+                activeDeptsList.push(key);
+                if (updatedState[key].decision === 'pending') allFinished = false;
             }
-            else if (actionType === 'finance_transfer') {
-                let existingState = {};
-                try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-                let transferObj = { ...existingState };
-                extraData.targetDepts.forEach(dept => { if (!transferObj[dept]) transferObj[dept] = { decision: "pending", date: nowStr }; });
-                let deptNamesStr = Object.keys(transferObj).join(" و ");
-                updates = { Current_Stage: "بانتظار رأي " + deptNamesStr, Transfer_State: JSON.stringify(transferObj), Status: "قيد الانتظار - أخذ رأي " + deptNamesStr, History: history };
-            }
-            else if (actionType === 'dept_approve' || actionType === 'dept_reject') {
-                let currentState = {};
-                try { currentState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
-                let updatedState = { ...currentState };
-                const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
-                const myName = cleanText(loggedInUser.name || "").toLowerCase();
-                const myRole = cleanText(loggedInUser.role || "").toLowerCase();
-                
-                for (let key in updatedState) {
-                    let keyLower = key.toLowerCase();
-                    if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
-                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr;
-                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                    } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
-                        updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr;
-                        if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
-                    }
-                }
-                
-                let allFinished = true;
-                let activeDeptsList = [];
-                for (let key in updatedState) {
-                    activeDeptsList.push(key);
-                    if (updatedState[key].decision === 'pending') allFinished = false;
-                }
-                
-                let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض مسبب";
-                
-                // ✅ التعديل: رجوع الطلب من المعاونين إلى رئيس المالية (مش لرئيس توشكى)
-                let financeCentral = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+            
+            let decisionText = actionType === 'dept_approve' ? "موافقة" : "رفض مسبب";
+            
+            let financeCentral = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
 
-                updates = { 
-                    Current_Stage: allFinished ? ("مراجعة " + financeCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
-                    Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + financeCentral) : ("قيد الانتظار - تم أخذ رأي " + officialTitle + " (" + decisionText + ") وبانتظار بقية الإدارات"),
-                    Transfer_State: JSON.stringify(updatedState),
-                    Assigned_Central_Manager: allFinished ? financeCentral : req.Assigned_Central_Manager,
-                    History: history
-                };
-            }
-            else if (actionType === 'chairman_approve') {
-                updates = { Current_Stage: "معتمد نهائياً", Chairman_Date: nowStr, Status: "معتمد نهائياً", History: history };
-            }
-            else if (actionType === 'chairman_reject') {
-                updates = { Current_Stage: "مرفوض نهائياً", Reject_Reason: extraData.rejectReason, Chairman_Date: nowStr, Status: "مرفوض نهائياً من " + officialTitle, History: history };
-            }
-            else if (actionType === 'reject') {
-                updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Reject_Date: nowStr, Status: "مرفوض من " + officialTitle, History: history };
-            }
+            updates = { 
+                Current_Stage: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + financeCentral) : ("بانتظار استكمال باقي الآراء (" + activeDeptsList.join(" و ") + ")"), 
+                Status: allFinished ? ("اكتملت آراء الإدارات - بانتظار اعتماد " + financeCentral) : ("قيد الانتظار - تم أخذ رأي " + officialTitle + " (" + decisionText + ") وبانتظار بقية الإدارات"),
+                Transfer_State: JSON.stringify(updatedState),
+                Assigned_Central_Manager: allFinished ? financeCentral : req.Assigned_Central_Manager,
+                History: history
+            };
+        }
+        else if (actionType === 'chairman_approve') {
+            updates = { 
+                Current_Stage: "معتمد نهائياً", 
+                Chairman_Date: nowStr, 
+                Status: "معتمد نهائياً", 
+                Chairman_Note: extraData.chairmanNote || "", 
+                History: history 
+            };
+        }
+        else if (actionType === 'chairman_reject') {
+            updates = { 
+                Current_Stage: "مرفوض نهائياً", 
+                Reject_Reason: extraData.rejectReason, 
+                Chairman_Date: nowStr, 
+                Status: "مرفوض نهائياً من " + officialTitle, 
+                Chairman_Note: extraData.chairmanNote || "", 
+                History: history 
+            };
+        }
+        else if (actionType === 'reject') {
+            updates = { Current_Stage: "مرفوض", Reject_Reason: extraData.rejectReason, Reject_Date: nowStr, Status: "مرفوض من " + officialTitle, History: history };
+        }
 
-            db.collection("requests").doc(requestId).update(updates).then(() => {
-                showSuccess("تم بنجاح", "تم تنفيذ الإجراء بنجاح وأرشفة الطلب.");
-                loadReviewRequests(); 
-            }).catch((err) => {
-                showCustomAlert("فشل الحفظ (Firebase)", err.message);
-            });
+        db.collection("requests").doc(requestId).update(updates).then(() => {
+            showSuccess("تم بنجاح", "تم تنفيذ الإجراء بنجاح وأرشفة الطلب.");
+            loadReviewRequests(); 
         }).catch((err) => {
-            showCustomAlert("خطأ في جلب الطلب", err.message);
+            showCustomAlert("فشل الحفظ (Firebase)", err.message);
         });
+    }).catch((err) => {
+        showCustomAlert("خطأ في جلب الطلب", err.message);
+    });
+}
+    function promptNoteAndApprove(requestId, actionType, title, actionName) {
+        const existing = document.getElementById("noteModal");
+        if (existing) existing.remove();
+        const overlay = document.createElement("div");
+        overlay.id = "noteModal"; overlay.className = "custom-modal-overlay";
+        overlay.innerHTML = `
+          <div class="custom-modal-box" style="max-width:500px;">
+            <div class="custom-modal-header"><i class="fas fa-pen-nib" style="color:#0d6efd;"></i><h3 style="color:#1a365d;">${title}</h3></div>
+            <div class="custom-modal-body" style="text-align:right;">
+              <textarea id="noteInput" placeholder="اكتب التأشيرة هنا (اختياري)..." style="width:100%; min-height:110px; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-family:'Cairo'; font-size:14px; color:#0f172a; background:#fff; direction:rtl;"></textarea>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="noteCancel" class="custom-modal-btn" style="background:#64748b;">إلغاء</button>
+              <button id="noteConfirm" class="custom-modal-btn" style="background:#198754;">تأكيد</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        document.getElementById('noteCancel').onclick = () => overlay.remove();
+        document.getElementById('noteConfirm').onclick = () => {
+            const noteText = document.getElementById('noteInput').value.trim();
+            overlay.remove();
+            let extra = {};
+            if(actionType === 'chairman_approve') extra.chairmanNote = noteText;
+            else if(actionType === 'finance_approve_and_return' || actionType === 'finance_approve_and_send_chairman') extra.financeNote = noteText;
+            
+            processAction(requestId, actionType, extra);
+        };
     }
 
+    // ✅ دالة النافذة المنبثقة للرفض (مع التأشيرة)
     function promptReject(requestId, actionName = "reject") {
         const existing = document.getElementById("rejectModal");
         if (existing) existing.remove();
@@ -1362,11 +1475,11 @@
             }
 
             const isFinanceCentral = actionType === 'central' && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
-            const isReturnedFromFinance = stage.toLowerCase().includes("عودة من المالية") || stage.toLowerCase().includes("بانتظار اعتماد مالي");
+            const isReturnedFromFinance = stage.toLowerCase().includes("عودة من المالية") || stage.toLowerCase().includes("بانتظار اعتماد مالي") || stage.toLowerCase().includes("اكتملت آراء");
 
             if (actionType === 'chairman') {
                 buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
+                    <button class="main-btn" style="background:#198754;" onclick="promptNoteAndApprove('${req.Request_ID}', 'chairman_approve', 'تأشيرة رئيس مجلس الإدارة', 'اعتماد')"><i class="fas fa-check"></i> معتمد نهائياً (مع التأشيرة)</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
                 </div>`;
             } 
@@ -1374,14 +1487,14 @@
                 if (isFinanceCentral) {
                     if (isReturnedFromFinance && !stage.includes("عودة من المالية")) {
                         buttonsHtml = `<div class="req-actions">
-                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve_and_return')"><i class="fas fa-undo"></i> اعتماد وإرجاع للرئيس الأصلي</button>
-                            <button class="main-btn" style="background:#0d6efd;" onclick="processAction('${req.Request_ID}', 'finance_approve_and_send_chairman')"><i class="fas fa-paper-plane"></i> اعتماد نهائي وإرسال لمجلس الإدارة</button>
+                            <button class="main-btn" style="background:#198754;" onclick="promptNoteAndApprove('${req.Request_ID}', 'finance_approve_and_return', 'تأشيرة الشئون المالية', 'اعتماد وإرجاع')"><i class="fas fa-undo"></i> اعتماد وإرجاع للرئيس الأصلي (مع التأشيرة)</button>
+                            <button class="main-btn" style="background:#0d6efd;" onclick="promptNoteAndApprove('${req.Request_ID}', 'finance_approve_and_send_chairman', 'تأشيرة الشئون المالية', 'اعتماد نهائي')"><i class="fas fa-paper-plane"></i> اعتماد نهائي وإرسال لمجلس الإدارة (مع التأشيرة)</button>
                             <button class="main-btn" style="background:#fd7e14;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                             <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                         </div>`;
                     } else {
                         buttonsHtml = `<div class="req-actions">
-                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve_and_send_chairman')"><i class="fas fa-check"></i> اعتماد نهائي وإرسال لمجلس الإدارة</button>
+                            <button class="main-btn" style="background:#198754;" onclick="promptNoteAndApprove('${req.Request_ID}', 'finance_approve_and_send_chairman', 'تأشيرة الشئون المالية', 'اعتماد نهائي')"><i class="fas fa-check"></i> اعتماد نهائي وإرسال لمجلس الإدارة (مع التأشيرة)</button>
                             <button class="main-btn" style="background:#fd7e14;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
                             <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
                         </div>`;
@@ -1429,15 +1542,7 @@
         return div;
     }
 
-    function startAutoRefresh() {
-        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
-        _autoRefreshTimer = setInterval(() => {
-            if (document.getElementById('dashboard') && document.getElementById('dashboard').style.display !== 'none') loadReviewRequests();
-        }, 30000);
-    }
-
-    function stopAutoRefresh() { if (_autoRefreshTimer) clearInterval(_autoRefreshTimer); }
-
+    // ✅ الطباعة مع الجدول الزمني والتأشيرات
     function printSpecificRequestFromCard(reqId) {
         let req = activeRequestsData.find(r => r.Request_ID === reqId);
         if (!req) {
@@ -1479,29 +1584,73 @@
         else if (statusText.includes("معتمد")) wm.style.display = 'none';
         else { wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; }
 
+        // ✅ عرض تواريخ الاعتماد (الجدول الزمني)
         const deptRepliesBox = document.getElementById('printDeptRepliesBox');
         const deptRepliesBody = document.getElementById('printDeptRepliesBody');
         
-        if (req.Transfer_State) {
-            try {
-                let state = JSON.parse(req.Transfer_State);
-                let rowsHtml = "";
-                for (let key in state) {
-                    let s = state[key];
-                    let decisionText = s.decision === 'approved' ? 'موافقة' : (s.decision === 'rejected' ? 'رفض مسبب' : 'قيد الانتظار');
-                    let color = s.decision === 'approved' ? '#198754' : (s.decision === 'rejected' ? '#dc3545' : '#b45309');
-                    let dateText = s.date ? `<br><span style="font-size:9px; color:#666;">(${cleanText(s.date)})</span>` : '';
-                    
-                    rowsHtml += `<tr>
-                        <td style="border: 1px solid #333; padding: 4px; text-align: right;">${cleanText(key)}</td>
-                        <td style="border: 1px solid #333; padding: 4px; text-align: center; color: ${color}; font-weight: 900;">${decisionText}${dateText}</td>
-                        <td style="border: 1px solid #333; padding: 4px; text-align: right; color: #dc3545;">${cleanText(s.reason || '-')}</td>
-                    </tr>`;
-                }
-                deptRepliesBody.innerHTML = rowsHtml;
-                deptRepliesBox.style.display = rowsHtml ? 'block' : 'none';
-            } catch(e) { deptRepliesBox.style.display = 'none'; }
-        } else deptRepliesBox.style.display = 'none';
+        let historyArr = req.History || [];
+        let timelineHtml = "";
+        historyArr.forEach(h => {
+            if (typeof h === 'object') {
+                let reasonText = h.reason ? `<br><span style="color:#b91c1c; font-size:9px;">(${cleanText(h.reason)})</span>` : '';
+                let dateStr = h.date ? `<br><span style="font-size:9px; color:#666;">${cleanText(h.date)}</span>` : '';
+                timelineHtml += `<tr>
+                    <td style="border: 1px solid #333; padding: 4px; text-align: right; font-size:10px;">${cleanText(h.user)}</td>
+                    <td style="border: 1px solid #333; padding: 4px; text-align: center; font-size:10px;">${cleanText(h.action)}${reasonText}</td>
+                    <td style="border: 1px solid #333; padding: 4px; text-align: center; font-size:10px;">${dateStr}</td>
+                </tr>`;
+            }
+        });
+        
+        if (timelineHtml !== "") {
+            deptRepliesBody.innerHTML = `
+                <tr><th colspan="3" style="text-align:center; background:#eee; font-size:11px;">سجل الاعتمادات (الجدول الزمني)</th></tr>
+                <tr><th style="text-align:right; font-size:10px;">المسؤول</th><th style="text-align:center; font-size:10px;">الإجراء</th><th style="text-align:center; font-size:10px;">التاريخ والوقت</th></tr>
+                ${timelineHtml}
+            `;
+            deptRepliesBox.style.display = 'block';
+        } else {
+            deptRepliesBox.style.display = 'none';
+        }
+
+        // ✅ عرض التأشيرات
+        const signaturesBox = document.getElementById('printSignaturesBox');
+        let hasSignature = false;
+
+        if (req.Finance_Note) {
+            document.getElementById('financeNoteText').textContent = cleanText(req.Finance_Note);
+            document.getElementById('printFinanceNote').style.display = 'block';
+            hasSignature = true;
+        } else {
+            document.getElementById('printFinanceNote').style.display = 'none';
+        }
+
+        if (req.Chairman_Note) {
+            document.getElementById('chairmanNoteText').textContent = cleanText(req.Chairman_Note);
+            document.getElementById('printChairmanNote').style.display = 'block';
+            hasSignature = true;
+        } else {
+            document.getElementById('printChairmanNote').style.display = 'none';
+        }
+
+        // نص الاعتماد الثابت لرئيس الإدارة المركزية (بناءً على نوع الإدارة)
+        let centralType = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
+        let approvalText = "";
+        if (centralType.includes("مالية") || centralType.includes("شئون") || centralType.includes("موارد")) {
+            approvalText = "يعتمد / رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
+        } else if (centralType.includes("تخطيط")) {
+            approvalText = "يعتمد / رئيس الإدارة المركزية للتخطيط والمتابعة";
+        } else if (centralType.includes("توشكى") || centralType.includes("توشكي")) {
+            approvalText = "يعتمد / رئيس الإدارة المركزية لتوشكى والبحوث";
+        } else {
+            approvalText = "يعتمد / " + cleanText(req.Assigned_Central_Manager || "");
+        }
+        
+        document.getElementById('printApprovalText').textContent = approvalText;
+        document.getElementById('printApprovalText').style.display = 'block';
+        hasSignature = true;
+
+        signaturesBox.style.display = hasSignature ? 'block' : 'none';
 
         let itemsHtml = '';
         try {
@@ -1520,6 +1669,15 @@
         document.getElementById('printRequestTotalCost').textContent = cleanText(req.totalCost || "0") + " ج.م";
         window.print();
     }
+
+    function startAutoRefresh() {
+        if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+        _autoRefreshTimer = setInterval(() => {
+            if (document.getElementById('dashboard') && document.getElementById('dashboard').style.display !== 'none') loadReviewRequests();
+        }, 30000);
+    }
+
+    function stopAutoRefresh() { if (_autoRefreshTimer) clearInterval(_autoRefreshTimer); }
 
     function exportToExcel() {
         const data = currentTab === 'pending' ? pendingData : archiveData;
