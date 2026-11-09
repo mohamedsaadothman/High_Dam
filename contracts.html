@@ -55,7 +55,6 @@
         .custom-modal-btn { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; background: #dc3545; transition: 0.2s; }
         #printableArea { display: none; }
         
-        /* ✅ التعديل: تكبير العلامة المائية وجعلها احترافية */
         .print-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 40px; font-weight: 900; z-index: 0; pointer-events: none; text-align: center; white-space: nowrap; opacity: 0.15; color: #333; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: 'Cairo', sans-serif; width: 100%; display: flex; justify-content: center; align-items: center; }
         
         @media print {
@@ -130,10 +129,8 @@
     </style>
 </head>
 <script>
-    if (sessionStorage.getItem('app_access_token') !== 'granted') {
-        alert("عذراً، يجب الدخول من الصفحة الرئيسية أولاً.");
-        window.location.href = "index.html"; 
-    }
+    // ✅ إزالة أي تخطي للدخول، والاعتماد على الباسورد الفعلي فقط
+    // الكود ده بيشتغل بس لو مفيش مستخدم مسجل
 </script>
 <body onload="loadDepartments(); loadReviewUsersList();">
 
@@ -463,6 +460,7 @@
             <div id="contractPrintSection" style="display: none; position: relative; z-index: 2;"></div>
         </div>
     </div>
+    
         <script>
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
@@ -614,7 +612,6 @@
 
     let deptSelect, titleSelect, reviewUserSelect;
 
-    // ✅ دالة loadDepartments المعدلة: قراءة حقل department من مجموعة المستخدمين
     function loadDepartments() {
         db.collection("users").where("type", "==", "review").get().then((querySnapshot) => {
             let deptsSet = new Set();
@@ -640,12 +637,10 @@
                 deptsSet.add(cleanName);
                 deptNameMap[cleanName] = cleanName; 
                 
-                // ✅ التعديل: قراءة حقل department لتحديد الرئيس الإداري التابع له
                 let parentDeptFromDb = cleanText(data.department || "");
                 if (parentDeptFromDb !== "") {
                     deptParentMap[cleanName] = parentDeptFromDb;
                 } else {
-                    // خطة بديلة في حال كان حقل department فارغاً (لمنع توقف النظام)
                     let lowerName = cleanName.toLowerCase();
                     if (lowerName.includes("موارد") || lowerName.includes("بشري") || lowerName.includes("مالي") || lowerName.includes("إداري") || lowerName.includes("الاركان")) {
                         deptParentMap[cleanName] = "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
@@ -828,8 +823,6 @@
         
         const selectedDeptDisplay = cleanText(document.getElementById('parentDepartment').value);
         const selectedDeptKey = cleanText(deptNameMap[selectedDeptDisplay] || selectedDeptDisplay);
-        
-        // ✅ عند إنشاء الطلب، نأخذ الرئيس الإداري من الخريطة (department)
         const specificCentralManager = cleanText(deptParentMap[selectedDeptDisplay] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية");
 
         const data = {
@@ -863,9 +856,11 @@
         });
     });
 
+    // ✅ التعديل: الدخول فقط بكلمة المرور المسجلة في قاعدة البيانات
     function handleLogin() {
         const selectedName = cleanText(document.getElementById('reviewUsername').value);
         const password = document.getElementById('reviewPassword').value.trim();
+        
         if (!selectedName) return showCustomAlert("تنبيه", "يرجى اختيار اسم المستخدم.");
         if (!password) return showCustomAlert("تنبيه", "يرجى إدخال كلمة المرور.");
         
@@ -877,42 +872,36 @@
             let foundDoc = null;
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (cleanText(data.centralManager || "") === selectedName || cleanText(data.name || "") === selectedName || cleanText(data.role || "") === selectedName) {
+                const cName = cleanText(data.centralManager || "");
+                const nName = cleanText(data.name || "");
+                const rName = cleanText(data.role || "");
+                
+                if (cName === selectedName || nName === selectedName || rName === selectedName) {
                     foundDoc = doc;
                 }
             });
+
             if (!foundDoc) {
                 btn.disabled = false;
                 btn.innerHTML = 'دخول';
-                return showCustomAlert("خطأ", "اسم المستخدم غير مسجل.");
+                return showCustomAlert("خطأ", "اسم المستخدم غير موجود في قاعدة البيانات.");
             }
-            processUserLogin(foundDoc, password, btn);
+
+            const userData = foundDoc.data();
+            const storedPassword = String(userData.password || "").trim();
+
+            if (password !== storedPassword) {
+                btn.disabled = false;
+                btn.innerHTML = 'دخول';
+                return showCustomAlert("خطأ", "كلمة المرور غير صحيحة. يرجى كتابة كلمة المرور المسجلة في قاعدة البيانات.");
+            }
+
+            successLoginAction(foundDoc.id, userData, foundDoc.id, btn);
+
         }).catch((error) => {
             btn.disabled = false;
             btn.innerHTML = 'دخول';
-            showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
-        });
-    }
-
-    function processUserLogin(userDoc, password, btn) {
-        const userData = userDoc.data();
-        const storedPassword = userData.password ? String(userData.password).trim() : "";
-        if (storedPassword && password !== storedPassword && password !== "123" && password !== "123456") {
-            btn.disabled = false;
-            btn.innerHTML = 'دخول';
-            return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
-        }
-        const fakeEmail = userDoc.id + "@dam-app.com";
-        const finalPassword = password === "123" ? "123000" : (password.length < 6 ? password.padEnd(6, '0') : password);
-
-        auth.signInWithEmailAndPassword(fakeEmail, finalPassword).then((userCredential) => {
-            successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-        }).catch(() => {
-            auth.createUserWithEmailAndPassword(fakeEmail, finalPassword).then((userCredential) => {
-                successLoginAction(userDoc.id, userData, userCredential.user.uid, btn);
-            }).catch(() => {
-                successLoginAction(userDoc.id, userData, userDoc.id, btn);
-            });
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال بقاعدة البيانات.");
         });
     }
 
@@ -964,10 +953,10 @@
             const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
             const myName = cleanText(loggedInUser.name || "").toLowerCase();
             const myRole = cleanText(loggedInUser.role || "").toLowerCase();
-            const myDepartment = cleanText(loggedInUser.department || "").toLowerCase();
 
             const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
             const isCentralUser = !isChairmanUser && (myRole.includes("رئيس الإدارة المركزية") || myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية"));
+            const isFinanceCentral = myRole.includes("مالية") || myCentral.includes("مالية") || myName.includes("مالية");
             const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
             const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
 
@@ -991,22 +980,27 @@
                 
                 let isMyTurnNow = false;
                 let isArchivedForMe = false;
+                let iHaveActed = history.some(h => h.includes(loggedInUser.name) || h.includes(loggedInUser.role) || h.includes(loggedInUser.centralManager));
 
                 if (isChairmanUser) {
                     if (stage.includes("رئيس مجلس") || status.includes("رئيس مجلس")) {
                         isMyTurnNow = true;
-                    } else if (status.includes("معتمد") || status.includes("مرفوض") || history.some(h => h.includes("رئيس مجلس") || h.includes(loggedInUser.name))) {
+                    } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
                         isArchivedForMe = true;
                     }
                 }
                 else if (isCentralUser) {
-                    // ✅ المقارنة الدقيقة: هل الرئيس المعين في الطلب يطابق مسمى المستخدم الحالي؟
                     let isThisMyRequest = (assignedCentral === myRole) || (assignedCentral === myCentral) || (assignedCentral === myName);
+                    
+                    if (isFinanceCentral) {
+                        let needsFinanceReview = stage.includes("بانتظار اعتماد مالي") || status.includes("بانتظار اعتماد مالي");
+                        if (needsFinanceReview) isThisMyRequest = true;
+                    }
 
                     if (isThisMyRequest) {
-                        if (stage.includes("رئيس الإدارة المركزية") || status.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد")) {
+                        if (stage.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد") || stage.includes("عودة من المالية")) {
                             isMyTurnNow = true;
-                        } else if (status.includes("معتمد") || status.includes("مرفوض") || history.some(h => h.includes(loggedInUser.centralManager) || h.includes(loggedInUser.name))) {
+                        } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
                             isArchivedForMe = true;
                         }
                     }
@@ -1039,18 +1033,16 @@
                 } 
                 else {
                     let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
-                    let passedByMe = history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral));
-
                     if (isMyDeptRequest) {
-                        if (stage.includes("مراجعة " + myCentral) && !passedByMe) {
+                        if (stage.includes("مراجعة " + myCentral) && !iHaveActed) {
                             isMyTurnNow = true;
-                        } else {
+                        } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
                             isArchivedForMe = true;
                         }
                     }
                 }
 
-                if ((status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً")) && (stage.includes(myCentral) || history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral)))) {
+                if ((iHaveActed || status.includes("معتمد نهائياً") || status.includes("مرفوض نهائياً")) && (stage.includes(myCentral) || history.some(h => h.includes(loggedInUser.name) || h.includes(myCentral)))) {
                     isArchivedForMe = true;
                 }
 
@@ -1119,7 +1111,6 @@
         renderFilteredRequests();
     }
 
-    // ✅ دالة processAction المعدلة للترحيل الصارم وتوثيق التواريخ
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString('ar-EG');
         
@@ -1134,12 +1125,7 @@
             if (!history.includes(officialTitle)) history.push(officialTitle);
 
             if (actionType === 'gm_approve') {
-                // ✅ الترحيل الصارم بناءً على حقل department الخاص بالمدير العام
-                let targetCentral = deptParentMap[req.parentDepartment];
-                if (!targetCentral) {
-                    targetCentral = req.Assigned_Central_Manager || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
-                }
-
+                let targetCentral = deptParentMap[req.parentDepartment] || "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية";
                 updates = { 
                     Current_Stage: "مراجعة " + targetCentral, 
                     Current_Owner_Role: targetCentral,
@@ -1151,14 +1137,37 @@
                 };
             } 
             else if (actionType === 'central_approve') {
-                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager || "رئيس الإدارة المركزية";
-                updates = { 
-                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
-                    Current_Owner_Role: "رئيس مجلس الإدارة",
-                    Central_Date: nowStr, 
-                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة (بعد اعتماد " + originalCentral + ")", 
-                    History: history 
-                };
+                let isFinanceCentral = (officialTitle.includes("مالية") || officialTitle.includes("الشئون المالية"));
+                let isReturnedFromFinance = req.Current_Stage && req.Current_Stage.includes("عودة من المالية");
+
+                if (!isFinanceCentral && !isReturnedFromFinance) {
+                    updates = { 
+                        Current_Stage: "بانتظار اعتماد مالي من رئيس الإدارة المركزية للشؤون المالية", 
+                        Current_Owner_Role: "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية",
+                        Central_Date: nowStr, 
+                        Status: "قيد الانتظار - بانتظار اعتماد مالي (من " + officialTitle + ")",
+                        Finance_Review_By: req.Central_Manager_Name || req.Assigned_Central_Manager,
+                        History: history 
+                    };
+                } else if (isFinanceCentral && !isReturnedFromFinance) {
+                    let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
+                    updates = { 
+                        Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
+                        Current_Owner_Role: originalCentral,
+                        Central_Date: nowStr, 
+                        Status: "عودة من المالية - بانتظار اعتماد نهائي " + originalCentral,
+                        Assigned_Central_Manager: originalCentral,
+                        History: history 
+                    };
+                } else {
+                    updates = { 
+                        Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                        Current_Owner_Role: "رئيس مجلس الإدارة",
+                        Central_Date: nowStr, 
+                        Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                        History: history 
+                    };
+                }
             } 
             else if (actionType === 'finance_transfer') {
                 let existingState = {};
@@ -1180,11 +1189,11 @@
                     let keyLower = key.toLowerCase();
                     if ((myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("مالية")) && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr; // ✅ تسجيل التاريخ
+                        updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                     } else if ((myCentral.includes("تخطيط") || myName.includes("تخطيط") || myRole.includes("تخطيط")) && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
                         updatedState[key].decision = actionType === 'dept_approve' ? 'approved' : 'rejected';
-                        updatedState[key].date = nowStr; // ✅ تسجيل التاريخ
+                        updatedState[key].date = nowStr;
                         if (actionType === 'dept_reject' && extraData.rejectReason) updatedState[key].reason = extraData.rejectReason;
                     }
                 }
@@ -1288,8 +1297,6 @@
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
         const status = cleanText(req.Status || "");
-        const stageLower = stage.toLowerCase();
-        const statusLower = status.toLowerCase();
         
         let badgeClass = 'badge-wait';
         if (status.indexOf("معتمد نهائياً") !== -1) badgeClass = 'badge-ok';
@@ -1302,76 +1309,47 @@
             const managerName = cleanText(loggedInUser.name || "").toLowerCase();
             const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
             
-            let isMyTurn = false;
+            const userIdentity = (managerCentral + " " + managerName + " " + managerRole).toLowerCase();
+
             let actionType = null;
 
-            const isChairmanUser = managerRole.includes("رئيس مجلس") || managerName.includes("رئيس مجلس") || managerCentral.includes("رئيس مجلس");
-            const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
-            const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
-            const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
-
-            const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
-            const matchesPlanning = (t) => t.includes("تخطيط") || t.includes("متابعة");
-
-            if (isChairmanUser) {
-                if (stageLower.includes("رئيس مجلس") || statusLower.includes("رئيس مجلس")) { isMyTurn = true; actionType = 'chairman'; }
+            if (userIdentity.includes("رئيس مجلس")) {
+                actionType = 'chairman';
             } 
-            else if (isCentralUser) {
-                let myCentralType = null;
-                if (matchesPlanning(managerCentral) || matchesPlanning(managerName) || matchesPlanning(managerRole)) myCentralType = "تخطيط";
-                else if (matchesFinance(managerCentral) || matchesFinance(managerName) || matchesFinance(managerRole)) myCentralType = "مالية";
-
-                const reqCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
-                let reqCentralType = matchesPlanning(reqCentral) ? "تخطيط" : (matchesFinance(reqCentral) ? "مالية" : "أخرى");
-
-                const belongsToMe = (myCentralType === reqCentralType);
-                const isInMyStage = stageLower.includes("رئيس الإدارة المركزية") || statusLower.includes("رئيس الإدارة المركزية") || stageLower.includes("بانتظار اعتماد") || stageLower.includes("مراجعة رئيس الإدارة المركزية");
-
-                if (belongsToMe && isInMyStage) { isMyTurn = true; actionType = 'central'; }
+            else if (userIdentity.includes("رئيس الإدارة المركزية") || userIdentity.includes("رئيس الادارة المركزية")) {
+                actionType = 'central';
             } 
-            else if (isPlanningUser || isFinanceUser) {
-                if (req.Transfer_State) {
-                    try {
-                        let state = JSON.parse(req.Transfer_State);
-                        for (let key in state) {
-                            let keyLower = key.toLowerCase();
-                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) && state[key].decision === 'pending') isMyTurn = true;
-                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون")) && state[key].decision === 'pending') isMyTurn = true;
-                        }
-                    } catch(e) {}
-                }
-                if (isMyTurn) actionType = 'dept_opinion';
+            else if (userIdentity.includes("تخطيط") || userIdentity.includes("مالية") || userIdentity.includes("شئون")) {
+                actionType = 'dept_opinion'; 
             } 
             else {
-                if (stageLower.includes(managerCentral) || stageLower.includes("مراجعة")) {
-                    isMyTurn = true;
-                    actionType = 'gm';
-                }
+                actionType = 'gm';
             }
 
-            if (isMyTurn) {
-                if (actionType === 'chairman') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
-                    </div>`;
-                } else if (actionType === 'central') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير إلى رئيس مجلس الإدارة</button>
-                        <button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                    </div>`;
-                } else if (actionType === 'dept_opinion') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
-                    </div>`;
-                } else if (actionType === 'gm') {
-                    buttonsHtml = `<div class="req-actions">
-                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
-                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
-                    </div>`;
-                }
+            const isFinanceCentral = actionType === 'central' && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
+
+            if (actionType === 'chairman') {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
+                </div>`;
+            } else if (actionType === 'central') {
+                let transferBtn = isFinanceCentral ? `<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>` : '';
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير</button>
+                    ${transferBtn}
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                </div>`;
+            } else if (actionType === 'dept_opinion') {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
+                </div>`;
+            } else if (actionType === 'gm') {
+                buttonsHtml = `<div class="req-actions">
+                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
+                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
+                </div>`;
             }
         }
 
@@ -1449,7 +1427,6 @@
         const deptRepliesBox = document.getElementById('printDeptRepliesBox');
         const deptRepliesBody = document.getElementById('printDeptRepliesBody');
         
-        // ✅ عرض آراء الإدارات والتواريخ في الطباعة
         if (req.Transfer_State) {
             try {
                 let state = JSON.parse(req.Transfer_State);
