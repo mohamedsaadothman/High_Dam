@@ -356,8 +356,7 @@
             </div>
         </div>
     </div>
-
-<div id="printableArea">
+    <div id="printableArea">
     <div style="width: 210mm; height: 297mm; max-height: 297mm; background: white; color: #000; padding: 8mm 10mm; margin: 0 auto; font-family: 'Cairo', sans-serif; position: relative; box-sizing: border-box; overflow: hidden; font-weight: 700; direction: rtl; unicode-bidi: plaintext; font-size: 11px;">
         <div id="printWatermark" class="print-watermark">قيد الانتظار</div>
         
@@ -421,42 +420,6 @@
                     </td>
                 </tr>
             </table>
-            <div id="printDeptRepliesBox" style="display:none; border: 1px solid #000; padding: 4px; margin-bottom: 6px;">
-                <h4 style="font-size: 10px; font-weight: 900; text-align: center; text-decoration: underline;">آراء الإدارات (مدير عام الشئون المالية / مدير عام التخطيط والمتابعة)</h4>
-                <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
-                    <thead>
-                        <tr>
-                            <th style="text-align: right; padding: 2px; border: 1px solid #333;">الإدارة</th>
-                            <th style="text-align: center; padding: 2px; border: 1px solid #333;">القرار</th>
-                            <th style="text-align: right; padding: 2px; border: 1px solid #333;">السبب / التعليق</th>
-                        </tr>
-                    </thead>
-                    <tbody id="printDeptRepliesBody"></tbody>
-                </table>
-            </div>
-            <div id="printTimelineBox" style="display:none; border: 1px solid #000; padding: 4px; margin-bottom: 6px;">
-                <h4 style="font-size: 10px; font-weight: 900; text-align: center; text-decoration: underline;">سجل الاعتمادات (الجدول الزمني)</h4>
-                <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
-                    <thead>
-                        <tr>
-                            <th style="text-align: right; padding: 2px; border: 1px solid #333;">المسؤول</th>
-                            <th style="text-align: center; padding: 2px; border: 1px solid #333;">الإجراء</th>
-                            <th style="text-align: center; padding: 2px; border: 1px solid #333;">التاريخ والوقت</th>
-                        </tr>
-                    </thead>
-                    <tbody id="printTimelineBody"></tbody>
-                </table>
-            </div>
-            <div id="printSignaturesBox" style="display:none; margin-top: 15px; display: flex; justify-content: space-between; align-items: flex-start; font-size: 11px;">
-                <div id="printFinanceSignBox" style="display:none; width: 45%; text-align: right;">
-                    <div style="font-weight: 900; text-decoration: underline; margin-bottom: 4px;">تأشيرة رئيس الإدارة المركزية</div>
-                    <div id="financeNoteText" style="font-size: 10px; min-height: 40px; line-height: 1.4;"></div>
-                </div>
-                <div id="printChairmanSignBox" style="display:none; width: 45%; text-align: left;">
-                    <div style="font-weight: 900; text-decoration: underline; margin-bottom: 4px;">تأشيرة رئيس مجلس الإدارة</div>
-                    <div id="chairmanNoteText" style="font-size: 10px; min-height: 40px; line-height: 1.4;"></div>
-                </div>
-            </div>
             <div id="printRejectBox" style="display:none; border:1px solid #dc3545; padding:4px 6px; margin-bottom: 4px; font-weight:900; color:#7f1d1d; margin-top: 10px;">
                 <div style="font-size:10px;">⛔ سبب الرفض / التعليق:</div>
                 <div id="printRejectReason" style="font-size:10px; font-weight:700;"></div>
@@ -547,6 +510,7 @@
     let trackRequestsCache = [];
     let loggedInContractUser = null;
     let currentContractTab = 'pending';
+    let activeContractData = [];
 
     function cleanText(txt) {
         if (!txt) return "";
@@ -811,8 +775,7 @@
         overlay.innerHTML = `<div class="custom-modal-box"><div class="custom-modal-header"><i class="fas fa-check-circle" style="color:#198754;"></i><h3>${title}</h3></div><div class="custom-modal-body">${message}</div><button class="custom-modal-btn" style="background:#198754;" onclick="document.getElementById('customAlertModal').remove()">حسـناً</button></div>`;
         document.body.appendChild(overlay);
     }
-
-    function switchView(viewId) {
+        function switchView(viewId) {
         document.querySelectorAll('.section-view').forEach(el => el.classList.remove('active'));
         document.getElementById(viewId).classList.add('active');
         window.scrollTo(0, 0);
@@ -1556,72 +1519,6 @@
         if (statusText.includes("مرفوض")) { wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#dc3545"; }
         else if (statusText.includes("معتمد نهائياً")) { wm.style.display = 'block'; wm.textContent = "معتمد نهائياً"; wm.style.color = "#198754"; }
         else { wm.style.display = 'block'; wm.textContent = statusText; wm.style.color = "#b45309"; }
-
-        let hasDeptReplies = false;
-        const deptRepliesBox = document.getElementById('printDeptRepliesBox');
-        const deptRepliesBody = document.getElementById('printDeptRepliesBody');
-        if (req.Transfer_State) {
-            try {
-                let state = JSON.parse(req.Transfer_State);
-                let rowsHtml = "";
-                for (let key in state) {
-                    let s = state[key];
-                    let decisionText = s.decision === 'approved' ? 'موافقة' : (s.decision === 'rejected' ? 'رفض' : 'قيد الانتظار');
-                    let color = s.decision === 'approved' ? '#198754' : (s.decision === 'rejected' ? '#dc3545' : '#b45309');
-                    rowsHtml += `<tr>
-                        <td style="border: 1px solid #333; padding: 2px; text-align: right;">${cleanText(key)}</td>
-                        <td style="border: 1px solid #333; padding: 2px; text-align: center; color: ${color};">${decisionText}</td>
-                        <td style="border: 1px solid #333; padding: 2px; text-align: right; color: #dc3545;">${cleanText(s.reason || '-')}</td>
-                    </tr>`;
-                    hasDeptReplies = true;
-                }
-                deptRepliesBody.innerHTML = rowsHtml;
-                deptRepliesBox.style.display = hasDeptReplies ? 'block' : 'none';
-            } catch(e) { deptRepliesBox.style.display = 'none'; }
-        } else deptRepliesBox.style.display = 'none';
-
-        let historyArr = req.History || [];
-        let timelineHtml = "";
-        const timelineBox = document.getElementById('printTimelineBox');
-        const timelineBody = document.getElementById('printTimelineBody');
-        
-        historyArr.forEach(h => {
-            if (typeof h === 'object') {
-                let reasonText = h.reason ? `<br><span style="color:#b91c1c; font-size:8px;">(${cleanText(h.reason)})</span>` : '';
-                let dateStr = h.date ? `<br><span style="font-size:8px; color:#666;">${cleanText(h.date)}</span>` : '';
-                timelineHtml += `<tr>
-                    <td style="border: 1px solid #333; padding: 2px; text-align: right;">${cleanText(h.user)}</td>
-                    <td style="border: 1px solid #333; padding: 2px; text-align: center;">${cleanText(h.action)}${reasonText}</td>
-                    <td style="border: 1px solid #333; padding: 2px; text-align: center;">${dateStr}</td>
-                </tr>`;
-            }
-        });
-        
-        if (timelineHtml !== "") {
-            timelineBody.innerHTML = timelineHtml;
-            timelineBox.style.display = 'block';
-        } else {
-            timelineBox.style.display = 'none';
-        }
-
-        const signaturesBox = document.getElementById('printSignaturesBox');
-        const financeSignBox = document.getElementById('printFinanceSignBox');
-        const chairmanSignBox = document.getElementById('printChairmanSignBox');
-        let hasSignature = false;
-
-        if (req.Finance_Note) {
-            document.getElementById('financeNoteText').textContent = cleanText(req.Finance_Note);
-            financeSignBox.style.display = 'block';
-            hasSignature = true;
-        } else financeSignBox.style.display = 'none';
-
-        if (req.Chairman_Note) {
-            document.getElementById('chairmanNoteText').textContent = cleanText(req.Chairman_Note);
-            chairmanSignBox.style.display = 'block';
-            hasSignature = true;
-        } else chairmanSignBox.style.display = 'none';
-
-        signaturesBox.style.display = hasSignature ? 'flex' : 'none';
 
         let itemsHtml = '';
         try {
