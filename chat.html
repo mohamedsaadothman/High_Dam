@@ -1298,7 +1298,7 @@
         };
     }
 
-    // ✅ دالة buildRequestCard المعدلة: إظهار الأزرار لكل الرؤساء
+    // ✅ دالة buildRequestCard المعدلة: إظهار الأزرار بناءً على المسمى الوظيفي
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
@@ -1312,23 +1312,30 @@
         else if (stage.indexOf("بانتظار") !== -1) badgeClass = 'badge-info';
 
         let buttonsHtml = "";
-        // ✅ الشرط هنا: لو withActions بيساوي true، يبقى الطلب ده في قائمة "المعلقة" وده معناه إنه دور المستخدم الحالي
         if (withActions) {
+            // ✅ التعديل: الاعتماد على حقل centralManager في المقام الأول
             const managerCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
             const managerName = cleanText(loggedInUser.name || "").toLowerCase();
             const managerRole = cleanText(loggedInUser.role || "").toLowerCase();
             
+            // تجميع كل النصوص للتأكد من الدور
+            const userIdentity = (managerCentral + " " + managerName + " " + managerRole).toLowerCase();
+
             let actionType = null;
 
-            const isChairmanUser = managerRole.includes("رئيس مجلس") || managerName.includes("رئيس مجلس") || managerCentral.includes("رئيس مجلس");
-            const isPlanningUser = !isChairmanUser && (managerCentral.includes("تخطيط") || managerCentral.includes("التخطيط والمتابعة") || managerName.includes("تخطيط") || managerRole.includes("تخطيط"));
-            const isFinanceUser = !isChairmanUser && (managerCentral.includes("مالية") || managerCentral.includes("الشئون المالية") || managerName.includes("مالية") || managerRole.includes("مالية"));
-            const isCentralUser = !isChairmanUser && (managerCentral.includes("رئيس الإدارة المركزية") || managerName.includes("رئيس الإدارة المركزية") || managerRole.includes("رئيس الإدارة المركزية"));
+            // تحديد إذا كان رئيس مجلس الإدارة
+            const isChairmanUser = userIdentity.includes("رئيس مجلس");
+            
+            // ✅ تحديد إذا كان رئيس إدارة مركزية (بناءً على الاسم أو الدور)
+            const isCentralUser = userIdentity.includes("رئيس الإدارة المركزية") || userIdentity.includes("رئيس الادارة المركزية");
+            
+            // تحديد إذا كان رئيس المالية
+            const isFinanceCentral = isCentralUser && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
 
-            const matchesFinance = (t) => t.includes("مالية") || t.includes("مالي") || t.includes("شئون") || t.includes("شؤون") || t.includes("شوون") || t.includes("موارد") || t.includes("إداري");
-            const isFinanceCentral = isCentralUser && (matchesFinance(managerCentral) || matchesFinance(managerName) || matchesFinance(managerRole));
+            // تحديد إذا كان مدير عام (تخطيط أو مالية)
+            const isPlanningUser = !isCentralUser && !isChairmanUser && userIdentity.includes("تخطيط");
+            const isFinanceUser = !isCentralUser && !isChairmanUser && (userIdentity.includes("مالية") || userIdentity.includes("شئون"));
 
-            // تحديد نوع الإجراء بناءً على دور المستخدم
             if (isChairmanUser) {
                 actionType = 'chairman';
             } 
@@ -1336,7 +1343,6 @@
                 actionType = 'central';
             } 
             else if (isPlanningUser || isFinanceUser) {
-                // لو هو مدير عام التخطيط أو المالية (معاونين)، نشوف لو فيه رأي مطلوب منه
                 let hasPendingOpinion = false;
                 if (req.Transfer_State) {
                     try {
@@ -1351,7 +1357,6 @@
                 if (hasPendingOpinion) {
                     actionType = 'dept_opinion';
                 } else {
-                    // لو مالوش رأي مطلوب، يبقى هو المدير العام صاحب الطلب
                     actionType = 'gm';
                 }
             } 
@@ -1359,14 +1364,12 @@
                 actionType = 'gm';
             }
 
-            // رسم الأزرار بناءً على نوع الإجراء
             if (actionType === 'chairman') {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
                 </div>`;
             } else if (actionType === 'central') {
-                // زر التحويل يظهر فقط لرئيس المالية
                 let transferBtn = isFinanceCentral ? `<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>` : '';
                 
                 buttonsHtml = `<div class="req-actions">
