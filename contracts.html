@@ -460,8 +460,7 @@
             <div id="contractPrintSection" style="display: none; position: relative; z-index: 2;"></div>
         </div>
     </div>
-    
-        <script>
+               <script>
     const firebaseConfig = {
         apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
         authDomain: "dam-purchases-app.firebaseapp.com",
@@ -856,7 +855,7 @@
         });
     });
 
-    // ✅ التعديل: الدخول فقط بكلمة المرور المسجلة في قاعدة البيانات
+    // ✅ تسجيل الدخول بكلمة المرور المسجلة فقط
     function handleLogin() {
         const selectedName = cleanText(document.getElementById('reviewUsername').value);
         const password = document.getElementById('reviewPassword').value.trim();
@@ -993,7 +992,7 @@
                     let isThisMyRequest = (assignedCentral === myRole) || (assignedCentral === myCentral) || (assignedCentral === myName);
                     
                     if (isFinanceCentral) {
-                        let needsFinanceReview = stage.includes("بانتظار اعتماد مالي") || status.includes("بانتظار اعتماد مالي");
+                        let needsFinanceReview = stage.includes("بانتظار اعتماد مالي") || status.includes("بانتظار اعتماد مالي") || stage.includes("عودة من المالية") || status.includes("عودة من المالية");
                         if (needsFinanceReview) isThisMyRequest = true;
                     }
 
@@ -1111,6 +1110,7 @@
         renderFilteredRequests();
     }
 
+    // ✅ دالة processAction مع الأزرار الجديدة
     function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString('ar-EG');
         
@@ -1136,39 +1136,71 @@
                     History: history
                 };
             } 
+            else if (actionType === 'central_approve_direct') {
+                // ✅ زر "موافقة وتمرير لمجلس الإدارة" لرئيس إدارة مركزية (غير المالية)
+                updates = { 
+                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                    Current_Owner_Role: "رئيس مجلس الإدارة",
+                    Central_Date: nowStr, 
+                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                    History: history 
+                };
+            }
+            else if (actionType === 'send_finance_review') {
+                // ✅ زر "إرسال اعتماد مالي للشئون المالية"
+                let originalCentral = req.Central_Manager_Name || req.Assigned_Central_Manager;
+                updates = { 
+                    Current_Stage: "بانتظار اعتماد مالي من رئيس الإدارة المركزية للشؤون المالية", 
+                    Current_Owner_Role: "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية",
+                    Central_Date: nowStr, 
+                    Status: "قيد الانتظار - بانتظار اعتماد مالي (من " + officialTitle + ")",
+                    Finance_Review_By: originalCentral,
+                    History: history 
+                };
+            }
+            else if (actionType === 'finance_approve_and_return') {
+                // ✅ زر "إرجاع لرئيس الإدارة الأصلية بعد الاعتماد" - خاص برئيس المالية
+                let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
+                updates = { 
+                    Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
+                    Current_Owner_Role: originalCentral,
+                    Central_Date: nowStr, 
+                    Status: "عودة من المالية - بانتظار اعتماد نهائي " + originalCentral,
+                    Assigned_Central_Manager: originalCentral,
+                    History: history 
+                };
+            }
+            else if (actionType === 'finance_approve_and_send_chairman') {
+                // ✅ زر "اعتماد نهائي وإرسال لمجلس الإدارة" - خاص برئيس المالية
+                updates = { 
+                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                    Current_Owner_Role: "رئيس مجلس الإدارة",
+                    Central_Date: nowStr, 
+                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                    History: history 
+                };
+            }
+            else if (actionType === 'central_approve_final') {
+                // للتوافق (قديم)
+                let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
+                updates = { 
+                    Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
+                    Current_Owner_Role: originalCentral,
+                    Central_Date: nowStr, 
+                    Status: "عودة من المالية - بانتظار اعتماد نهائي " + originalCentral,
+                    Assigned_Central_Manager: originalCentral,
+                    History: history 
+                };
+            }
             else if (actionType === 'central_approve') {
-                let isFinanceCentral = (officialTitle.includes("مالية") || officialTitle.includes("الشئون المالية"));
-                let isReturnedFromFinance = req.Current_Stage && req.Current_Stage.includes("عودة من المالية");
-
-                if (!isFinanceCentral && !isReturnedFromFinance) {
-                    updates = { 
-                        Current_Stage: "بانتظار اعتماد مالي من رئيس الإدارة المركزية للشؤون المالية", 
-                        Current_Owner_Role: "رئيس الإدارة المركزية للشؤون المالية والإدارية والموارد البشرية",
-                        Central_Date: nowStr, 
-                        Status: "قيد الانتظار - بانتظار اعتماد مالي (من " + officialTitle + ")",
-                        Finance_Review_By: req.Central_Manager_Name || req.Assigned_Central_Manager,
-                        History: history 
-                    };
-                } else if (isFinanceCentral && !isReturnedFromFinance) {
-                    let originalCentral = req.Finance_Review_By || req.Central_Manager_Name || req.Assigned_Central_Manager;
-                    updates = { 
-                        Current_Stage: "عودة من المالية - مراجعة " + originalCentral, 
-                        Current_Owner_Role: originalCentral,
-                        Central_Date: nowStr, 
-                        Status: "عودة من المالية - بانتظار اعتماد نهائي " + originalCentral,
-                        Assigned_Central_Manager: originalCentral,
-                        History: history 
-                    };
-                } else {
-                    updates = { 
-                        Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
-                        Current_Owner_Role: "رئيس مجلس الإدارة",
-                        Central_Date: nowStr, 
-                        Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
-                        History: history 
-                    };
-                }
-            } 
+                updates = { 
+                    Current_Stage: "بانتظار اعتماد رئيس مجلس الإدارة", 
+                    Current_Owner_Role: "رئيس مجلس الإدارة",
+                    Central_Date: nowStr, 
+                    Status: "قيد الانتظار - بانتظار اعتماد رئيس مجلس الإدارة", 
+                    History: history 
+                };
+            }
             else if (actionType === 'finance_transfer') {
                 let existingState = {};
                 try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
@@ -1293,6 +1325,7 @@
         };
     }
 
+    // ✅ دالة buildRequestCard مع كل الأزرار الجديدة
     function buildRequestCard(req, withActions) {
         const div = document.createElement('div'); div.className = 'request-card';
         const stage = cleanText(req.Current_Stage || "");
@@ -1327,25 +1360,49 @@
             }
 
             const isFinanceCentral = actionType === 'central' && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
+            const isReturnedFromFinance = stage.toLowerCase().includes("عودة من المالية") || stage.toLowerCase().includes("بانتظار اعتماد مالي");
 
             if (actionType === 'chairman') {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'chairman_approve')"><i class="fas fa-check"></i> معتمد نهائياً</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'chairman_reject')"><i class="fas fa-times"></i> مرفوض نهائياً</button>
                 </div>`;
-            } else if (actionType === 'central') {
-                let transferBtn = isFinanceCentral ? `<button class="main-btn" style="background:#0d6efd;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>` : '';
-                buttonsHtml = `<div class="req-actions">
-                    <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve')"><i class="fas fa-check"></i> موافقة وتمرير</button>
-                    ${transferBtn}
-                    <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
-                </div>`;
-            } else if (actionType === 'dept_opinion') {
+            } 
+            else if (actionType === 'central') {
+                if (isFinanceCentral) {
+                    // ✅ أزرار رئيس المالية
+                    if (isReturnedFromFinance && !stage.includes("عودة من المالية")) {
+                        // رئيس المالية عنده الطلب محتاج اعتماد مالي
+                        buttonsHtml = `<div class="req-actions">
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve_and_return')"><i class="fas fa-undo"></i> اعتماد وإرجاع للرئيس الأصلي</button>
+                            <button class="main-btn" style="background:#0d6efd;" onclick="processAction('${req.Request_ID}', 'finance_approve_and_send_chairman')"><i class="fas fa-paper-plane"></i> اعتماد نهائي وإرسال لمجلس الإدارة</button>
+                            <button class="main-btn" style="background:#fd7e14;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
+                            <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                        </div>`;
+                    } else {
+                        // رئيس المالية في دوره العادي (مراجعة الطلب اللي جاله من مدير عام)
+                        buttonsHtml = `<div class="req-actions">
+                            <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'finance_approve_and_send_chairman')"><i class="fas fa-check"></i> اعتماد نهائي وإرسال لمجلس الإدارة</button>
+                            <button class="main-btn" style="background:#fd7e14;" onclick="promptFinanceTransfer('${req.Request_ID}')"><i class="fas fa-exchange-alt"></i> تحويل لأخذ الرأي</button>
+                            <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                        </div>`;
+                    }
+                } else {
+                    // ✅ أزرار رئيس الإدارة المركزية العادي (غير المالية)
+                    buttonsHtml = `<div class="req-actions">
+                        <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'central_approve_direct')"><i class="fas fa-check"></i> موافقة وتمرير لمجلس الإدارة</button>
+                        <button class="main-btn" style="background:#fd7e14;" onclick="processAction('${req.Request_ID}', 'send_finance_review')"><i class="fas fa-calculator"></i> إرسال اعتماد مالي للشئون المالية</button>
+                        <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض</button>
+                    </div>`;
+                }
+            } 
+            else if (actionType === 'dept_opinion') {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'dept_approve')"><i class="fas fa-check"></i> موافقة / إرسال الرأي</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'dept_reject')"><i class="fas fa-times"></i> رفض مسبب</button>
                 </div>`;
-            } else if (actionType === 'gm') {
+            } 
+            else if (actionType === 'gm') {
                 buttonsHtml = `<div class="req-actions">
                     <button class="main-btn" style="background:#198754;" onclick="processAction('${req.Request_ID}', 'gm_approve')"><i class="fas fa-check"></i> موافقة وتحويل لرئيس الإدارة المركزية المختص</button>
                     <button class="main-btn" style="background:#dc3545;" onclick="promptReject('${req.Request_ID}', 'reject')"><i class="fas fa-times"></i> رفض مسبب</button>
@@ -1705,4 +1762,4 @@
 
     </script>
 </body>
-</html>
+</html>                                                                     
