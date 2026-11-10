@@ -8,7 +8,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
@@ -222,9 +225,17 @@
             window.location.replace("index.html");
         }
 
-        const LEAVE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1t4J0CU27xPKyNHRlsIYn1wDylkF6FM6rUG9TK7l8tXKW-upnje5ohCzWYIgMXHAeqRTjaDwI9EEe/pub?gid=0&single=true&output=csv";
-        const PURCHASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxp-T7L4Q8VCHi5eLR4oY1FAq0vbDgJVKLphkUPeCMFeoYEeAQyCS7dUmd6STXFSK7LnTcDCk4NMTU/pub?gid=0&single=true&output=csv";
-        const USERS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR7qyqwgacjwMEXUdYy_4GS2CYg74IzW2YYnLetmVhJyRjrC0M3AfRP5w6Uq0bYjuNuJjf9qj-B9QlN/pub?gid=667920095&single=true&output=csv";
+        // ✅ Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
+            authDomain: "dam-purchases-app.firebaseapp.com",
+            projectId: "dam-purchases-app",
+            storageBucket: "dam-purchases-app.appspot.com",
+            messagingSenderId: "123271128649",
+            appId: "1:123271128649:web:1096b95fc97c8575b50198"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
         let currentUserName = "";
         let globalLeaveData = [];
@@ -235,68 +246,31 @@
 
         const columnTranslations = {
             "Timestamp": "وقت الإرسال",
-            "Email Address": "البريد الإلكتروني",
-            "Name": "اسم الموظف",
-            "EmployeeName": "اسم الموظف",
-            "Employee Name": "اسم الموظف",
-            "Serial": "السريال نمبر",
-            "Serial Number": "السريال نمبر",
-            "ID": "رقم الطلب",
-            "Date": "التاريخ",
-            "StartDate": "تاريخ البداية",
-            "EndDate": "تاريخ النهاية",
-            "LeaveType": "نوع الإجازة",
-            "Leave Type": "نوع الإجازة",
-            "From Date": "من تاريخ",
-            "To Date": "إلى تاريخ",
-            "Reason": "السبب",
-            "Status": "الحالة",
-            "ManagerStatus": "حالة المدير",
-            "Manager Status": "حالة المدير",
-            "ManagerName": "اسم المدير",
-            "Manager_Name": "اسم المدير",
-            "SpecialistStatus": "حالة المختص",
-            "Item": "الصنف المطلوب",
-            "Items": "الأصناف",
-            "Quantity": "الكمية",
-            "Department": "الإدارة",
-            "Parent_Department": "الإدارة",
-            "Parent_Deportment": "الإدارة", 
-            "Stage": "مرحلة الطلب",
-            "Current_Stage": "المرحلة الحالية",
+            "name": "اسم الموظف",
+            "applicantName": "مقدم الطلب",
+            "role": "الوظيفة",
+            "parentDepartment": "الإدارة",
+            "department": "الإدارة",
+            "requestId": "رقم الطلب",
             "Request_ID": "رقم الطلب",
-            "Applicant_Name": "مقدم الطلب",
-            "Role": "الوظيفة",
-            "Manager_Title": "المسمى الوظيفي للمدير",
-            "Items_list": "الأصناف",
-            "Total_Cost": "التكلفة الإجمالية",
-            "JobCategory": "الفئة الوظيفية",
-            "NationalID": "الرقم القومي",
-            "National_ID": "الرقم القومي",
-            "Phone": "رقم الهاتف",
-            "FiledInfo": "حالة الملف",
-            "DaysCount": "عدد الأيام"
+            "date": "التاريخ",
+            "startDate": "تاريخ البداية",
+            "endDate": "تاريخ النهاية",
+            "leaveType": "نوع الإجازة",
+            "reason": "السبب",
+            "status": "الحالة",
+            "Status": "الحالة",
+            "Current_Stage": "المرحلة الحالية",
+            "itemsList": "الأصناف",
+            "totalCost": "التكلفة الإجمالية",
+            "nationalId": "الرقم القومي",
+            "phone": "رقم الهاتف",
+            "managerName": "اسم المدير"
         };
 
-        // دالة مرنة جداً للتعرف على حالة الإجازات
-        function getLeaveStatus(row) {
-            // فحص جميع القيم الممكنة في الصف التي قد تدل على الحالة
-            let statusVal = (row["Status"] || row["FiledInfo"] || row["Stage"] || "").trim().toLowerCase();
-            
-            if (statusVal.includes("مرفوض") || statusVal.includes("رفض") || statusVal.includes("غير متاح")) {
-                return "rejected";
-            }
-            if (statusVal.includes("مقبول") || statusVal.includes("مؤرشف") || statusVal.includes("معتمد") || statusVal.includes("متاح")) {
-                return "approved";
-            }
-            // إذا كانت تحتوي على "قيد" أو "انتظار" أو فارغة تعتبر معلقة
-            return "pending";
-        }
-
-        // دالة مرنة جداً للتعرف على حالة المشتريات
+        // دالة تصنيف حالة طلب الشراء بناءً على بيانات الفايربيز
         function getPurchaseStatus(row) {
-            let stageVal = (row["Current_Stage"] || row["Status"] || row["Stage"] || "").trim().toLowerCase();
-            
+            let stageVal = (row["Current_Stage"] || row["Status"] || "").toString().trim().toLowerCase();
             if (stageVal.includes("مرفوض") || stageVal.includes("رفض")) {
                 return "rejected";
             }
@@ -306,22 +280,31 @@
             return "pending";
         }
 
+        // دالة تصنيف حالة الإجازة (لو حبيت تضيفها لاحقاً)
+        function getLeaveStatus(row) {
+            let statusVal = (row["status"] || row["Status"] || "").toString().trim().toLowerCase();
+            if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) return "rejected";
+            if (statusVal.includes("مقبول") || statusVal.includes("معتمد")) return "approved";
+            return "pending";
+        }
+
+        // ✅ تحميل قائمة المستخدمين من Firestore
         window.onload = function() {
-            Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
-                download: true, header: true, skipEmptyLines: true,
-                complete: function(results) {
-                    let select = document.getElementById('loginUsername');
-                    select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
-                    results.data.forEach(row => {
-                        let user = row[Object.keys(row)[0]] || "";
-                        if (user) {
-                            let opt = document.createElement('option');
-                            opt.value = user;
-                            opt.textContent = user;
-                            select.appendChild(opt);
-                        }
-                    });
-                }
+            db.collection("users").get().then((querySnapshot) => {
+                let select = document.getElementById('loginUsername');
+                select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
+                querySnapshot.forEach((doc) => {
+                    let data = doc.data();
+                    let userName = data.name || doc.id;
+                    if (userName) {
+                        let opt = document.createElement('option');
+                        opt.value = userName;
+                        opt.textContent = userName;
+                        select.appendChild(opt);
+                    }
+                });
+            }).catch(err => {
+                console.error("خطأ في تحميل المستخدمين:", err);
             });
         };
 
@@ -341,32 +324,35 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-            Papa.parse(USERS_CSV_URL + "&t=" + new Date().getTime(), {
-                download: true, header: true, skipEmptyLines: true,
-                complete: function(results) {
-                    let isValid = false;
-                    results.data.forEach(row => {
-                        let dbUser = row[Object.keys(row)[0]] || "";
-                        let dbPass = row[Object.keys(row)[1]] || "";
-                        let dbName = row[Object.keys(row)[2]] || "";
-                        if (dbUser.trim() === user && dbPass.trim() === pass) {
-                            isValid = true;
-                            currentUserName = dbName || user; 
-                        }
-                    });
-
-                    if (isValid) {
-                        document.getElementById('loginScreen').style.display = 'none';
-                        document.getElementById('dashboardScreen').style.display = 'block';
-                        document.getElementById('welcomeMsg').innerHTML = "أهلاً بك، " + currentUserName + " 👋";
-                        loadStats();
-                    } else {
-                        errorMsg.innerText = "بيانات الدخول غير صحيحة";
-                        errorMsg.style.display = 'block';
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
-                    }
+            db.collection("users").where("name", "==", user).get().then((querySnapshot) => {
+                if (querySnapshot.empty) {
+                    errorMsg.innerText = "المستخدم غير موجود في قاعدة البيانات";
+                    errorMsg.style.display = 'block';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
+                    return;
                 }
+
+                let userData = querySnapshot.docs[0].data();
+                let storedPassword = String(userData.password || "").trim();
+
+                if (storedPassword === pass) {
+                    currentUserName = userData.name || user;
+                    document.getElementById('loginScreen').style.display = 'none';
+                    document.getElementById('dashboardScreen').style.display = 'block';
+                    document.getElementById('welcomeMsg').innerHTML = "أهلاً بك، " + currentUserName + " 👋";
+                    loadStats();
+                } else {
+                    errorMsg.innerText = "كلمة المرور غير صحيحة";
+                    errorMsg.style.display = 'block';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
+                }
+            }).catch(err => {
+                errorMsg.innerText = "خطأ في الاتصال بقاعدة البيانات";
+                errorMsg.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
             });
         }
 
@@ -379,44 +365,21 @@
             errorBox.style.display = 'none';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
-            const timestamp = new Date().getTime();
-
-            const fetchCSV = (url) => {
-                return new Promise((resolve, reject) => {
-                    Papa.parse(url + "&t=" + timestamp, {
-                        download: true, header: true, skipEmptyLines: true,
-                        complete: (results) => resolve(results.data),
-                        error: (err) => reject(err)
-                    });
-                });
-            };
-
-            Promise.all([fetchCSV(LEAVE_CSV_URL), fetchCSV(PURCHASE_CSV_URL)])
-            .then(([leaveData, purchaseData]) => {
-                globalLeaveData = leaveData;
-                globalPurchaseData = purchaseData;
-                
-                // طباعة تشخيصية في الكونسول لمعرفة كيف يتم تصنيف الصفوف
-                console.log("--- تشخيص بيانات الإجازات ---");
-                leaveData.forEach((row, i) => {
-                    console.log(`صف ${i+1} | الحالة النصية:`, row["Status"], " | التصنيف:", getLeaveStatus(row));
+            // ✅ تحميل بيانات طلبات المشتريات من Firestore
+            db.collection("requests").get().then((querySnapshot) => {
+                globalPurchaseData = [];
+                querySnapshot.forEach((doc) => {
+                    let req = doc.data();
+                    req.Request_ID = doc.id;
+                    globalPurchaseData.push(req);
                 });
 
-                let lPending = 0, lApproved = 0, lRejected = 0;
-                leaveData.forEach(row => {
-                    let st = getLeaveStatus(row);
-                    if (st === 'rejected') lRejected++;
-                    else if (st === 'approved') lApproved++;
-                    else lPending++;
-                });
+                // (اختياري) لو عندك مجموعة إجازات منفصلة، استبدل الكود ده
+                globalLeaveData = []; // مؤقتاً فاضي لحد ما تحدد مكان الإجازات
 
-                document.getElementById('leavePending').innerText = lPending;
-                document.getElementById('leaveApproved').innerText = lApproved;
-                document.getElementById('leaveRejected').innerText = lRejected;
-                document.getElementById('leaveTotal').innerText = leaveData.length;
-
+                // حساب إحصائيات المشتريات
                 let pPending = 0, pApproved = 0, pRejected = 0;
-                purchaseData.forEach(row => {
+                globalPurchaseData.forEach(row => {
                     let st = getPurchaseStatus(row);
                     if (st === 'rejected') pRejected++;
                     else if (st === 'approved') pApproved++;
@@ -426,14 +389,19 @@
                 document.getElementById('purPending').innerText = pPending;
                 document.getElementById('purApproved').innerText = pApproved;
                 document.getElementById('purRejected').innerText = pRejected;
-                document.getElementById('purTotal').innerText = purchaseData.length;
-            })
-            .catch(err => {
+                document.getElementById('purTotal').innerText = globalPurchaseData.length;
+
+                // حساب إحصائيات الإجازات (حالياً 0)
+                document.getElementById('leavePending').innerText = 0;
+                document.getElementById('leaveApproved').innerText = 0;
+                document.getElementById('leaveRejected').innerText = 0;
+                document.getElementById('leaveTotal').innerText = 0;
+
+            }).catch(err => {
                 console.error(err);
                 errorBox.innerText = "حدث خطأ أثناء تحديث البيانات.";
                 errorBox.style.display = 'block';
-            })
-            .finally(() => {
+            }).finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
@@ -446,33 +414,15 @@
             let titleText = "";
 
             if (type === 'leave') {
-                if (status === 'pending') {
-                    titleText = "طلبات الإجازات المعلقة";
-                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'pending');
-                } else if (status === 'approved') {
-                    titleText = "طلبات الإجازات المعتمدة";
-                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'approved');
-                } else if (status === 'rejected') {
-                    titleText = "طلبات الإجازات المرفوضة";
-                    currentActiveData = data.filter(row => getLeaveStatus(row) === 'rejected');
-                } else {
-                    titleText = "إجمالي طلبات الإجازات";
-                    currentActiveData = data;
-                }
+                if (status === 'pending') { titleText = "طلبات الإجازات المعلقة"; currentActiveData = data.filter(row => getLeaveStatus(row) === 'pending'); }
+                else if (status === 'approved') { titleText = "طلبات الإجازات المعتمدة"; currentActiveData = data.filter(row => getLeaveStatus(row) === 'approved'); }
+                else if (status === 'rejected') { titleText = "طلبات الإجازات المرفوضة"; currentActiveData = data.filter(row => getLeaveStatus(row) === 'rejected'); }
+                else { titleText = "إجمالي طلبات الإجازات"; currentActiveData = data; }
             } else {
-                if (status === 'pending') {
-                    titleText = "طلبات المشتريات المعلقة";
-                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'pending');
-                } else if (status === 'approved') {
-                    titleText = "طلبات المشتريات المعتمدة نهائياً";
-                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'approved');
-                } else if (status === 'rejected') {
-                    titleText = "طلبات المشتريات المرفوضة";
-                    currentActiveData = data.filter(row => getPurchaseStatus(row) === 'rejected');
-                } else {
-                    titleText = "إجمالي طلبات المشتريات";
-                    currentActiveData = data;
-                }
+                if (status === 'pending') { titleText = "طلبات المشتريات المعلقة"; currentActiveData = data.filter(row => getPurchaseStatus(row) === 'pending'); }
+                else if (status === 'approved') { titleText = "طلبات المشتريات المعتمدة نهائياً"; currentActiveData = data.filter(row => getPurchaseStatus(row) === 'approved'); }
+                else if (status === 'rejected') { titleText = "طلبات المشتريات المرفوضة"; currentActiveData = data.filter(row => getPurchaseStatus(row) === 'rejected'); }
+                else { titleText = "إجمالي طلبات المشتريات"; currentActiveData = data; }
             }
 
             document.getElementById('modalTitle').innerText = titleText;
@@ -491,8 +441,7 @@
             let suggestionsBox = document.getElementById('nameSuggestions');
             
             if (currentActiveData.length === 0) return;
-            let keys = Object.keys(currentActiveData[0]);
-            let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2] || keys[1];
+            let nameKey = "applicantName"; // في الفايربيز
             
             if (!query) {
                 suggestionsBox.style.display = 'none';
@@ -500,7 +449,7 @@
                 return;
             }
 
-            let uniqueNames = [...new Set(currentActiveData.map(row => row[nameKey]))].filter(name => name && name.toLowerCase().includes(query));
+            let uniqueNames = [...new Set(currentActiveData.map(row => row[nameKey] || row["name"]))].filter(name => name && name.toLowerCase().includes(query));
 
             if (uniqueNames.length > 0) {
                 let html = '';
@@ -512,7 +461,6 @@
             } else {
                 suggestionsBox.style.display = 'none';
             }
-
             applyFilters();
         }
 
@@ -538,17 +486,10 @@
                 });
             }
 
-            if (filteredBase.length === 0) return;
-            let keys = Object.keys(filteredBase[0]);
-
-            let nameKey = keys.find(k => k.toLowerCase().includes('name') || k.includes('اسم')) || keys[2];
-            let serialKey = keys.find(k => k.toLowerCase().includes('serial') || k.toLowerCase().includes('id') || k.includes('سريال') || k.includes('رقم')) || keys[1];
-            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time') || k.includes('تاريخ') || k.includes('وقت')) || keys[0];
-
             let filtered = filteredBase.filter(row => {
-                let nameVal = (row[nameKey] || "").toLowerCase();
-                let serialVal = (row[serialKey] || "").toLowerCase();
-                let dateVal = (row[dateKey] || "").split(' ')[0];
+                let nameVal = (row["applicantName"] || row["name"] || "").toLowerCase();
+                let serialVal = (row["Request_ID"] || row["requestId"] || "").toLowerCase();
+                let dateVal = (row["Timestamp"] || "").split('T')[0];
 
                 let matchName = !nameQuery || nameVal.includes(nameQuery);
                 let matchSerial = !serialQuery || serialVal.includes(serialQuery);
@@ -558,7 +499,6 @@
                     if (dateFrom && dateVal < dateFrom) matchDate = false;
                     if (dateTo && dateVal > dateTo) matchDate = false;
                 }
-
                 return matchName && matchSerial && matchDate;
             });
 
@@ -572,30 +512,25 @@
                 return;
             }
 
-            let keys = Object.keys(data[0]);
-
+            // الأعمدة المطلوبة للمشتريات
             let purchaseAllowedCols = [
-                "Request_ID", "Applicant_Name", "Role", "Parent_Department", 
-                "Total_Cost"
+                "Request_ID", "applicantName", "role", "parentDepartment", 
+                "totalCost", "Current_Stage", "managerName"
             ];
+
+            let displayCols = [];
+            if (currentType === 'purchase') {
+                displayCols = purchaseAllowedCols;
+            } else {
+                displayCols = ["Request_ID", "name", "date", "status"];
+            }
 
             let html = '<div style="overflow-x: auto;"><table class="details-table"><thead><tr>';
             html += '<th>م</th>';
 
-            keys.forEach(key => {
-                let cleanKey = key.trim().replace(/["']/g, '');
-                let arabicHeader = columnTranslations[cleanKey] || cleanKey;
-                
-                let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
-                let hideCol = false;
-                
-                if (currentType === 'purchase') {
-                    hideCol = !purchaseAllowedCols.includes(cleanKey);
-                }
-                
-                let thClass = hideCol ? 'class="hide-col"' : (isItemsCol ? 'class="col-items"' : '');
-
-                html += `<th ${thClass}>${arabicHeader}</th>`;
+            displayCols.forEach(key => {
+                let arabicHeader = columnTranslations[key] || key;
+                html += `<th>${arabicHeader}</th>`;
             });
             html += '</tr></thead><tbody>';
 
@@ -603,18 +538,16 @@
                 html += `<tr>`; 
                 html += `<td>${index + 1}</td>`;
                 
-                keys.forEach(key => {
-                    let cleanKey = key.trim().replace(/["']/g, '');
-                    let isItemsCol = (cleanKey.toLowerCase().includes('items') || cleanKey.includes('أصناف'));
-                    let hideCol = false;
-                    
-                    if (currentType === 'purchase') {
-                        hideCol = !purchaseAllowedCols.includes(cleanKey);
+                displayCols.forEach(key => {
+                    let val = row[key];
+                    if (key === "Timestamp" && val) val = new Date(val).toLocaleDateString('ar-EG');
+                    if (key === "itemsList" && val) {
+                        try {
+                            let items = JSON.parse(val);
+                            val = items.map(it => it.item).join(', ');
+                        } catch(e) {}
                     }
-                    
-                    let tdClass = hideCol ? 'class="hide-col"' : (isItemsCol ? 'class="col-items"' : '');
-
-                    html += `<td ${tdClass}>${row[key] || '-'}</td>`;
+                    html += `<td>${val || '-'}</td>`;
                 });
                 html += '</tr>';
             });
