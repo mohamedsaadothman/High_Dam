@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
@@ -94,7 +93,7 @@
         .suggestion-item:hover { background: #c59b27; color: #0f172a; font-weight: bold; }
 
         .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 13px; }
-        .details-table th, .details-table td { padding: 10px; border-bottom: 1px solid #334155; white-space: nowrap; color: #fff; }
+        .details-table th, .details-table td { padding: 10px; border-bottom: 1px solid #334155; white-space: normal; word-wrap: break-word; color: #fff; }
         .details-table th { background: #0f172a; color: #fbbf24; }
         .details-table tr:hover { background: rgba(255,255,255,0.02); }
         
@@ -225,7 +224,6 @@
             window.location.replace("index.html");
         }
 
-        // ✅ Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
             authDomain: "dam-purchases-app.firebaseapp.com",
@@ -238,6 +236,7 @@
         const db = firebase.firestore();
 
         let currentUserName = "";
+        let currentUserRole = "";
         let globalLeaveData = [];
         let globalPurchaseData = [];
         let currentActiveData = [];
@@ -260,7 +259,7 @@
             "reason": "السبب",
             "status": "الحالة",
             "Status": "الحالة",
-            "Current_Stage": "المرحلة الحالية",
+            "Current_Stage": "الطلب معلق عند",
             "itemsList": "الأصناف",
             "totalCost": "التكلفة الإجمالية",
             "nationalId": "الرقم القومي",
@@ -295,7 +294,6 @@
                     let data = doc.data();
                     let centralVal = String(data.centralManager || "").trim();
 
-                    // بنضيف المسمى الوظيفي لو هو من ضمن المسميات المسموح لها
                     if (allowedRoles.includes(centralVal)) {
                         rolesSet.add(centralVal);
                     }
@@ -340,7 +338,6 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-            // بنجيب كل المستخدمين اللي ليهم نفس المسمى الوظيفي ده
             db.collection("users").where("centralManager", "==", selectedRole).get().then((querySnapshot) => {
                 if (querySnapshot.empty) {
                     errorMsg.innerText = "لا يوجد مستخدم بهذا المسمى الوظيفي";
@@ -350,7 +347,6 @@
                     return;
                 }
 
-                // بنشوف لو الباسورد بيطابق أي مستخدم من اللي ليهم نفس المسمى
                 let isValid = false;
                 let loggedInName = "";
 
@@ -365,9 +361,10 @@
 
                 if (isValid) {
                     currentUserName = loggedInName;
+                    currentUserRole = selectedRole;
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('dashboardScreen').style.display = 'block';
-                    document.getElementById('welcomeMsg').innerHTML = "أهلاً بك، " + currentUserName + " 👋";
+                    document.getElementById('welcomeMsg').innerHTML = "أهلاً بك، " + currentUserName + " - " + currentUserRole + " 👋";
                     loadStats();
                 } else {
                     errorMsg.innerText = "كلمة المرور غير صحيحة";
@@ -381,6 +378,63 @@
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
             });
+        }
+
+        // ✅ دالة توضيح الطلب معلق عند مين
+        function enhanceStageText(stageText) {
+            if (!stageText) return "-";
+            let s = String(stageText).trim();
+            let sLower = s.toLowerCase();
+
+            // 1. لو الطلب لسه في البداية (قيد الانتظار لموافقة مدير عام)
+            if (sLower.includes("مراجعة") && !sLower.includes("عقود") && !sLower.includes("أمر التوريد")) {
+                let deptName = s.replace(/مراجعة\s*[-–]?\s*/, "").trim();
+                return "معلق عند: المدير العام (" + deptName + ")";
+            }
+
+            // 2. لو الطلب في مرحلة إنشاء أمر التوريد (عند موظف العقود)
+            if (sLower.includes("إنشاء أمر التوريد") || sLower.includes("لإنشاء أمر التوريد") || s === "مراجعة -") {
+                return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
+            }
+
+            // 3. لو الطلب في مرحلة اعتماد مسودة أمر التوريد (عند مدير العقود)
+            if (sLower.includes("مسودة") || (sLower.includes("مراجعة") && sLower.includes("عقود"))) {
+                return "معلق عند: مدير العقود (لاعتماد المسودة)";
+            }
+
+            // 4. لو الطلب محول لأخذ رأي إدارة
+            if (sLower.includes("بانتظار رأي") || sLower.includes("أخذ رأي") || sLower.includes("أخذ الرأي")) {
+                let dept = s.replace(/بانتظار رأي\s*[-–]?\s*/, "").replace(/أخذ رأي\s*[-–]?\s*/, "").replace(/أخذ الرأي\s*[-–]?\s*/, "").trim();
+                return "معلق عند: " + dept + " (لإبداء الرأي)";
+            }
+
+            // 5. لو الطلب بانتظار اعتماد مالي
+            if (sLower.includes("بانتظار اعتماد مالي") || sLower.includes("اعتماد مالي")) {
+                return "معلق عند: رئيس الإدارة المركزية (اعتماد مالي)";
+            }
+
+            // 6. لو الطلب في مرحلة المراجعة المركزية
+            if (sLower.includes("رئيس الإدارة المركزية")) {
+                return "معلق عند: رئيس الإدارة المركزية";
+            }
+
+            // 7. لو الطلب عند رئيس مجلس الإدارة
+            if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) {
+                return "معلق عند: رئيس مجلس الإدارة";
+            }
+
+            // 8. لو الطلب معتمد نهائياً
+            if (sLower.includes("معتمد") || sLower.includes("مقبول")) {
+                return "تم الاعتماد نهائياً";
+            }
+
+            // 9. لو الطلب مرفوض
+            if (sLower.includes("مرفوض") || sLower.includes("رفض")) {
+                return "تم الرفض";
+            }
+
+            // 10. أي حاجة تانية، نرجع النص زي ما هو
+            return s;
         }
 
         function loadStats() {
@@ -568,6 +622,10 @@
                             let items = JSON.parse(val);
                             val = items.map(it => it.item).join(', ');
                         } catch(e) {}
+                    }
+                    // ✅ لو العمود هو Current_Stage، نستخدم الدالة الذكية
+                    if (key === "Current_Stage") {
+                        val = enhanceStageText(val);
                     }
                     html += `<td>${val || '-'}</td>`;
                 });
