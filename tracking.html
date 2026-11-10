@@ -91,10 +91,11 @@
         
         .print-btn { background: #198754; color: #fff; border: none; padding: 10px; border-radius: 8px; font-family: 'Cairo'; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; }
 
-        /* === جدول العرض === */
-        .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 12px; }
-        .details-table th, .details-table td { padding: 8px; border: 1px solid #334155; color: #fff; vertical-align: middle; }
-        .details-table th { background: #1e293b; color: #fbbf24; font-weight: 700; text-align: center; }
+        /* === الجدول === */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 12px; min-width: 800px; }
+        .details-table th, .details-table td { padding: 10px; border: 1px solid #334155; color: #fff; vertical-align: middle; }
+        .details-table th { background: #1e293b; color: #fbbf24; font-weight: 700; text-align: center; white-space: nowrap; }
         .details-table tr:nth-child(even) { background: #0f172a; }
         .details-table tr:hover { background: rgba(197,155,39,0.08); }
 
@@ -111,6 +112,7 @@
             .modal-header { background: none; border-bottom: 2px solid #000; padding: 5px 0; display: block !important; }
             .modal-header h3 { color: #000 !important; font-size: 18px; text-align: center; margin-bottom: 10px; }
             .modal-body { padding: 0; overflow: visible; }
+            .details-table { min-width: 100%; }
             .details-table th, .details-table td { border: 1px solid #000; color: #000 !important; padding: 4px; }
             .details-table th { background: #e2e8f0 !important; color: #000 !important; }
         }
@@ -198,11 +200,19 @@
                             <label>رقم الطلب:</label>
                             <input type="text" id="filterSerial" placeholder="REQ-..." oninput="applyFilters()">
                         </div>
+                        <div class="filter-group">
+                            <label>من تاريخ:</label>
+                            <input type="date" id="filterDateFrom" onchange="applyFilters()">
+                        </div>
+                        <div class="filter-group">
+                            <label>إلى تاريخ:</label>
+                            <input type="date" id="filterDateTo" onchange="applyFilters()">
+                        </div>
                     </div>
                     <button class="print-btn" onclick="window.print()"><i class="fas fa-file-pdf"></i> طباعة PDF</button>
                 </div>
 
-                <div id="modalTableContainer" style="overflow-x: auto;"></div>
+                <div id="modalTableContainer" class="table-responsive"></div>
             </div>
         </div>
     </div>
@@ -225,7 +235,7 @@
         let currentUserName = "";
         let currentUserRole = "";
         let globalPurchaseData = [];
-        let globalLeaveData = []; 
+        let globalLeaveData = [];
         let currentActiveData = [];
         let currentType = "";
         let currentStatusFilter = "";
@@ -376,59 +386,58 @@
             let s = String(stageText).trim();
             let sLower = s.toLowerCase();
 
-            // حالة 1: مراجعة + اسم إدارة (مش عقود ولا توريد)
+            // 1. نص "مراجعة -" فقط أو "مراجعة"
+            if (s === "مراجعة -" || s === "مراجعة" || s === "مراجعة - ") {
+                return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
+            }
+
+            // 2. مراجعة + اسم إدارة
             if (sLower.includes("مراجعة") && !sLower.includes("عقود") && !sLower.includes("أمر التوريد")) {
                 let deptName = s.replace(/مراجعة\s*[-–]?\s*/, "").trim();
                 if (deptName.length > 2) {
                     return "معلق عند: المدير العام (" + deptName + ")";
                 }
-                // لو النص "مراجعة" بس أو "مراجعة -" بدون اسم إدارة، نعتبرها أمر توريد
                 return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // حالة 2: نص "مراجعة -" فقط
-            if (s === "مراجعة -" || s === "مراجعة") {
-                return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
-            }
-
-            // حالة 3: إنشاء أمر التوريد
+            // 3. إنشاء أمر التوريد
             if (sLower.includes("إنشاء أمر التوريد") || sLower.includes("لإنشاء أمر التوريد")) {
                 return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // حالة 4: اعتماد مسودة
+            // 4. اعتماد مسودة
             if (sLower.includes("مسودة") || (sLower.includes("مراجعة") && sLower.includes("عقود"))) {
                 return "معلق عند: مدير العقود (لاعتماد المسودة)";
             }
 
-            // حالة 5: أخذ رأي
+            // 5. أخذ رأي
             if (sLower.includes("بانتظار رأي") || sLower.includes("أخذ رأي") || sLower.includes("أخذ الرأي") || sLower.includes("استكمال")) {
                 let dept = s.replace(/بانتظار رأي\s*[-–]?\s*/, "").replace(/أخذ رأي\s*[-–]?\s*/, "").replace(/أخذ الرأي\s*[-–]?\s*/, "").trim();
                 if (dept.length > 0) return "معلق عند: " + dept + " (لإبداء الرأي)";
                 return "معلق عند: الإدارات (لإبداء الرأي)";
             }
 
-            // حالة 6: اعتماد مالي
+            // 6. اعتماد مالي
             if (sLower.includes("بانتظار اعتماد مالي") || sLower.includes("اعتماد مالي")) {
                 return "معلق عند: رئيس الإدارة المركزية (اعتماد مالي)";
             }
 
-            // حالة 7: رئيس الإدارة المركزية
+            // 7. رئيس الإدارة المركزية
             if (sLower.includes("رئيس الإدارة المركزية")) {
                 return "معلق عند: رئيس الإدارة المركزية";
             }
 
-            // حالة 8: رئيس مجلس الإدارة
+            // 8. رئيس مجلس الإدارة
             if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) {
                 return "معلق عند: رئيس مجلس الإدارة";
             }
 
-            // حالة 9: معتمد
+            // 9. معتمد
             if (sLower.includes("معتمد") || sLower.includes("مقبول")) {
                 return "تم الاعتماد نهائياً ✅";
             }
 
-            // حالة 10: مرفوض
+            // 10. مرفوض
             if (sLower.includes("مرفوض") || sLower.includes("رفض")) {
                 return "تم الرفض ❌";
             }
@@ -477,7 +486,7 @@
                 document.getElementById('purRejected').innerText = pRejected;
                 document.getElementById('purTotal').innerText = globalPurchaseData.length;
 
-                // الإجازات (مؤقتاً 0 لحد ما تحدد مكانها في الفايربيز)
+                // الإجازات (0 لحد ما تحدد مكانها في الفايربيز)
                 document.getElementById('leavePending').innerText = 0;
                 document.getElementById('leaveApproved').innerText = 0;
                 document.getElementById('leaveRejected').innerText = 0;
@@ -505,6 +514,8 @@
             document.getElementById('modalTitle').innerText = titleText;
             document.getElementById('filterName').value = '';
             document.getElementById('filterSerial').value = '';
+            document.getElementById('filterDateFrom').value = '';
+            document.getElementById('filterDateTo').value = '';
 
             renderTable(currentActiveData);
             document.getElementById('detailsModal').style.display = 'flex';
@@ -513,13 +524,35 @@
         function applyFilters() {
             let nameQuery = document.getElementById('filterName').value.trim().toLowerCase();
             let serialQuery = document.getElementById('filterSerial').value.trim().toLowerCase();
+            let dateFrom = document.getElementById('filterDateFrom').value;
+            let dateTo = document.getElementById('filterDateTo').value;
 
             let filtered = currentActiveData.filter(row => {
                 let nameVal = (row["applicantName"] || "").toLowerCase();
                 let serialVal = (row["Request_ID"] || "").toLowerCase();
                 let matchName = !nameQuery || nameVal.includes(nameQuery);
                 let matchSerial = !serialQuery || serialVal.includes(serialQuery);
-                return matchName && matchSerial;
+
+                // فلتر التاريخ
+                let matchDate = true;
+                if (dateFrom || dateTo) {
+                    let ts = row["Timestamp"] || "";
+                    let dateVal = "";
+                    if (ts) {
+                        let d = new Date(ts);
+                        if (!isNaN(d.getTime())) {
+                            dateVal = d.toISOString().split('T')[0];
+                        }
+                    }
+                    if (dateVal) {
+                        if (dateFrom && dateVal < dateFrom) matchDate = false;
+                        if (dateTo && dateVal > dateTo) matchDate = false;
+                    } else {
+                        matchDate = false;
+                    }
+                }
+
+                return matchName && matchSerial && matchDate;
             });
 
             renderTable(filtered);
