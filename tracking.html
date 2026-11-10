@@ -383,66 +383,70 @@
             });
         }
 
-        // === دالة تحديد "معلق عند" ===
+        // ✅ دالة تحديد "الطلب معلق عند" (اسم الشخص + مسماه الوظيفي)
         function enhanceStageText(stageText, reqObj) {
-            if (!stageText) return "-";
-            let s = String(stageText).trim();
+            if (!stageText && !reqObj) return "-";
+            let s = String(stageText || "").trim();
             let sLower = s.toLowerCase();
 
-            // 1. PO_Status منطق الأولوية
+            // 1. لو فيه PO_Status (الطلب دخل مرحلة العقود)
             if (reqObj) {
                 let poStatus = String(reqObj["PO_Status"] || "").trim();
-                if (poStatus === "pending") return "معلق عند: مدير العقود (لاعتماد المسودة)";
-                if (poStatus === "rejected") return "معلق عند: موظف العقود (لتعديل المسودة)";
+                let poIssuedBy = reqObj["PO_Issued_By"] || "";
+                let poManagerName = reqObj["PO_Manager_Name"] || reqObj["managerName"] || "";
+                
+                if (poStatus === "pending") {
+                    return "مدير العقود: " + poManagerName;
+                }
+                if (poStatus === "rejected") {
+                    return "موظف العقود: " + poIssuedBy + " (بانتظار التعديل)";
+                }
             }
 
-            // 2. نص "مراجعة -" فقط
-            if (s === "مراجعة -" || s === "مراجعة" || s === "مراجعة - ") {
-                return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
-            }
-
-            // 3. مراجعة + اسم إدارة
+            // 2. مراجعة مدير عام
             if (sLower.includes("مراجعة") && !sLower.includes("عقود") && !sLower.includes("أمر التوريد")) {
                 let deptName = s.replace(/مراجعة\s*[-–]?\s*/, "").trim();
                 if (deptName.length > 2) {
-                    return "معلق عند: المدير العام (" + deptName + ")";
+                    return "المدير العام: " + deptName;
                 }
-                return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
+                return "موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 4. إنشاء أمر التوريد
-            if (sLower.includes("إنشاء أمر التوريد") || sLower.includes("لإنشاء أمر التوريد")) {
-                return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
+            // 3. نص "مراجعة -" فقط
+            if (s === "مراجعة -" || s === "مراجعة" || s === "مراجعة - ") {
+                return "موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 5. اعتماد مسودة
-            if (sLower.includes("مسودة") || (sLower.includes("مراجعة") && sLower.includes("عقود"))) {
-                return "معلق عند: مدير العقود (لاعتماد المسودة)";
+            // 4. بانتظار اعتماد مالي (رئيس الإدارة المركزية)
+            if (sLower.includes("بانتظار اعتماد مالي") || sLower.includes("اعتماد مالي")) {
+                let centralName = reqObj ? (reqObj["Central_Manager_Name"] || "") : "";
+                return "رئيس الإدارة المركزية: " + (centralName || "المختص");
             }
 
-            // 6. أخذ رأي
+            // 5. بانتظار اعتماد رئيس مجلس الإدارة
+            if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) {
+                let chairmanName = reqObj ? (reqObj["Chairman_Name"] || "") : "";
+                return "رئيس مجلس الإدارة: " + (chairmanName || "المختص");
+            }
+
+            // 6. بانتظار رأي الإدارات
             if (sLower.includes("بانتظار رأي") || sLower.includes("أخذ رأي") || sLower.includes("أخذ الرأي") || sLower.includes("استكمال")) {
                 let dept = s.replace(/بانتظار رأي\s*[-–]?\s*/, "").replace(/أخذ رأي\s*[-–]?\s*/, "").replace(/أخذ الرأي\s*[-–]?\s*/, "").trim();
-                if (dept.length > 0) return "معلق عند: " + dept + " (لإبداء الرأي)";
-                return "معلق عند: الإدارات (لإبداء الرأي)";
+                if (dept.length > 0) return dept + " (لإبداء الرأي)";
+                return "الإدارات (لإبداء الرأي)";
             }
 
-            // 7. اعتماد مالي
-            if (sLower.includes("بانتظار اعتماد مالي") || sLower.includes("اعتماد مالي")) {
-                return "معلق عند: رئيس الإدارة المركزية (اعتماد مالي)";
+            // 7. لو رئيس الإدارة المركزية
+            if (sLower.includes("رئيس الإدارة المركزية")) {
+                let centralName = reqObj ? (reqObj["Central_Manager_Name"] || "") : "";
+                return "رئيس الإدارة المركزية: " + (centralName || "المختص");
             }
 
-            // 8. رئيس الإدارة المركزية
-            if (sLower.includes("رئيس الإدارة المركزية")) return "معلق عند: رئيس الإدارة المركزية";
+            // 8. معتمد
+            if (sLower.includes("معتمد") || sLower.includes("مقبول")) return "معتمد نهائياً ✅";
 
-            // 9. رئيس مجلس الإدارة
-            if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) return "معلق عند: رئيس مجلس الإدارة";
-
-            // 10. معتمد
-            if (sLower.includes("معتمد") || sLower.includes("مقبول")) return "تم الاعتماد نهائياً ✅";
-
-            // 11. مرفوض
-            if (sLower.includes("مرفوض") || sLower.includes("رفض")) return "تم الرفض ❌";
+            // 9. مرفوض
+            if (sLower.includes("مرفوض") || sLower.includes("رفض")) return "مرفوض ❌";
 
             return s;
         }
@@ -521,9 +525,8 @@
                 filteredData = baseData.filter(r => getPurchaseStatus(r) === 'approved');
             } else if (modalActiveTab === 'po') {
                 filteredData = baseData.filter(r => {
-                    let stage = (r["Current_Stage"] || "").toLowerCase();
                     let poStatus = r["PO_Status"] || "";
-                    return (poStatus === "pending" || poStatus === "rejected") || stage.includes("أمر التوريد") || stage.includes("مسودة");
+                    return poStatus === "pending" || poStatus === "rejected";
                 });
             } else {
                 filteredData = baseData;
@@ -607,13 +610,27 @@
             }
 
             let html = '<table class="details-table"><thead><tr>';
-            html += '<th>م</th><th>رقم الطلب</th><th>مقدم الطلب</th><th>الوظيفة</th><th>الإدارة</th><th>التكلفة</th><th>الطلب معلق عند</th><th>اسم المدير</th>';
+            html += '<th>م</th><th>رقم الطلب</th><th>مقدم الطلب</th><th>الوظيفة</th><th>الإدارة</th><th>التكلفة</th><th>حالة الطلب</th><th>اسم المدير</th>';
             html += '</tr></thead><tbody>';
 
             data.forEach((row, idx) => {
                 let statusVal = getPurchaseStatus(row);
                 let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
-                let stageDisplay = enhanceStageText(row["Current_Stage"] || row["Status"], row);
+                
+                // ✅ كارت المعتمدة: تم إنشاء أمر التوريد إذا مدير العقود اعتمد المسودة
+                let finalStatusText = "";
+                if (statusVal === 'approved') {
+                    if (row["PO_Status"] === "approved") {
+                        finalStatusText = "تم إنشاء أمر التوريد ✅";
+                    } else {
+                        finalStatusText = "معتمد نهائياً ✅";
+                    }
+                } else if (statusVal === 'rejected') {
+                    finalStatusText = "مرفوض ❌";
+                } else {
+                    // في كارت "معلقة" أو "الكل": اسم الشخص + مسماه الوظيفي
+                    finalStatusText = enhanceStageText(row["Current_Stage"] || row["Status"], row);
+                }
 
                 html += '<tr>';
                 html += `<td>${idx + 1}</td>`;
@@ -622,7 +639,7 @@
                 html += `<td>${row.role || '-'}</td>`;
                 html += `<td>${row.parentDepartment || '-'}</td>`;
                 html += `<td>${row.totalCost || '0'} ج.م</td>`;
-                html += `<td class="${statusClass}">${stageDisplay}</td>`;
+                html += `<td class="${statusClass}">${finalStatusText}</td>`;
                 html += `<td>${row.managerName || '-'}</td>`;
                 html += '</tr>';
             });
