@@ -990,20 +990,52 @@ function loadReviewRequests() {
                     if (needsFinanceReview) isThisMyRequest = true;
                 }
 
+                // ✅ التعديل: نتأكد إن كل الإدارات اللي اتحوللها الطلب خلصت رأيها
+                let allDeptsFinished = true;
+                let pendingDepts = [];
+                if (req.Transfer_State) {
+                    try {
+                        let state = JSON.parse(req.Transfer_State);
+                        for (let key in state) {
+                            if (state[key].decision === 'pending') {
+                                allDeptsFinished = false;
+                                pendingDepts.push(key);
+                            }
+                        }
+                    } catch(e) {}
+                }
+
                 if (isThisMyRequest) {
                     if (stage.includes("رئيس الإدارة المركزية") || stage.includes("بانتظار اعتماد") || stage.includes("عودة من المالية") || stage.includes("اكتملت آراء")) {
                         isMyTurnNow = true;
                     } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
-                        isArchivedForMe = true;
+                        // ✅ التعديل: لو هو اتحرك على الطلب، بس لسه فيه إدارات ما ردتش، يفضل في المعلقة
+                        if (!allDeptsFinished && pendingDepts.length > 0) {
+                            isMyTurnNow = true;
+                        } else {
+                            isArchivedForMe = true;
+                        }
                     }
                 }
 
                 if (iHaveActed && (stage.includes("بانتظار اعتماد مالي") || stage.includes("بانتظار رأي"))) {
-                    isMyTurnNow = false;
-                    isArchivedForMe = true;
+                    // ✅ التعديل: نتأكد إن الإدارات كلها ردت قبل ما نأرشفه
+                    if (!allDeptsFinished && pendingDepts.length > 0) {
+                        isMyTurnNow = true;
+                    } else {
+                        isMyTurnNow = false;
+                        isArchivedForMe = true;
+                    }
+                }
+
+                // ✅ لو فيه إدارات لسه ما ردتش، الطلب يفضل في المعلقة عنده
+                if (pendingDepts.length > 0 && !allDeptsFinished) {
+                    isArchivedForMe = false;
+                    isMyTurnNow = true;
                 }
             } 
             else {
+                // ✅ المدير العام (عادي أو مالية/تخطيط) - بيستقبل طلباته المباشرة + طلبات إبداء الرأي
                 let isMyDeptRequest = false;
                 
                 if (myCentral && parentDept && (myCentral.includes(parentDept) || parentDept.includes(myCentral))) {
@@ -1022,26 +1054,40 @@ function loadReviewRequests() {
                     isMyDeptRequest = true;
                 }
 
+                // ✅ التعديل: بنفحص Transfer_State بدقة عشان نظهر الطلب للإدارات اللي لسه ما ردتش
                 let isTransferredToMe = false;
+                let myTransferKey = null;
                 if (req.Transfer_State) {
                     try {
                         let state = JSON.parse(req.Transfer_State);
                         for (let key in state) {
-                            let keyLower = key.toLowerCase();
-                            if (myCentral.includes("مالية") && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
-                                isTransferredToMe = true;
-                            }
-                            if (myCentral.includes("تخطيط") && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
-                                isTransferredToMe = true;
+                            let keyLower = cleanText(key).toLowerCase();
+                            if (state[key] && state[key].decision === 'pending') {
+                                if (myCentral.includes("مالية") && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                                    isTransferredToMe = true;
+                                    myTransferKey = key;
+                                }
+                                if (myCentral.includes("تخطيط") && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                                    isTransferredToMe = true;
+                                    myTransferKey = key;
+                                }
                             }
                         }
                     } catch(e) {}
                 }
 
                 if (isMyDeptRequest || isTransferredToMe) {
-                    if ((stage.includes("مراجعة") || stage.includes("بانتظار رأي")) && !iHaveActed) {
-                        isMyTurnNow = true;
-                    } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
+                    if (!iHaveActed) {
+                        if (isTransferredToMe && (stage.includes("بانتظار رأي") || stage.includes("بانتظار استكمال"))) {
+                            isMyTurnNow = true;
+                        }
+                        else if (isMyDeptRequest && stage.includes("مراجعة")) {
+                            isMyTurnNow = true;
+                        }
+                        else if (isTransferredToMe) {
+                            isMyTurnNow = true;
+                        }
+                    } else {
                         isArchivedForMe = true;
                     }
                 }
@@ -1113,7 +1159,8 @@ function resetFilters() {
     document.getElementById('filterStatus').value = "";
     renderFilteredRequests();
 }
-                function processAction(requestId, actionType, extraData = {}) {
+            
+            function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString('ar-EG');
         
         db.collection("requests").doc(requestId).get().then((doc) => {
@@ -2422,4 +2469,4 @@ function resetFilters() {
 
     </script>
 </body>
-</html>
+</html>    
