@@ -427,7 +427,8 @@
             </div>
         </div>
     </div>
-    <script>
+    
+        <script>
 const firebaseConfig = {
     apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
     authDomain: "dam-purchases-app.firebaseapp.com",
@@ -968,20 +969,24 @@ function switchTab(tab) {
     renderFilteredRequests();
 }
 
+// ✅ التعديل الجوهري: دالة loadReviewRequests بعد التعديل
 function loadReviewRequests() {
-    if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
+    if (!loggedInUser) return;
     const container = document.getElementById('requestsList');
     container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
     db.collection("requests").get().then((querySnapshot) => {
         pendingData = [];
         archiveData = [];
+        
         const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
         const myName = cleanText(loggedInUser.name || "").toLowerCase();
         const myRole = cleanText(loggedInUser.role || "").toLowerCase();
 
         const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
         const isCentralUser = !isChairmanUser && (myRole.includes("رئيس الإدارة المركزية") || myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية"));
+        
+        // ✅ تصنيفات خاصة للمالية والتخطيط (لإبداء الرأي)
         const isFinanceCentral = isCentralUser && (myRole.includes("مالية") || myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("شئون") || myCentral.includes("شئون"));
         const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
         const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
@@ -992,6 +997,7 @@ function loadReviewRequests() {
             const stage = cleanText(req.Current_Stage || "").toLowerCase();
             const status = cleanText(req.Status || "").toLowerCase();
             const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
+            const parentDept = cleanText(req.parentDepartment || "").toLowerCase(); // الإدارة اللي اختارها الموظف
             let history = req.History || [];
             
             let isMyTurnNow = false;
@@ -1026,36 +1032,51 @@ function loadReviewRequests() {
                     isArchivedForMe = true;
                 }
             } 
-            else if (isPlanningUser || isFinanceUser) {
-                let hasMyOpinion = false;
-                let isTransferredToMe = false;
+            else {
+                // ✅ المدير العام (عادي أو مالية/تخطيط) - التعديل هنا
+                let isMyDeptRequest = false;
                 
+                // 1. هل الطلب مقدم ليه مباشرة (زي أي مدير عام عادي)?
+                if (myCentral && parentDept && (myCentral.includes(parentDept) || parentDept.includes(myCentral))) {
+                    isMyDeptRequest = true;
+                }
+                // أو لو هو مدير مالية والطلب مقدم لمدير مالية
+                else if (myCentral.includes("مالية") && (parentDept.includes("مالية") || parentDept.includes("الشئون المالية"))) {
+                    isMyDeptRequest = true;
+                }
+                // أو لو هو مدير تخطيط والطلب مقدم لمدير تخطيط
+                else if (myCentral.includes("تخطيط") && (parentDept.includes("تخطيط") || parentDept.includes("المتابعة"))) {
+                    isMyDeptRequest = true;
+                }
+                // أو لو هو مدير موارد بشرية والطلب مقدم لمدير موارد بشرية
+                else if ((myCentral.includes("موارد") || myCentral.includes("بشرية")) && (parentDept.includes("موارد") || parentDept.includes("البشرية"))) {
+                    isMyDeptRequest = true;
+                }
+                // أو لو هو مدير إداري والطلب مقدم لمدير إداري
+                else if ((myCentral.includes("إداري") || myCentral.includes("ادارية")) && (parentDept.includes("إداري") || parentDept.includes("ادارية"))) {
+                    isMyDeptRequest = true;
+                }
+
+                // 2. هل الطلب متحول ليه من رئيس الإدارة المركزية عشان يدي رأيه؟ (Transfer State)
+                let isTransferredToMe = false;
                 if (req.Transfer_State) {
                     try {
                         let state = JSON.parse(req.Transfer_State);
                         for (let key in state) {
                             let keyLower = key.toLowerCase();
-                            if (isPlanningUser && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
+                            if (myCentral.includes("مالية") && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
                                 isTransferredToMe = true;
-                                if (state[key].decision !== 'pending') hasMyOpinion = true;
                             }
-                            if (isFinanceUser && (keyLower.includes("مالية") || keyLower.includes("الشؤون"))) {
+                            if (myCentral.includes("تخطيط") && (keyLower.includes("تخطيط") || keyLower.includes("متابعة"))) {
                                 isTransferredToMe = true;
-                                if (state[key].decision !== 'pending') hasMyOpinion = true;
                             }
                         }
                     } catch(e) {}
                 }
 
-                if (isTransferredToMe) {
-                    if (!hasMyOpinion) isMyTurnNow = true; 
-                    else isArchivedForMe = true; 
-                }
-            } 
-            else {
-                let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
-                if (isMyDeptRequest) {
-                    if (stage.includes("مراجعة " + myCentral) && !iHaveActed) {
+                // لو الطلب ليه علاقة بيه (سواء مقدم ليه أو متحول ليه)
+                if (isMyDeptRequest || isTransferredToMe) {
+                    if ((stage.includes("مراجعة") || stage.includes("بانتظار رأي")) && !iHaveActed) {
                         isMyTurnNow = true;
                     } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
                         isArchivedForMe = true;
@@ -1129,7 +1150,7 @@ function resetFilters() {
     document.getElementById('filterStatus').value = "";
     renderFilteredRequests();
 }
-            function processAction(requestId, actionType, extraData = {}) {
+                        function processAction(requestId, actionType, extraData = {}) {
         const nowStr = new Date().toLocaleString('ar-EG');
         
         db.collection("requests").doc(requestId).get().then((doc) => {
