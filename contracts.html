@@ -432,7 +432,6 @@ let deptParentMap = {};
 let trackUser = null;
 let trackRequestsCache = [];
 
-// ✅ متغيرات خاصة بأمر التوريد
 let contractUserSelect;
 let currentContractUser = null;
 let contractPendingData = [];
@@ -446,7 +445,6 @@ function cleanText(txt) {
     return String(txt).replace(/[\u200e\u200f\u202a-\u202e]/g, "").replace(/[؟?]/g, "").trim();
 }
 
-// ✅ دالة بتجيب اسم مدير إدارة العقود
 function getContractManagerName() {
     return new Promise((resolve) => {
         db.collection("users").get().then(snapshot => {
@@ -464,7 +462,6 @@ function getContractManagerName() {
     });
 }
 
-// ✅ دالة بتجيب اسم رئيس الإدارة المركزية
 function getCentralManagerName() {
     return new Promise((resolve) => {
         db.collection("users")
@@ -948,7 +945,6 @@ function switchTab(tab) {
     renderFilteredRequests();
 }
 
-// ✅ التعديل الجوهري: دالة loadReviewRequests بعد التعديل
 function loadReviewRequests() {
     if (!loggedInUser) return;
     const container = document.getElementById('requestsList');
@@ -964,7 +960,6 @@ function loadReviewRequests() {
 
         const isChairmanUser = myRole.includes("رئيس مجلس") || myName.includes("رئيس مجلس") || myCentral.includes("رئيس مجلس");
         const isCentralUser = !isChairmanUser && (myRole.includes("رئيس الإدارة المركزية") || myCentral.includes("رئيس الإدارة المركزية") || myName.includes("رئيس الإدارة المركزية"));
-        
         const isFinanceCentral = isCentralUser && (myRole.includes("مالية") || myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("شئون") || myCentral.includes("شئون"));
 
         querySnapshot.forEach((doc) => {
@@ -1009,7 +1004,6 @@ function loadReviewRequests() {
                 }
             } 
             else {
-                // ✅ المدير العام: بيستقبل الطلبات العادية + طلبات إبداء الرأي
                 let isMyDeptRequest = false;
                 
                 if (myCentral && parentDept && (myCentral.includes(parentDept) || parentDept.includes(myCentral))) {
@@ -1208,7 +1202,32 @@ function resetFilters() {
                 let existingState = {};
                 try { existingState = JSON.parse(req.Transfer_State || "{}"); } catch(e) {}
                 let transferObj = { ...existingState };
-                extraData.targetDepts.forEach(dept => { if (!transferObj[dept]) transferObj[dept] = { decision: "pending", date: nowStr }; });
+                
+                // ✅ حماية إضافية: منع التحويل المكرر لنفس الإدارة
+                let alreadySent = false;
+                let blockedDepts = [];
+                extraData.targetDepts.forEach(dept => {
+                    let exists = false;
+                    for (let key in transferObj) {
+                        if (key.trim() === dept.trim()) { exists = true; break; }
+                    }
+                    if (exists) {
+                        blockedDepts.push(dept);
+                        alreadySent = true;
+                    } else {
+                        transferObj[dept] = { decision: "pending", date: nowStr };
+                    }
+                });
+                
+                if (alreadySent && blockedDepts.length === extraData.targetDepts.length) {
+                    showCustomAlert("تنبيه", "الطلب محوّل بالفعل لهذه الإدارات، لا يمكن تحويله مرة أخرى.");
+                    return;
+                }
+                
+                if (blockedDepts.length > 0) {
+                    showCustomAlert("تنبيه", "تم تجاهل الإدارات التي تم تحويلها مسبقاً: " + blockedDepts.join(" و "));
+                }
+                
                 let deptNamesStr = Object.keys(transferObj).join(" و ");
                 updates = { Current_Stage: "بانتظار رأي " + deptNamesStr, Transfer_State: JSON.stringify(transferObj), Status: "قيد الانتظار - أخذ رأي " + deptNamesStr, History: history };
             }
@@ -1342,7 +1361,7 @@ function resetFilters() {
         };
     }
 
-    // ✅ التعديل: منع تحويل الطلب لنفس الإدارة اللي طالع منها
+    // ✅ التعديل: منع تحويل الطلب لنفس الإدارة اللي طالع منها + منع التكرار
     function promptFinanceTransfer(requestId) {
         let req = activeRequestsData.find(r => r.Request_ID === requestId);
         if (!req) {
@@ -1361,6 +1380,20 @@ function resetFilters() {
         const isFromPlanning = parentDept.includes("تخطيط") || parentDept.includes("المتابعة");
         const isFromFinance = parentDept.includes("مالية") || parentDept.includes("الشئون المالية");
 
+        // ✅ بنفحص هل الإدارات دي اتحوللها الطلب قبل كده؟
+        let alreadyTransferred = {};
+        try {
+            alreadyTransferred = JSON.parse(req.Transfer_State || "{}");
+        } catch(e) {}
+
+        let alreadyHasFinance = false;
+        let alreadyHasPlanning = false;
+        for (let key in alreadyTransferred) {
+            let keyLower = key.toLowerCase();
+            if (keyLower.includes("مالية") || keyLower.includes("الشؤون")) alreadyHasFinance = true;
+            if (keyLower.includes("تخطيط") || keyLower.includes("متابعة")) alreadyHasPlanning = true;
+        }
+
         const existing = document.getElementById("transferModal");
         if (existing) existing.remove();
         const overlay = document.createElement("div");
@@ -1369,10 +1402,33 @@ function resetFilters() {
         let financeOption = `<label class="transfer-option"><input type="checkbox" id="chkFinance" value="مدير عام الشئون المالية"><span>مدير عام الشئون المالية</span></label>`;
         let planningOption = `<label class="transfer-option"><input type="checkbox" id="chkPlanning" value="مدير عام التخطيط والمتابعة"><span>مدير عام التخطيط والمتابعة</span></label>`;
 
+        // ✅ منع التحويل لو الطلب أصلاً منهم
         if (isFromPlanning) {
             planningOption = `<div style="padding:10px; background:#fef3c7; border-radius:6px; color:#92400e; font-size:12px; text-align:right;">⚠️ لا يمكن طلب رأي إدارة التخطيط والمتابعة لأن الطلب صادر منها.</div>`;
         } else if (isFromFinance) {
             financeOption = `<div style="padding:10px; background:#fef3c7; border-radius:6px; color:#92400e; font-size:12px; text-align:right;">⚠️ لا يمكن طلب رأي إدارة الشئون المالية لأن الطلب صادر منها.</div>`;
+        }
+
+        // ✅ منع التحويل المكرر لنفس الإدارة
+        if (alreadyHasFinance) {
+            financeOption = `<div style="padding:10px; background:#fee2e2; border-radius:6px; color:#991b1b; font-size:12px; text-align:right;">🚫 تم تحويل الطلب لإدارة الشئون المالية بالفعل. لا يمكن التحويل مرة أخرى.</div>`;
+        }
+        if (alreadyHasPlanning) {
+            planningOption = `<div style="padding:10px; background:#fee2e2; border-radius:6px; color:#991b1b; font-size:12px; text-align:right;">🚫 تم تحويل الطلب لإدارة التخطيط والمتابعة بالفعل. لا يمكن التحويل مرة أخرى.</div>`;
+        }
+
+        // ✅ لو الاتنين اتمنعوا، يبقى مفيش تحويل خالص
+        if (alreadyHasFinance && alreadyHasPlanning) {
+            showCustomAlert("تنبيه", "تم تحويل الطلب لكل الإدارات المطلوبة بالفعل. لا يمكن التحويل مرة أخرى.");
+            return;
+        }
+        if (isFromPlanning && alreadyHasFinance) {
+            showCustomAlert("تنبيه", "تم تحويل الطلب لإدارة الشئون المالية بالفعل، ولا يمكن تحويله لإدارة التخطيط لأنه صادر منها.");
+            return;
+        }
+        if (isFromFinance && alreadyHasPlanning) {
+            showCustomAlert("تنبيه", "تم تحويل الطلب لإدارة التخطيط بالفعل، ولا يمكن تحويله لإدارة الشئون المالية لأنه صادر منها.");
+            return;
         }
 
         overlay.innerHTML = `
@@ -1434,7 +1490,8 @@ function resetFilters() {
 
             const isFinanceCentral = actionType === 'central' && (userIdentity.includes("مالية") || userIdentity.includes("شئون") || userIdentity.includes("موارد") || userIdentity.includes("ادارية"));
             const isReturnedFromFinance = stage.toLowerCase().includes("عودة من المالية") || stage.toLowerCase().includes("بانتظار اعتماد مالي") || stage.toLowerCase().includes("اكتملت آراء");
-            const isDeptReplyStage = stage.includes("بانتظار رأي") || (req.Transfer_State && !iHaveActedCheck(req));
+            
+            const iHaveActed = (req.History || []).some(h => (typeof h === 'object' && h.user && (h.user.includes(loggedInUser.name) || h.user.includes(loggedInUser.role) || h.user.includes(loggedInUser.centralManager))));
 
             if (actionType === 'chairman') {
                 buttonsHtml = `<div class="req-actions">
