@@ -968,14 +968,16 @@ function switchTab(tab) {
     renderFilteredRequests();
 }
 
+// ✅ التعديل الجوهري: فلترة الطلبات للمديرين العامين بناءً على الكلمات المفتاحية في الـ centralManager
 function loadReviewRequests() {
-    if (!loggedInUser || (!loggedInUser.role && !loggedInUser.centralManager)) return;
+    if (!loggedInUser) return;
     const container = document.getElementById('requestsList');
     container.innerHTML = '<p class="loading-state"><i class="fas fa-spinner fa-spin"></i> جاري التحميل...</p>';
 
     db.collection("requests").get().then((querySnapshot) => {
         pendingData = [];
         archiveData = [];
+        
         const myCentral = cleanText(loggedInUser.centralManager || "").toLowerCase();
         const myName = cleanText(loggedInUser.name || "").toLowerCase();
         const myRole = cleanText(loggedInUser.role || "").toLowerCase();
@@ -985,6 +987,9 @@ function loadReviewRequests() {
         const isFinanceCentral = isCentralUser && (myRole.includes("مالية") || myCentral.includes("مالية") || myName.includes("مالية") || myRole.includes("شئون") || myCentral.includes("شئون"));
         const isPlanningUser = !isChairmanUser && !isCentralUser && (myCentral.includes("تخطيط") || myCentral.includes("التخطيط والمتابعة") || myName.includes("تخطيط") || myRole.includes("تخطيط"));
         const isFinanceUser = !isChairmanUser && !isCentralUser && (myCentral.includes("مالية") || myCentral.includes("الشئون المالية") || myName.includes("مالية") || myRole.includes("مالية"));
+        
+        // ✅ المدير العام (بناءً على الـ centralManager)
+        const isGeneralManager = !isChairmanUser && !isCentralUser && !isPlanningUser && !isFinanceUser;
 
         querySnapshot.forEach((doc) => {
             const req = doc.data();
@@ -992,6 +997,7 @@ function loadReviewRequests() {
             const stage = cleanText(req.Current_Stage || "").toLowerCase();
             const status = cleanText(req.Status || "").toLowerCase();
             const assignedCentral = cleanText(req.Assigned_Central_Manager || "").toLowerCase();
+            const parentDept = cleanText(req.parentDepartment || "").toLowerCase(); // الإدارة المختارة في الطلب
             let history = req.History || [];
             
             let isMyTurnNow = false;
@@ -1053,9 +1059,28 @@ function loadReviewRequests() {
                 }
             } 
             else {
-                let isMyDeptRequest = stage.includes(myCentral) || status.includes(myCentral);
+                // ✅ المدير العام: بنقارن الـ centralManager بالـ parentDepartment
+                let isMyDeptRequest = false;
+                
+                // لو الـ centralManager فيه كلمة "مالية" والطلب لمدير الشئون المالية
+                if (myCentral.includes("مالية") && (parentDept.includes("مالية") || parentDept.includes("الشئون المالية"))) {
+                    isMyDeptRequest = true;
+                }
+                // لو الـ centralManager فيه كلمة "تخطيط" والطلب لمدير التخطيط
+                else if (myCentral.includes("تخطيط") && (parentDept.includes("تخطيط") || parentDept.includes("المتابعة"))) {
+                    isMyDeptRequest = true;
+                }
+                // لو الـ centralManager فيه كلمة "موارد" والطلب لمدير الموارد البشرية
+                else if ((myCentral.includes("موارد") || myCentral.includes("بشرية")) && (parentDept.includes("موارد") || parentDept.includes("البشرية"))) {
+                    isMyDeptRequest = true;
+                }
+                // لو فيه تطابق حرفي
+                else if (myCentral && parentDept && (myCentral.includes(parentDept) || parentDept.includes(myCentral))) {
+                    isMyDeptRequest = true;
+                }
+
                 if (isMyDeptRequest) {
-                    if (stage.includes("مراجعة " + myCentral) && !iHaveActed) {
+                    if (stage.includes("مراجعة") && !iHaveActed) {
                         isMyTurnNow = true;
                     } else if (iHaveActed || status.includes("معتمد") || status.includes("مرفوض")) {
                         isArchivedForMe = true;
