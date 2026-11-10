@@ -268,7 +268,6 @@
             "managerName": "اسم المدير"
         };
 
-        // دالة تصنيف حالة طلب الشراء بناءً على بيانات الفايربيز
         function getPurchaseStatus(row) {
             let stageVal = (row["Current_Stage"] || row["Status"] || "").toString().trim().toLowerCase();
             if (stageVal.includes("مرفوض") || stageVal.includes("رفض")) {
@@ -280,7 +279,6 @@
             return "pending";
         }
 
-        // دالة تصنيف حالة الإجازة (لو حبيت تضيفها لاحقاً)
         function getLeaveStatus(row) {
             let statusVal = (row["status"] || row["Status"] || "").toString().trim().toLowerCase();
             if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) return "rejected";
@@ -288,21 +286,39 @@
             return "pending";
         }
 
-        // ✅ تحميل قائمة المستخدمين من Firestore
+        // ✅ تحميل قائمة المستخدمين المفلترة من Firestore
         window.onload = function() {
+            const allowedRoles = ["مدير عام المكتب الفنى", "رئيس مجلس الإدارة"];
+            let usersSet = new Set();
+
             db.collection("users").get().then((querySnapshot) => {
-                let select = document.getElementById('loginUsername');
-                select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
                 querySnapshot.forEach((doc) => {
                     let data = doc.data();
-                    let userName = data.name || doc.id;
-                    if (userName) {
-                        let opt = document.createElement('option');
-                        opt.value = userName;
-                        opt.textContent = userName;
-                        select.appendChild(opt);
+                    let centralVal = String(data.centralManager || "").trim();
+                    let userName = String(data.name || "").trim();
+
+                    if (allowedRoles.includes(centralVal) && userName !== "") {
+                        usersSet.add(userName);
                     }
                 });
+
+                let select = document.getElementById('loginUsername');
+                select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
+                
+                let usersList = [...usersSet].sort();
+                usersList.forEach(name => {
+                    let opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    select.appendChild(opt);
+                });
+
+                if (usersList.length === 0) {
+                    let opt = document.createElement('option');
+                    opt.value = "";
+                    opt.textContent = "لا يوجد مستخدمين مطابقين";
+                    select.appendChild(opt);
+                }
             }).catch(err => {
                 console.error("خطأ في تحميل المستخدمين:", err);
             });
@@ -355,8 +371,7 @@
                 btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
             });
         }
-
-        function loadStats() {
+                function loadStats() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحديث...';
@@ -365,7 +380,6 @@
             errorBox.style.display = 'none';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
-            // ✅ تحميل بيانات طلبات المشتريات من Firestore
             db.collection("requests").get().then((querySnapshot) => {
                 globalPurchaseData = [];
                 querySnapshot.forEach((doc) => {
@@ -374,10 +388,8 @@
                     globalPurchaseData.push(req);
                 });
 
-                // (اختياري) لو عندك مجموعة إجازات منفصلة، استبدل الكود ده
-                globalLeaveData = []; // مؤقتاً فاضي لحد ما تحدد مكان الإجازات
+                globalLeaveData = [];
 
-                // حساب إحصائيات المشتريات
                 let pPending = 0, pApproved = 0, pRejected = 0;
                 globalPurchaseData.forEach(row => {
                     let st = getPurchaseStatus(row);
@@ -391,7 +403,6 @@
                 document.getElementById('purRejected').innerText = pRejected;
                 document.getElementById('purTotal').innerText = globalPurchaseData.length;
 
-                // حساب إحصائيات الإجازات (حالياً 0)
                 document.getElementById('leavePending').innerText = 0;
                 document.getElementById('leaveApproved').innerText = 0;
                 document.getElementById('leaveRejected').innerText = 0;
@@ -441,7 +452,7 @@
             let suggestionsBox = document.getElementById('nameSuggestions');
             
             if (currentActiveData.length === 0) return;
-            let nameKey = "applicantName"; // في الفايربيز
+            let nameKey = "applicantName";
             
             if (!query) {
                 suggestionsBox.style.display = 'none';
@@ -512,7 +523,6 @@
                 return;
             }
 
-            // الأعمدة المطلوبة للمشتريات
             let purchaseAllowedCols = [
                 "Request_ID", "applicantName", "role", "parentDepartment", 
                 "totalCost", "Current_Stage", "managerName"
