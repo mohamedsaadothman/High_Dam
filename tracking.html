@@ -91,7 +91,6 @@
         
         .print-btn { background: #198754; color: #fff; border: none; padding: 10px; border-radius: 8px; font-family: 'Cairo'; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; }
 
-        /* === الجدول === */
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .details-table { width: 100%; border-collapse: collapse; text-align: right; font-size: 12px; min-width: 800px; }
         .details-table th, .details-table td { padding: 10px; border: 1px solid #334155; color: #fff; vertical-align: middle; }
@@ -102,6 +101,10 @@
         .status-pending { color: #fbbf24; font-weight: 700; }
         .status-approved { color: #4ade80; font-weight: 700; }
         .status-rejected { color: #f87171; font-weight: 700; }
+
+        .tab-modal-btn { padding: 8px 16px; border-radius: 6px; font-family: 'Cairo'; font-weight: 700; cursor: pointer; border: 1px solid transparent; transition: 0.2s; font-size: 13px; background: #1e293b; color: #94a3b8; }
+        .tab-modal-btn.active { background: #c59b27 !important; color: #0f172a !important; border-color: #c59b27 !important; }
+        .tab-modal-btn:hover { color: #fff; border-color: #475569; }
 
         @media print {
             @page { size: A4 landscape; margin: 5mm; }
@@ -191,6 +194,13 @@
             </div>
             <div class="modal-body">
                 <div class="action-bar">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
+                        <button class="tab-modal-btn active" id="tabModalAll" onclick="switchModalTab('all')">الكل</button>
+                        <button class="tab-modal-btn" id="tabModalPending" onclick="switchModalTab('pending')">معلقة</button>
+                        <button class="tab-modal-btn" id="tabModalApproved" onclick="switchModalTab('approved')">معتمدة</button>
+                        <button class="tab-modal-btn" id="tabModalPO" onclick="switchModalTab('po')">أوامر توريد جارية</button>
+                    </div>
+                    
                     <div class="filter-bar">
                         <div class="filter-group">
                             <label>بحث بالاسم:</label>
@@ -238,7 +248,7 @@
         let globalLeaveData = [];
         let currentActiveData = [];
         let currentType = "";
-        let currentStatusFilter = "";
+        let modalActiveTab = "all";
 
         // === Custom Select Class ===
         class CustomSelect {
@@ -259,10 +269,7 @@
                 this.trigger.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(); });
                 document.addEventListener('click', (e) => { if (!this.wrap.contains(e.target)) this.close(); });
             }
-            setOptions(opts) {
-                this.options = opts;
-                this._render();
-            }
+            setOptions(opts) { this.options = opts; this._render(); }
             _render() {
                 this.menu.innerHTML = "";
                 if (this.options.length === 0) {
@@ -314,11 +321,7 @@
                 });
 
                 let rolesList = [...rolesSet].sort();
-                if (rolesList.length > 0) {
-                    loginRoleSelect = new CustomSelect('loginRoleWrap', rolesList, "");
-                } else {
-                    loginRoleSelect = new CustomSelect('loginRoleWrap', [], "");
-                }
+                loginRoleSelect = new CustomSelect('loginRoleWrap', rolesList, "");
             }).catch(err => console.error(err));
         };
 
@@ -381,17 +384,24 @@
         }
 
         // === دالة تحديد "معلق عند" ===
-        function enhanceStageText(stageText) {
+        function enhanceStageText(stageText, reqObj) {
             if (!stageText) return "-";
             let s = String(stageText).trim();
             let sLower = s.toLowerCase();
 
-            // 1. نص "مراجعة -" فقط أو "مراجعة"
+            // 1. PO_Status منطق الأولوية
+            if (reqObj) {
+                let poStatus = String(reqObj["PO_Status"] || "").trim();
+                if (poStatus === "pending") return "معلق عند: مدير العقود (لاعتماد المسودة)";
+                if (poStatus === "rejected") return "معلق عند: موظف العقود (لتعديل المسودة)";
+            }
+
+            // 2. نص "مراجعة -" فقط
             if (s === "مراجعة -" || s === "مراجعة" || s === "مراجعة - ") {
                 return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 2. مراجعة + اسم إدارة
+            // 3. مراجعة + اسم إدارة
             if (sLower.includes("مراجعة") && !sLower.includes("عقود") && !sLower.includes("أمر التوريد")) {
                 let deptName = s.replace(/مراجعة\s*[-–]?\s*/, "").trim();
                 if (deptName.length > 2) {
@@ -400,47 +410,39 @@
                 return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 3. إنشاء أمر التوريد
+            // 4. إنشاء أمر التوريد
             if (sLower.includes("إنشاء أمر التوريد") || sLower.includes("لإنشاء أمر التوريد")) {
                 return "معلق عند: موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 4. اعتماد مسودة
+            // 5. اعتماد مسودة
             if (sLower.includes("مسودة") || (sLower.includes("مراجعة") && sLower.includes("عقود"))) {
                 return "معلق عند: مدير العقود (لاعتماد المسودة)";
             }
 
-            // 5. أخذ رأي
+            // 6. أخذ رأي
             if (sLower.includes("بانتظار رأي") || sLower.includes("أخذ رأي") || sLower.includes("أخذ الرأي") || sLower.includes("استكمال")) {
                 let dept = s.replace(/بانتظار رأي\s*[-–]?\s*/, "").replace(/أخذ رأي\s*[-–]?\s*/, "").replace(/أخذ الرأي\s*[-–]?\s*/, "").trim();
                 if (dept.length > 0) return "معلق عند: " + dept + " (لإبداء الرأي)";
                 return "معلق عند: الإدارات (لإبداء الرأي)";
             }
 
-            // 6. اعتماد مالي
+            // 7. اعتماد مالي
             if (sLower.includes("بانتظار اعتماد مالي") || sLower.includes("اعتماد مالي")) {
                 return "معلق عند: رئيس الإدارة المركزية (اعتماد مالي)";
             }
 
-            // 7. رئيس الإدارة المركزية
-            if (sLower.includes("رئيس الإدارة المركزية")) {
-                return "معلق عند: رئيس الإدارة المركزية";
-            }
+            // 8. رئيس الإدارة المركزية
+            if (sLower.includes("رئيس الإدارة المركزية")) return "معلق عند: رئيس الإدارة المركزية";
 
-            // 8. رئيس مجلس الإدارة
-            if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) {
-                return "معلق عند: رئيس مجلس الإدارة";
-            }
+            // 9. رئيس مجلس الإدارة
+            if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) return "معلق عند: رئيس مجلس الإدارة";
 
-            // 9. معتمد
-            if (sLower.includes("معتمد") || sLower.includes("مقبول")) {
-                return "تم الاعتماد نهائياً ✅";
-            }
+            // 10. معتمد
+            if (sLower.includes("معتمد") || sLower.includes("مقبول")) return "تم الاعتماد نهائياً ✅";
 
-            // 10. مرفوض
-            if (sLower.includes("مرفوض") || sLower.includes("رفض")) {
-                return "تم الرفض ❌";
-            }
+            // 11. مرفوض
+            if (sLower.includes("مرفوض") || sLower.includes("رفض")) return "تم الرفض ❌";
 
             return s;
         }
@@ -449,13 +451,6 @@
             let stageVal = (row["Current_Stage"] || row["Status"] || "").toString().trim().toLowerCase();
             if (stageVal.includes("مرفوض") || stageVal.includes("رفض")) return "rejected";
             if (stageVal.includes("معتمد") || stageVal.includes("مقبول") || stageVal.includes("مؤرشف")) return "approved";
-            return "pending";
-        }
-
-        function getLeaveStatus(row) {
-            let statusVal = (row["status"] || row["Status"] || "").toString().trim().toLowerCase();
-            if (statusVal.includes("مرفوض") || statusVal.includes("رفض")) return "rejected";
-            if (statusVal.includes("مقبول") || statusVal.includes("معتمد")) return "approved";
             return "pending";
         }
 
@@ -486,30 +481,69 @@
                 document.getElementById('purRejected').innerText = pRejected;
                 document.getElementById('purTotal').innerText = globalPurchaseData.length;
 
-                // الإجازات (0 لحد ما تحدد مكانها في الفايربيز)
                 document.getElementById('leavePending').innerText = 0;
                 document.getElementById('leaveApproved').innerText = 0;
                 document.getElementById('leaveRejected').innerText = 0;
                 document.getElementById('leaveTotal').innerText = 0;
 
-            }).catch(err => {
-                console.error(err);
-            }).finally(() => {
+            }).catch(err => { console.error(err); }).finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
         }
 
+        function switchModalTab(tabName) {
+            modalActiveTab = tabName;
+            
+            ['All', 'Pending', 'Approved', 'PO'].forEach(t => {
+                let btn = document.getElementById('tabModal' + t);
+                if (btn) btn.classList.remove('active');
+            });
+            
+            let activeId = 'tabModalAll';
+            if (tabName === 'pending') activeId = 'tabModalPending';
+            else if (tabName === 'approved') activeId = 'tabModalApproved';
+            else if (tabName === 'po') activeId = 'tabModalPO';
+            
+            let activeBtn = document.getElementById(activeId);
+            if (activeBtn) activeBtn.classList.add('active');
+            
+            applyModalTabFilter();
+        }
+
+        function applyModalTabFilter() {
+            let baseData = globalPurchaseData;
+            let filteredData = [];
+
+            if (modalActiveTab === 'pending') {
+                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'pending');
+            } else if (modalActiveTab === 'approved') {
+                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'approved');
+            } else if (modalActiveTab === 'po') {
+                filteredData = baseData.filter(r => {
+                    let stage = (r["Current_Stage"] || "").toLowerCase();
+                    let poStatus = r["PO_Status"] || "";
+                    return (poStatus === "pending" || poStatus === "rejected") || stage.includes("أمر التوريد") || stage.includes("مسودة");
+                });
+            } else {
+                filteredData = baseData;
+            }
+
+            currentActiveData = filteredData;
+            applyFilters();
+        }
+
         function openDetailsModal(type, status) {
             currentType = type;
-            currentStatusFilter = status;
-            let data = globalPurchaseData;
+            if (status === 'pending') modalActiveTab = 'pending';
+            else if (status === 'approved') modalActiveTab = 'approved';
+            else modalActiveTab = 'all';
 
             let titleText = "";
-            if (status === 'pending') { titleText = "طلبات المشتريات المعلقة"; currentActiveData = data.filter(row => getPurchaseStatus(row) === 'pending'); }
-            else if (status === 'approved') { titleText = "طلبات المشتريات المعتمدة"; currentActiveData = data.filter(row => getPurchaseStatus(row) === 'approved'); }
-            else if (status === 'rejected') { titleText = "طلبات المشتريات المرفوضة"; currentActiveData = data.filter(row => getPurchaseStatus(row) === 'rejected'); }
-            else { titleText = "إجمالي طلبات المشتريات"; currentActiveData = data; }
+            if (status === 'pending') titleText = "طلبات المشتريات المعلقة";
+            else if (status === 'approved') titleText = "طلبات المشتريات المعتمدة";
+            else if (status === 'rejected') titleText = "طلبات المشتريات المرفوضة";
+            else titleText = "إجمالي طلبات المشتريات";
 
             document.getElementById('modalTitle').innerText = titleText;
             document.getElementById('filterName').value = '';
@@ -517,7 +551,17 @@
             document.getElementById('filterDateFrom').value = '';
             document.getElementById('filterDateTo').value = '';
 
-            renderTable(currentActiveData);
+            ['All', 'Pending', 'Approved', 'PO'].forEach(t => {
+                let btn = document.getElementById('tabModal' + t);
+                if (btn) btn.classList.remove('active');
+            });
+            let activeId = 'tabModalAll';
+            if (status === 'pending') activeId = 'tabModalPending';
+            else if (status === 'approved') activeId = 'tabModalApproved';
+            let activeBtn = document.getElementById(activeId);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            applyModalTabFilter();
             document.getElementById('detailsModal').style.display = 'flex';
         }
 
@@ -533,16 +577,13 @@
                 let matchName = !nameQuery || nameVal.includes(nameQuery);
                 let matchSerial = !serialQuery || serialVal.includes(serialQuery);
 
-                // فلتر التاريخ
                 let matchDate = true;
                 if (dateFrom || dateTo) {
                     let ts = row["Timestamp"] || "";
                     let dateVal = "";
                     if (ts) {
                         let d = new Date(ts);
-                        if (!isNaN(d.getTime())) {
-                            dateVal = d.toISOString().split('T')[0];
-                        }
+                        if (!isNaN(d.getTime())) dateVal = d.toISOString().split('T')[0];
                     }
                     if (dateVal) {
                         if (dateFrom && dateVal < dateFrom) matchDate = false;
@@ -558,7 +599,6 @@
             renderTable(filtered);
         }
 
-        // === عرض الجدول ===
         function renderTable(data) {
             let container = document.getElementById('modalTableContainer');
             if (data.length === 0) {
@@ -573,7 +613,7 @@
             data.forEach((row, idx) => {
                 let statusVal = getPurchaseStatus(row);
                 let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
-                let stageDisplay = enhanceStageText(row["Current_Stage"] || row["Status"]);
+                let stageDisplay = enhanceStageText(row["Current_Stage"] || row["Status"], row);
 
                 html += '<tr>';
                 html += `<td>${idx + 1}</td>`;
