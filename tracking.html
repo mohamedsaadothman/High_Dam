@@ -131,7 +131,7 @@
             <div class="input-group">
                 <i class="fas fa-user"></i>
                 <select id="loginUsername">
-                    <option value="">-- جاري تحميل المستخدمين... --</option>
+                    <option value="">-- جاري تحميل المسميات... --</option>
                 </select>
             </div>
             
@@ -285,38 +285,37 @@
             if (statusVal.includes("مقبول") || statusVal.includes("معتمد")) return "approved";
             return "pending";
         }
-
-        // ✅ تحميل قائمة المستخدمين المفلترة من Firestore
+                // ✅ تحميل قائمة المسميات الوظيفية (centralManager) المفلترة من Firestore
         window.onload = function() {
             const allowedRoles = ["مدير عام المكتب الفنى", "رئيس مجلس الإدارة"];
-            let usersSet = new Set();
+            let rolesSet = new Set();
 
             db.collection("users").get().then((querySnapshot) => {
                 querySnapshot.forEach((doc) => {
                     let data = doc.data();
                     let centralVal = String(data.centralManager || "").trim();
-                    let userName = String(data.name || "").trim();
 
-                    if (allowedRoles.includes(centralVal) && userName !== "") {
-                        usersSet.add(userName);
+                    // بنضيف المسمى الوظيفي لو هو من ضمن المسميات المسموح لها
+                    if (allowedRoles.includes(centralVal)) {
+                        rolesSet.add(centralVal);
                     }
                 });
 
                 let select = document.getElementById('loginUsername');
-                select.innerHTML = '<option value="">-- اختر اسم المستخدم --</option>';
+                select.innerHTML = '<option value="">-- اختر المسمى الوظيفي --</option>';
                 
-                let usersList = [...usersSet].sort();
-                usersList.forEach(name => {
+                let rolesList = [...rolesSet].sort();
+                rolesList.forEach(role => {
                     let opt = document.createElement('option');
-                    opt.value = name;
-                    opt.textContent = name;
+                    opt.value = role;
+                    opt.textContent = role;
                     select.appendChild(opt);
                 });
 
-                if (usersList.length === 0) {
+                if (rolesList.length === 0) {
                     let opt = document.createElement('option');
                     opt.value = "";
-                    opt.textContent = "لا يوجد مستخدمين مطابقين";
+                    opt.textContent = "لا توجد مسميات مطابقة";
                     select.appendChild(opt);
                 }
             }).catch(err => {
@@ -324,14 +323,15 @@
             });
         };
 
+        // ✅ تسجيل الدخول بناءً على المسمى الوظيفي المختار
         function checkLogin() {
-            const user = document.getElementById('loginUsername').value;
+            const selectedRole = document.getElementById('loginUsername').value;
             const pass = document.getElementById('loginPassword').value.trim();
             const errorMsg = document.getElementById('loginError');
             const btn = document.getElementById('loginBtn');
 
-            if (!user || !pass) {
-                errorMsg.innerText = "يرجى اختيار المستخدم وإدخال كلمة المرور";
+            if (!selectedRole || !pass) {
+                errorMsg.innerText = "يرجى اختيار المسمى الوظيفي وإدخال كلمة المرور";
                 errorMsg.style.display = 'block';
                 return;
             }
@@ -340,20 +340,31 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-            db.collection("users").where("name", "==", user).get().then((querySnapshot) => {
+            // بنجيب كل المستخدمين اللي ليهم نفس المسمى الوظيفي ده
+            db.collection("users").where("centralManager", "==", selectedRole).get().then((querySnapshot) => {
                 if (querySnapshot.empty) {
-                    errorMsg.innerText = "المستخدم غير موجود في قاعدة البيانات";
+                    errorMsg.innerText = "لا يوجد مستخدم بهذا المسمى الوظيفي";
                     errorMsg.style.display = 'block';
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
                     return;
                 }
 
-                let userData = querySnapshot.docs[0].data();
-                let storedPassword = String(userData.password || "").trim();
+                // بنشوف لو الباسورد بيطابق أي مستخدم من اللي ليهم نفس المسمى
+                let isValid = false;
+                let loggedInName = "";
 
-                if (storedPassword === pass) {
-                    currentUserName = userData.name || user;
+                querySnapshot.forEach((doc) => {
+                    let userData = doc.data();
+                    let storedPassword = String(userData.password || "").trim();
+                    if (storedPassword === pass) {
+                        isValid = true;
+                        loggedInName = userData.name || selectedRole; 
+                    }
+                });
+
+                if (isValid) {
+                    currentUserName = loggedInName;
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('dashboardScreen').style.display = 'block';
                     document.getElementById('welcomeMsg').innerHTML = "أهلاً بك، " + currentUserName + " 👋";
@@ -371,7 +382,8 @@
                 btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> تسجيل الدخول';
             });
         }
-                function loadStats() {
+
+        function loadStats() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحديث...';
