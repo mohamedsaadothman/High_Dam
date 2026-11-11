@@ -102,10 +102,6 @@
         .status-approved { color: #4ade80; font-weight: 700; }
         .status-rejected { color: #f87171; font-weight: 700; }
 
-        .tab-modal-btn { padding: 8px 16px; border-radius: 6px; font-family: 'Cairo'; font-weight: 700; cursor: pointer; border: 1px solid transparent; transition: 0.2s; font-size: 13px; background: #1e293b; color: #94a3b8; }
-        .tab-modal-btn.active { background: #c59b27 !important; color: #0f172a !important; border-color: #c59b27 !important; }
-        .tab-modal-btn:hover { color: #fff; border-color: #475569; }
-
         @media print {
             @page { size: A4 landscape; margin: 5mm; }
             body { background: #fff !important; color: #000 !important; }
@@ -194,12 +190,7 @@
             </div>
             <div class="modal-body">
                 <div class="action-bar">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; justify-content:center;">
-                        <button class="tab-modal-btn active" id="tabModalAll" onclick="switchModalTab('all')">الكل</button>
-                        <button class="tab-modal-btn" id="tabModalPending" onclick="switchModalTab('pending')">معلقة</button>
-                        <button class="tab-modal-btn" id="tabModalApproved" onclick="switchModalTab('approved')">معتمدة</button>
-                        <button class="tab-modal-btn" id="tabModalPO" onclick="switchModalTab('po')">أوامر توريد جارية</button>
-                    </div>
+                    <!-- تم حذف أزرار التبويبات (الكل، معلقة، معتمدة، أوامر توريد) من هنا نهائياً -->
                     
                     <div class="filter-bar">
                         <div class="filter-group">
@@ -226,7 +217,8 @@
             </div>
         </div>
     </div>
-        <script>
+    
+    <script>
         if (sessionStorage.getItem('app_access_token') !== 'granted') {
             window.location.replace("index.html");
         }
@@ -242,15 +234,15 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
+        db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
+
         let currentUserName = "";
         let currentUserRole = "";
         let globalPurchaseData = [];
         let globalLeaveData = [];
         let currentActiveData = [];
         let currentType = "";
-        let modalActiveTab = "all";
 
-        // === Custom Select Class ===
         class CustomSelect {
             constructor(wrapId, options = [], defaultValue = "") {
                 this.wrap = document.getElementById(wrapId);
@@ -311,7 +303,7 @@
             const allowedRoles = ["مدير عام المكتب الفنى", "رئيس مجلس الإدارة"];
             let rolesSet = new Set();
 
-            db.collection("users").get().then((querySnapshot) => {
+            db.collection("users").get({ source: "default" }).then((querySnapshot) => {
                 querySnapshot.forEach((doc) => {
                     let data = doc.data();
                     let centralVal = String(data.centralManager || "").trim();
@@ -341,7 +333,7 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
 
-            db.collection("users").where("centralManager", "==", selectedRole).get().then((querySnapshot) => {
+            db.collection("users").where("centralManager", "==", selectedRole).get({ source: "default" }).then((querySnapshot) => {
                 if (querySnapshot.empty) {
                     errorMsg.innerText = "لا يوجد مستخدم بهذا المسمى الوظيفي";
                     errorMsg.style.display = 'block';
@@ -383,13 +375,11 @@
             });
         }
 
-        // ✅ دالة تحديد "الطلب معلق عند" (اسم الشخص + مسماه الوظيفي)
         function enhanceStageText(stageText, reqObj) {
             if (!stageText && !reqObj) return "-";
             let s = String(stageText || "").trim();
             let sLower = s.toLowerCase();
 
-            // 1. لو فيه PO_Status (الطلب دخل مرحلة العقود)
             if (reqObj) {
                 let poStatus = String(reqObj["PO_Status"] || "").trim();
                 let poIssuedBy = reqObj["PO_Issued_By"] || "";
@@ -403,7 +393,6 @@
                 }
             }
 
-            // 2. مراجعة مدير عام
             if (sLower.includes("مراجعة") && !sLower.includes("عقود") && !sLower.includes("أمر التوريد")) {
                 let deptName = s.replace(/مراجعة\s*[-–]?\s*/, "").trim();
                 if (deptName.length > 2) {
@@ -412,40 +401,32 @@
                 return "موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 3. نص "مراجعة -" فقط
             if (s === "مراجعة -" || s === "مراجعة" || s === "مراجعة - ") {
                 return "موظف العقود (لإصدار أمر التوريد)";
             }
 
-            // 4. بانتظار اعتماد مالي (رئيس الإدارة المركزية)
             if (sLower.includes("بانتظار اعتماد مالي") || sLower.includes("اعتماد مالي")) {
                 let centralName = reqObj ? (reqObj["Central_Manager_Name"] || "") : "";
                 return "رئيس الإدارة المركزية: " + (centralName || "المختص");
             }
 
-            // 5. بانتظار اعتماد رئيس مجلس الإدارة
             if (sLower.includes("رئيس مجلس") || sLower.includes("السلطة المختصة")) {
                 let chairmanName = reqObj ? (reqObj["Chairman_Name"] || "") : "";
                 return "رئيس مجلس الإدارة: " + (chairmanName || "المختص");
             }
 
-            // 6. بانتظار رأي الإدارات
             if (sLower.includes("بانتظار رأي") || sLower.includes("أخذ رأي") || sLower.includes("أخذ الرأي") || sLower.includes("استكمال")) {
                 let dept = s.replace(/بانتظار رأي\s*[-–]?\s*/, "").replace(/أخذ رأي\s*[-–]?\s*/, "").replace(/أخذ الرأي\s*[-–]?\s*/, "").trim();
                 if (dept.length > 0) return dept + " (لإبداء الرأي)";
                 return "الإدارات (لإبداء الرأي)";
             }
 
-            // 7. لو رئيس الإدارة المركزية
             if (sLower.includes("رئيس الإدارة المركزية")) {
                 let centralName = reqObj ? (reqObj["Central_Manager_Name"] || "") : "";
                 return "رئيس الإدارة المركزية: " + (centralName || "المختص");
             }
 
-            // 8. معتمد
             if (sLower.includes("معتمد") || sLower.includes("مقبول")) return "معتمد نهائياً ✅";
-
-            // 9. مرفوض
             if (sLower.includes("مرفوض") || sLower.includes("رفض")) return "مرفوض ❌";
 
             return s;
@@ -464,7 +445,7 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحديث...';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
-            db.collection("requests").get().then((querySnapshot) => {
+            db.collection("requests").get({ source: "default" }).then((querySnapshot) => {
                 globalPurchaseData = [];
                 querySnapshot.forEach((doc) => {
                     let req = doc.data();
@@ -496,52 +477,10 @@
             });
         }
 
-        function switchModalTab(tabName) {
-            modalActiveTab = tabName;
-            
-            ['All', 'Pending', 'Approved', 'PO'].forEach(t => {
-                let btn = document.getElementById('tabModal' + t);
-                if (btn) btn.classList.remove('active');
-            });
-            
-            let activeId = 'tabModalAll';
-            if (tabName === 'pending') activeId = 'tabModalPending';
-            else if (tabName === 'approved') activeId = 'tabModalApproved';
-            else if (tabName === 'po') activeId = 'tabModalPO';
-            
-            let activeBtn = document.getElementById(activeId);
-            if (activeBtn) activeBtn.classList.add('active');
-            
-            applyModalTabFilter();
-        }
-
-        function applyModalTabFilter() {
-            let baseData = globalPurchaseData;
-            let filteredData = [];
-
-            if (modalActiveTab === 'pending') {
-                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'pending');
-            } else if (modalActiveTab === 'approved') {
-                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'approved');
-            } else if (modalActiveTab === 'po') {
-                filteredData = baseData.filter(r => {
-                    let poStatus = r["PO_Status"] || "";
-                    return poStatus === "pending" || poStatus === "rejected";
-                });
-            } else {
-                filteredData = baseData;
-            }
-
-            currentActiveData = filteredData;
-            applyFilters();
-        }
-
+        // دالة فتح المودال بناءً على الكارت المضغوط
         function openDetailsModal(type, status) {
             currentType = type;
-            if (status === 'pending') modalActiveTab = 'pending';
-            else if (status === 'approved') modalActiveTab = 'approved';
-            else modalActiveTab = 'all';
-
+            
             let titleText = "";
             if (status === 'pending') titleText = "طلبات المشتريات المعلقة";
             else if (status === 'approved') titleText = "طلبات المشتريات المعتمدة";
@@ -549,22 +488,30 @@
             else titleText = "إجمالي طلبات المشتريات";
 
             document.getElementById('modalTitle').innerText = titleText;
+            
+            // تصفير الفلاتر
             document.getElementById('filterName').value = '';
             document.getElementById('filterSerial').value = '';
             document.getElementById('filterDateFrom').value = '';
             document.getElementById('filterDateTo').value = '';
 
-            ['All', 'Pending', 'Approved', 'PO'].forEach(t => {
-                let btn = document.getElementById('tabModal' + t);
-                if (btn) btn.classList.remove('active');
-            });
-            let activeId = 'tabModalAll';
-            if (status === 'pending') activeId = 'tabModalPending';
-            else if (status === 'approved') activeId = 'tabModalApproved';
-            let activeBtn = document.getElementById(activeId);
-            if (activeBtn) activeBtn.classList.add('active');
+            // تحديد البيانات التي سيتم عرضها بناءً على الكارت
+            let baseData = globalPurchaseData;
+            let filteredData = [];
 
-            applyModalTabFilter();
+            if (status === 'pending') {
+                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'pending');
+            } else if (status === 'approved') {
+                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'approved');
+            } else if (status === 'rejected') {
+                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'rejected');
+            } else {
+                filteredData = baseData; // الكل
+            }
+
+            currentActiveData = filteredData;
+            applyFilters(); // استدعاء دالة الفلترة بناءً على المدخلات (ستكون فارغة في البداية)
+            
             document.getElementById('detailsModal').style.display = 'flex';
         }
 
@@ -617,7 +564,6 @@
                 let statusVal = getPurchaseStatus(row);
                 let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
                 
-                // ✅ كارت المعتمدة: تم إنشاء أمر التوريد إذا مدير العقود اعتمد المسودة
                 let finalStatusText = "";
                 if (statusVal === 'approved') {
                     if (row["PO_Status"] === "approved") {
@@ -628,7 +574,6 @@
                 } else if (statusVal === 'rejected') {
                     finalStatusText = "مرفوض ❌";
                 } else {
-                    // في كارت "معلقة" أو "الكل": اسم الشخص + مسماه الوظيفي
                     finalStatusText = enhanceStageText(row["Current_Stage"] || row["Status"], row);
                 }
 
