@@ -300,7 +300,7 @@
         </div>
     </section>
 
-    <!-- 5. نموذج تقديم طلب الإجازة (معدل للتحقق من الهوية أولاً) -->
+    <!-- 5. نموذج تقديم طلب الإجازة -->
     <section id="leaveFormSection" class="service-full-page hidden">
         <div class="watermark-bg">Leave Request</div>
         <div class="service-card-wrapper">
@@ -338,6 +338,16 @@
                     <input type="hidden" id="verifiedEmpName" value="">
                     <input type="hidden" id="verifiedEmpDept" value="">
                     <input type="hidden" id="verifiedEmpCategory" value="">
+
+                    <!-- ✅ الحقل الجديد: اختيار المدير المسؤول -->
+                    <div class="input-group">
+                        <label>توجيه الطلب إلى (المدير المسؤول):</label>
+                        <select id="targetManagerDept" required>
+                            <option value="">-- اختر المدير المسؤول --</option>
+                            <option value="مدير عام المكتب الفني">مدير عام المكتب الفني</option>
+                            <option value="رئيس مجلس الإدارة">رئيس مجلس الإدارة</option>
+                        </select>
+                    </div>
 
                     <div class="input-group">
                         <label>المسمى الوظيفي للمدير:</label>
@@ -398,7 +408,7 @@
         </div>
     </section>
 
-    <!-- 6. صفحة تسجيل دخول المديرين -->
+    <!-- 6. صفحة تسجيل دخول المديرين والمختصين -->
     <section id="managerLoginSection" class="service-full-page hidden">
         <div class="watermark-bg">Manager Login</div>
         <div class="service-card-wrapper">
@@ -412,9 +422,19 @@
 
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
-                    <label>اختر الجهة / الإدارة أو الموظف المختص:</label>
+                    <label>اختر الفئة (للمختص) أو المسمى الوظيفي (للمدير):</label>
                     <select id="loginDept" required>
-                        <option value="">جاري تحميل الإدارات...</option>
+                        <option value="">-- اختر --</option>
+                        
+                        <!-- مختصي الفئات -->
+                        <option value="موظف اجازات التخصصية|hr_specialist|تخصصية">موظف إجازات التخصصية</option>
+                        <option value="موظف اجازات المكتبية|hr_specialist|مكتبية">موظف إجازات المكتبية</option>
+                        <option value="موظف اجازات الفنية|hr_specialist|فنية">موظف إجازات الفنية</option>
+                        <option value="موظف اجازات الحرفية والخدمات المعاونة|hr_specialist|حرفية وخدمات معاونة">موظف إجازات الحرفية والخدمات المعاونة</option>
+                        
+                        <!-- المدراء (المسميات الوظيفية) -->
+                        <option value="مدير عام المكتب الفني|manager|">مدير عام المكتب الفني</option>
+                        <option value="رئيس مجلس الإدارة|manager|">رئيس مجلس الإدارة</option>
                     </select>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -705,7 +725,6 @@
     function openLeaveForm() { 
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("leaveFormSection").classList.remove("hidden");
-        // إعادة ضبط الحالة عند الفتح
         document.getElementById("authSection").classList.remove("hidden");
         document.getElementById("leaveDetailsSection").classList.add("hidden");
         document.getElementById("leaveResultContainer").classList.add("hidden");
@@ -725,7 +744,6 @@
         document.getElementById("balanceInquirySection").classList.remove("hidden");
     }
 
-    // === دوال التحقق من هوية الموظف لتقديم الطلب ===
     function verifyEmployeeForLeave() {
         let nid = document.getElementById("empNationalId").value.trim();
         let pass = document.getElementById("empLoginPassword").value.trim();
@@ -761,9 +779,8 @@
                 return;
             }
 
-            // نجاح التحقق
             document.getElementById("verifiedEmpName").value = userData.name;
-            document.getElementById("verifiedEmpDept").value = userData.dept || "إدارة الموارد البشرية";
+            document.getElementById("verifiedEmpDept").value = userData.department || "إدارة الموارد البشرية";
             document.getElementById("verifiedEmpCategory").value = userData.jobCategory || "تخصصية";
             
             document.getElementById("verifiedEmpNameDisplay").innerText = userData.name;
@@ -779,7 +796,6 @@
         });
     }
 
-    // === دوال نموذج تقديم الطلب ===
     function toggleDualLeaveInputs() {
         let type = document.getElementById("leaveType").value;
         let dualDiv = document.getElementById("dualLeaveInputs");
@@ -820,6 +836,7 @@
         let nationalId = document.getElementById("empNationalId").value.trim();
         let dept = document.getElementById("verifiedEmpDept").value;
         let category = document.getElementById("verifiedEmpCategory").value;
+        let targetManager = document.getElementById("targetManagerDept").value;
         let titlePrefix = document.getElementById("managerTitle").value;
         let mName = document.getElementById("managerName").value.trim();
         let phone = document.getElementById("empPhone").value.trim();
@@ -827,6 +844,11 @@
         let start = document.getElementById("startDate").value;
         let end = document.getElementById("endDate").value;
         let reason = document.getElementById("leaveReason").value.trim();
+
+        if (!targetManager) {
+            showCustomAlert("تنبيه", "يرجى اختيار المدير المسؤول لتوجيه الطلب إليه.");
+            return;
+        }
 
         let dAnnual = 0, dPrev = 0;
         if (type === "اعتيادية + رصيد سنوات سابقة") {
@@ -857,7 +879,6 @@
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
         submitBtn.disabled = true;
 
-        // فحص التداخل من Firebase
         db.collection("leaves").where("nationalId", "==", nationalId).get().then((querySnapshot) => {
             let hasOverlap = false;
             querySnapshot.forEach(doc => {
@@ -888,6 +909,7 @@
                 nationalId: nationalId,
                 dept: dept,
                 jobCategory: category,
+                targetManager: targetManager,
                 mgrName: mName,
                 titlePrefix: titlePrefix,
                 leaveType: type,
@@ -936,7 +958,6 @@
         latestSubmittedData = null;
         toggleDualLeaveInputs();
         
-        // إعادة إخفاء تفاصيل الطلب وإظهار التحقق
         document.getElementById("authSection").classList.remove("hidden");
         document.getElementById("leaveDetailsSection").classList.add("hidden");
         document.getElementById("empNationalId").value = "";
@@ -947,9 +968,8 @@
         document.getElementById("endDate").min = todayStr;
     }
 
-    // === دوال الاستعلام (للموظف) ===
     function performEmployeeLogin() {
-        let username = document.getElementById("inquiryUsername").value.trim(); // الرقم القومي
+        let username = document.getElementById("inquiryUsername").value.trim();
         let password = document.getElementById("inquiryPassword").value.trim();
         if (!username || !password) return showCustomAlert("تنبيه", "أدخل الرقم القومي وكلمة المرور.");
 
@@ -974,7 +994,6 @@
                 return;
             }
 
-            // نجاح
             currentInquiryNationalId = userData.nationalId;
             currentInquiryName = userData.name;
             
@@ -1013,9 +1032,7 @@
             querySnapshot.forEach(doc => {
                 currentInquiryHistory.push(doc.data());
             });
-            // ترتيب حسب التاريخ تنازلياً
             currentInquiryHistory.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
-            
             populateFiscalYears(currentInquiryHistory);
             renderHistoryTable(currentInquiryHistory); 
         }).catch((error) => {
@@ -1133,34 +1150,9 @@
         }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات."));
     }
 
-    // === دوال المديرين والمختصين ===
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
-        
-        let select = document.getElementById("loginDept");
-        select.innerHTML = '<option value="">جاري تحميل الإدارات...</option>';
-
-        // جلب الإدارات من مجموعة leave_settings
-        db.collection("leave_settings").get().then((querySnapshot) => {
-            select.innerHTML = "";
-            if (!querySnapshot.empty) {
-                querySnapshot.forEach(doc => {
-                    let data = doc.data();
-                    let displayVal = data.dept;
-                    if (data.role === 'hr_specialist') displayVal += ` - ${data.category}`;
-                    
-                    let opt = document.createElement("option");
-                    opt.value = data.dept + "|" + data.role + "|" + (data.category || ""); // دمج القيم للاستخدام لاحقاً
-                    opt.textContent = displayVal;
-                    select.appendChild(opt);
-                });
-            } else {
-                select.innerHTML = '<option value="">لا توجد إدارات مسجلة</option>';
-            }
-        }).catch(() => {
-            select.innerHTML = '<option value="">تعذر تحميل الإدارات</option>';
-        });
     }
 
     function submitManagerLogin(e) {
@@ -1171,9 +1163,9 @@
         if (!selectedVal) return showCustomAlert("تنبيه", "اختر الجهة أولاً.");
 
         let parts = selectedVal.split("|");
-        let dept = parts[0];
-        let role = parts[1];
-        let category = parts[2];
+        let targetRole = parts[0]; 
+        let roleType = parts[1];   
+        let category = parts[2];   
 
         let start = document.getElementById("filterStartDate").value;
         let end = document.getElementById("filterEndDate").value;
@@ -1184,11 +1176,11 @@
         loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
         loginBtn.disabled = true;
 
-        db.collection("leave_settings").where("dept", "==", dept).where("role", "==", role).get().then((querySnapshot) => {
+        db.collection("users").where("role", "==", targetRole).get().then((querySnapshot) => {
             if (querySnapshot.empty) {
                 loginBtn.innerHTML = 'الدخول للاعتماد';
                 loginBtn.disabled = false;
-                return showCustomAlert("خطأ", "هذه الجهة غير مسجلة.");
+                return showCustomAlert("خطأ", "هذا المستخدم غير مسجل بالنظام.");
             }
 
             let isValid = false;
@@ -1197,7 +1189,7 @@
                 let data = doc.data();
                 if (data.password === password) {
                     isValid = true;
-                    loggedName = data.name || role;
+                    loggedName = data.name || targetRole;
                 }
             });
 
@@ -1207,9 +1199,8 @@
                 return showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
             }
 
-            // نجاح
-            loggedInRole = role; 
-            currentDeptOrCat = dept;
+            loggedInRole = roleType; 
+            currentDeptOrCat = targetRole; 
             currentManagerName = loggedName;
             currentCategoryName = category;
             
@@ -1217,15 +1208,16 @@
             document.getElementById("managerLoginSection").classList.add("hidden");
             document.getElementById("managerDashboardSection").classList.remove("hidden");
             
-            if (role === "hr_specialist") {
+            if (roleType === "hr_specialist") {
                 document.getElementById("dashboardTitle").innerText = "طلبات إجازات فئة: " + category;
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك المختص: " + loggedName;
+                loadDepartmentLeavesFirebase(targetRole, roleType, category);
             } else {
-                document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + dept;
+                document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + targetRole;
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك: " + loggedName;
+                loadDepartmentLeavesFirebase(targetRole, roleType, "");
             }
             
-            loadDepartmentLeavesFirebase(dept, role, category);
             loginBtn.innerHTML = 'الدخول للاعتماد';
             loginBtn.disabled = false;
 
@@ -1242,21 +1234,18 @@
         if (role === "hr_specialist") {
             query = query.where("jobCategory", "==", category);
         } else {
-            query = query.where("dept", "==", deptName);
+            query = query.where("targetManager", "==", deptName); 
         }
 
         query.get().then((querySnapshot) => {
             currentLeavesData = [];
             querySnapshot.forEach(doc => {
                 let data = doc.data();
-                data.docId = doc.id; // حفظ ID الوثيقة للتحديث
+                data.docId = doc.id; 
                 currentLeavesData.push(data);
             });
             
-            // استبعاد طلبات من بلغوا سن المعاش
             currentLeavesData = currentLeavesData.filter(item => !isEmployeeRetired(item.nationalId));
-            
-            // ترتيب حسب تاريخ التقديم
             currentLeavesData.sort((a, b) => new Date(b.requestDate) - new Date(a.requestDate));
             
             filteredLeavesData = [...currentLeavesData]; 
@@ -1703,7 +1692,6 @@
         if (latestSubmittedData) { openPrintWindow(latestSubmittedData); }
     }
 
-    // === دوال التقرير التجميعي ===
     function generateSummaryReport() {
         let sDate = document.getElementById("summaryStartDate").value;
         let eDate = document.getElementById("summaryEndDate").value;
@@ -1859,20 +1847,19 @@
         setTimeout(() => { win.focus(); win.print(); }, 500);
     }
 
-    // === دوال إضافة الموظفين (للمختصين) ===
     function openSpecialistAuthModal() {
         document.getElementById('specAuthPassword').value = "";
         let select = document.getElementById('specAuthDept');
         select.innerHTML = '<option value="">جاري التحميل...</option>';
         
-        db.collection("leave_settings").where("role", "==", "hr_specialist").get().then((querySnapshot) => {
+        db.collection("users").where("role", ">=", "موظف اجازات").get().then((querySnapshot) => {
             select.innerHTML = '<option value="">اختر الإدارة...</option>';
             if (!querySnapshot.empty) {
                 querySnapshot.forEach(doc => {
                     let data = doc.data();
                     let opt = document.createElement("option");
-                    opt.value = data.dept + "|" + data.category; // ندمج الاسمين للاستخدام
-                    opt.textContent = data.dept + " - " + data.category;
+                    opt.value = data.role; 
+                    opt.textContent = data.role;
                     select.appendChild(opt);
                 });
             } else {
@@ -1885,19 +1872,15 @@
     }
 
     function verifySpecPassword() {
-        let selectedVal = document.getElementById('specAuthDept').value;
+        let selectedRole = document.getElementById('specAuthDept').value;
         let pass = document.getElementById('specAuthPassword').value;
-        if (!selectedVal || !pass) return showCustomAlert("تنبيه", "اختر الإدارة وأدخل كلمة المرور.");
+        if (!selectedRole || !pass) return showCustomAlert("تنبيه", "اختر الإدارة وأدخل كلمة المرور.");
         
-        let parts = selectedVal.split("|");
-        let dept = parts[0];
-        let category = parts[1];
-
         let authBtn = document.getElementById('specAuthLoginBtn');
         authBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
         authBtn.disabled = true;
 
-        db.collection("leave_settings").where("dept", "==", dept).where("category", "==", category).where("role", "==", "hr_specialist").get().then((querySnapshot) => {
+        db.collection("users").where("role", "==", selectedRole).get().then((querySnapshot) => {
             authBtn.innerHTML = 'دخول';
             authBtn.disabled = false;
             
@@ -1911,6 +1894,7 @@
             });
 
             if (isValid) {
+                let category = selectedRole.replace("موظف اجازات ", "");
                 document.getElementById("specCategoryDisplay").innerText = "الفئة: " + category;
                 document.getElementById("hiddenJobCategory").value = category;
                 document.getElementById('specialistAuthModal').classList.add('hidden');
@@ -1946,7 +1930,6 @@
             return;
         }
         
-        // التحقق من عدم تكرار الرقم القومي
         db.collection("users").where("nationalId", "==", nationalIdVal).get().then((querySnapshot) => {
             if (!querySnapshot.empty) {
                 btn.innerHTML = '<i class="fas fa-save"></i> حفظ وترحيل البيانات'; 
@@ -1969,7 +1952,8 @@
                 sick259: document.getElementById("newEmpSick259").value,
                 prevBal: parseFloat(document.getElementById("newEmpPrevBal").value),
                 jobCategory: document.getElementById("hiddenJobCategory").value,
-                dept: "إدارة الموارد البشرية" // سيتم تحديثها حسب الحاجة
+                department: "إدارة الموارد البشرية",
+                role: "employee"
             };
             
             db.collection("users").add(empData).then(() => {
@@ -1993,7 +1977,6 @@
         });
     }
 
-    // === دوال تصفير الأرصدة ===
     function renewBalances() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
@@ -2014,7 +1997,6 @@
         let cat = document.getElementById("hiddenJobCategory").value;
         closeRenewModals();
         
-        // جلب جميع الموظفين في هذه الفئة
         db.collection("users").where("jobCategory", "==", cat).get().then((querySnapshot) => {
             let batch = db.batch();
             let updatedCount = 0;
@@ -2055,7 +2037,6 @@
         });
     }
 
-    // === دوال تحميل بيانات الفئة ===
     function loadSpecialistData() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
