@@ -55,9 +55,21 @@
 
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
-        .input-group input, .input-group select, .input-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: #f8fafc; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; }
         
-        .input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: #198754; background: #fff; }
+        /* ✅ تحسين شكل القوائم المنسدلة لتكون أنيقة */
+        .input-group input, .input-group select, .input-group textarea { 
+            width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; 
+            background-color: #ffffff; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); appearance: none; /* لإزالة شكل السهم الافتراضي */
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: left 10px center;
+            background-size: 16px;
+        }
+        
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus { 
+            border-color: #198754; background-color: #fff; box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.15); 
+        }
         
         .btn-submit-main { width: 100%; background: #198754; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; transition: 0.3s; margin-top: 8px; box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3); }
         .btn-submit-main:hover { background: #146c43; }
@@ -339,13 +351,11 @@
                     <input type="hidden" id="verifiedEmpDept" value="">
                     <input type="hidden" id="verifiedEmpCategory" value="">
 
-                    <!-- ✅ الحقل الجديد: اختيار المدير المسؤول -->
+                    <!-- ✅ الحقل الجديد: اختيار المدير المسؤول (ديناميكي) -->
                     <div class="input-group">
                         <label>توجيه الطلب إلى (المدير المسؤول):</label>
                         <select id="targetManagerDept" required>
-                            <option value="">-- اختر المدير المسؤول --</option>
-                            <option value="مدير عام المكتب الفني">مدير عام المكتب الفني</option>
-                            <option value="رئيس مجلس الإدارة">رئيس مجلس الإدارة</option>
+                            <option value="">-- جاري تحميل المديرين... --</option>
                         </select>
                     </div>
 
@@ -731,7 +741,45 @@
         document.getElementById("leaveForm").classList.remove("hidden");
         document.getElementById("empNationalId").value = "";
         document.getElementById("empLoginPassword").value = "";
+        
+        // ✅ استدعاء الدالة لجلب المديرين
+        loadTargetManagers();
+        
         toggleDualLeaveInputs();
+    }
+
+    // ✅ دالة جلب المديرين ديناميكياً من Firebase
+    function loadTargetManagers() {
+        let select = document.getElementById("targetManagerDept");
+        select.innerHTML = '<option value="">-- جاري تحميل المديرين... --</option>';
+
+        db.collection("users").get().then((querySnapshot) => {
+            let managersSet = new Set();
+            
+            querySnapshot.forEach((doc) => {
+                let data = doc.data();
+                if (data.centralManager && String(data.centralManager).trim() !== "") {
+                    managersSet.add(String(data.centralManager).trim());
+                }
+            });
+
+            select.innerHTML = '<option value="">-- اختر المدير المسؤول --</option>';
+            
+            if (managersSet.size > 0) {
+                let sortedManagers = Array.from(managersSet).sort();
+                sortedManagers.forEach(manager => {
+                    let opt = document.createElement("option");
+                    opt.value = manager;
+                    opt.textContent = manager;
+                    select.appendChild(opt);
+                });
+            } else {
+                select.innerHTML = '<option value="">لا يوجد مديرين مسجلين حالياً</option>';
+            }
+        }).catch((error) => {
+            console.error("Error loading managers:", error);
+            select.innerHTML = '<option value="">تعذر تحميل المديرين</option>';
+        });
     }
 
     function openBalanceInquiry() {
