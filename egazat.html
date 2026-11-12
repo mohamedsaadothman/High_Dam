@@ -56,11 +56,10 @@
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
         
-        /* ✅ تحسين شكل القوائم المنسدلة لتكون أنيقة */
         .input-group input, .input-group select, .input-group textarea { 
             width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; 
             background-color: #ffffff; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); appearance: none; /* لإزالة شكل السهم الافتراضي */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); appearance: none;
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
             background-repeat: no-repeat;
             background-position: left 10px center;
@@ -351,9 +350,9 @@
                     <input type="hidden" id="verifiedEmpDept" value="">
                     <input type="hidden" id="verifiedEmpCategory" value="">
 
-                    <!-- ✅ الحقل الجديد: اختيار المدير المسؤول (ديناميكي) -->
+                    <!-- ✅ تم تغيير النص إلى "المدير العام التابع له" -->
                     <div class="input-group">
-                        <label>توجيه الطلب إلى (المدير المسؤول):</label>
+                        <label>توجيه الطلب إلى (المدير العام التابع له):</label>
                         <select id="targetManagerDept" required>
                             <option value="">-- جاري تحميل المديرين... --</option>
                         </select>
@@ -433,18 +432,9 @@
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
                     <label>اختر الفئة (للمختص) أو المسمى الوظيفي (للمدير):</label>
+                    <!-- سيتم تحديث الخيارات ديناميكياً من جافاسكريبت -->
                     <select id="loginDept" required>
-                        <option value="">-- اختر --</option>
-                        
-                        <!-- مختصي الفئات -->
-                        <option value="موظف اجازات التخصصية|hr_specialist|تخصصية">موظف إجازات التخصصية</option>
-                        <option value="موظف اجازات المكتبية|hr_specialist|مكتبية">موظف إجازات المكتبية</option>
-                        <option value="موظف اجازات الفنية|hr_specialist|فنية">موظف إجازات الفنية</option>
-                        <option value="موظف اجازات الحرفية والخدمات المعاونة|hr_specialist|حرفية وخدمات معاونة">موظف إجازات الحرفية والخدمات المعاونة</option>
-                        
-                        <!-- المدراء (المسميات الوظيفية) -->
-                        <option value="مدير عام المكتب الفني|manager|">مدير عام المكتب الفني</option>
-                        <option value="رئيس مجلس الإدارة|manager|">رئيس مجلس الإدارة</option>
+                        <option value="">-- جاري تحميل الجهات... --</option>
                     </select>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -763,7 +753,7 @@
                 }
             });
 
-            select.innerHTML = '<option value="">-- اختر المدير المسؤول --</option>';
+            select.innerHTML = '<option value="">-- اختر المدير العام --</option>';
             
             if (managersSet.size > 0) {
                 let sortedManagers = Array.from(managersSet).sort();
@@ -894,7 +884,7 @@
         let reason = document.getElementById("leaveReason").value.trim();
 
         if (!targetManager) {
-            showCustomAlert("تنبيه", "يرجى اختيار المدير المسؤول لتوجيه الطلب إليه.");
+            showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له لتوجيه الطلب إليه.");
             return;
         }
 
@@ -1198,9 +1188,64 @@
         }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات."));
     }
 
+    // ✅ جلب المدراء والمختصين ديناميكياً في شاشة تسجيل الدخول
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
+        
+        let select = document.getElementById("loginDept");
+        select.innerHTML = '<option value="">-- جاري تحميل الجهات... --</option>';
+
+        // 1. جلب المختصين (بناءً على الـ role)
+        db.collection("users").where("role", ">=", "موظف اجازات").get().then((specSnap) => {
+            let specialists = new Set();
+            specSnap.forEach(doc => {
+                if(doc.data().role) specialists.add(doc.data().role);
+            });
+
+            // 2. جلب المدراء (بناءً على الـ centralManager)
+            db.collection("users").get().then((mgrSnap) => {
+                let managers = new Set();
+                mgrSnap.forEach(doc => {
+                    let cm = doc.data().centralManager;
+                    if(cm && String(cm).trim() !== "") managers.add(String(cm).trim());
+                });
+
+                // بناء القائمة المنسدلة
+                select.innerHTML = '<option value="">-- اختر --</option>';
+                
+                if (specialists.size > 0) {
+                    let optGroup = document.createElement("optgroup");
+                    optGroup.label = "المختصين (حسب الفئة)";
+                    Array.from(specialists).sort().forEach(role => {
+                        let opt = document.createElement("option");
+                        opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "");
+                        opt.textContent = role;
+                        optGroup.appendChild(opt);
+                    });
+                    select.appendChild(optGroup);
+                }
+
+                if (managers.size > 0) {
+                    let optGroup = document.createElement("optgroup");
+                    optGroup.label = "المديرين العامين";
+                    Array.from(managers).sort().forEach(mgr => {
+                        let opt = document.createElement("option");
+                        opt.value = mgr + "|manager|";
+                        opt.textContent = mgr;
+                        optGroup.appendChild(opt);
+                    });
+                    select.appendChild(optGroup);
+                }
+
+                if (specialists.size === 0 && managers.size === 0) {
+                    select.innerHTML = '<option value="">لا توجد جهات مسجلة</option>';
+                }
+            });
+        }).catch((error) => {
+            console.error(error);
+            select.innerHTML = '<option value="">تعذر تحميل الجهات</option>';
+        });
     }
 
     function submitManagerLogin(e) {
@@ -1224,7 +1269,10 @@
         loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق...';
         loginBtn.disabled = true;
 
-        db.collection("users").where("role", "==", targetRole).get().then((querySnapshot) => {
+        // التحقق: لو مدير بندور في centralManager، لو مختص بندور في role
+        let queryField = (roleType === 'manager') ? 'centralManager' : 'role';
+        
+        db.collection("users").where(queryField, "==", targetRole).get().then((querySnapshot) => {
             if (querySnapshot.empty) {
                 loginBtn.innerHTML = 'الدخول للاعتماد';
                 loginBtn.disabled = false;
