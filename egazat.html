@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="./logo.png">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <!-- مكتبات Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -66,6 +65,19 @@
             background-size: 16px;
         }
         
+        /* تنسيق القائمة المنسدلة لتكون فخمة */
+        .input-group select optgroup {
+            font-weight: bold;
+            color: #1e293b;
+            background-color: #f1f5f9;
+            padding: 5px;
+        }
+        .input-group select option {
+            font-weight: normal;
+            color: #334155;
+            padding: 8px;
+        }
+
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus { 
             border-color: #198754; background-color: #fff; box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.15); 
         }
@@ -431,7 +443,7 @@
 
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
-                    <label>اختر الفئة (للمختص) أو المسمى الوظيفي (للمدير):</label>
+                    <label>اختر الجهة (مختص / مدير عام):</label>
                     <select id="loginDept" required>
                         <option value="">-- جاري تحميل الجهات... --</option>
                     </select>
@@ -1176,7 +1188,7 @@
         }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات."));
     }
 
-    // ✅ جلب المدراء والمختصين ديناميكياً (مع استبعاد رؤساء الإدارات المركزية) وترتيبهم
+    // ✅ جلب المدراء والمختصين ديناميكياً وتنقية القائمة
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -1184,59 +1196,56 @@
         let select = document.getElementById("loginDept");
         select.innerHTML = '<option value="">-- جاري تحميل الجهات... --</option>';
 
-        // 1. جلب المختصين (بناءً على الـ role)
-        db.collection("users").where("role", ">=", "موظف اجازات").get().then((specSnap) => {
+        db.collection("users").get().then((querySnapshot) => {
             let specialists = new Set();
-            specSnap.forEach(doc => {
-                let role = String(doc.data().role || "");
-                // الفلترة: نجيب بس اللي في روله "موظف اجازات"
-                if(role.includes("موظف اجازات")) {
+            let managers = new Set();
+
+            querySnapshot.forEach(doc => {
+                let data = doc.data();
+                let role = String(data.role || "").trim();
+                let cm = String(data.centralManager || "").trim();
+
+                // الفلترة للمختصين: لازم يكون في الـ role كلمة "اجازات"
+                if (role.includes("اجازات")) {
                     specialists.add(role);
                 }
-            });
-
-            // 2. جلب المدراء (بناءً على الـ centralManager)
-            db.collection("users").get().then((mgrSnap) => {
-                let managers = new Set();
-                mgrSnap.forEach(doc => {
-                    let cm = String(doc.data().centralManager || "").trim();
-                    // الفلترة: يجيب المديرين العموم فقط ويستبعد أي رئيس
-                    if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
-                        managers.add(cm);
-                    }
-                });
-
-                // بناء القائمة المنسدلة بشكل احترافي (مرتبة أبجدياً)
-                select.innerHTML = '<option value="">-- اختر الجهة --</option>';
                 
-                if (specialists.size > 0) {
-                    let optGroup = document.createElement("optgroup");
-                    optGroup.label = "المختصين (حسب الفئة)";
-                    Array.from(specialists).sort().forEach(role => {
-                        let opt = document.createElement("option");
-                        opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "").trim();
-                        opt.textContent = role;
-                        optGroup.appendChild(opt);
-                    });
-                    select.appendChild(optGroup);
-                }
-
-                if (managers.size > 0) {
-                    let optGroup = document.createElement("optgroup");
-                    optGroup.label = "المديرين العموم";
-                    Array.from(managers).sort().forEach(mgr => {
-                        let opt = document.createElement("option");
-                        opt.value = mgr + "|manager|";
-                        opt.textContent = mgr;
-                        optGroup.appendChild(opt);
-                    });
-                    select.appendChild(optGroup);
-                }
-
-                if (specialists.size === 0 && managers.size === 0) {
-                    select.innerHTML = '<option value="">لا توجد جهات مسجلة</option>';
+                // الفلترة للمديرين: لازم يكون في الـ centralManager كلمة "مدير عام" وميكونش "رئيس"
+                if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
+                    managers.add(cm);
                 }
             });
+
+            // بناء القائمة المنسدلة بشكل فخم (Optgroups)
+            select.innerHTML = '<option value="">-- اختر الجهة --</option>';
+            
+            if (specialists.size > 0) {
+                let optGroup = document.createElement("optgroup");
+                optGroup.label = "👤 المختصين (حسب الفئة)";
+                Array.from(specialists).sort().forEach(role => {
+                    let opt = document.createElement("option");
+                    opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "").trim();
+                    opt.textContent = role;
+                    optGroup.appendChild(opt);
+                });
+                select.appendChild(optGroup);
+            }
+
+            if (managers.size > 0) {
+                let optGroup = document.createElement("optgroup");
+                optGroup.label = "🛡️ المديرين العموم";
+                Array.from(managers).sort().forEach(mgr => {
+                    let opt = document.createElement("option");
+                    opt.value = mgr + "|manager|";
+                    opt.textContent = mgr;
+                    optGroup.appendChild(opt);
+                });
+                select.appendChild(optGroup);
+            }
+
+            if (specialists.size === 0 && managers.size === 0) {
+                select.innerHTML = '<option value="">لا توجد جهات مسجلة</option>';
+            }
         }).catch((error) => {
             console.error(error);
             select.innerHTML = '<option value="">تعذر تحميل الجهات</option>';
@@ -1320,11 +1329,12 @@
         });
     }
 
+    // ✅ التعديل الجوهري: البحث بالكلمة المفتاحية لضمان وصول الطلب للمختص
     function loadDepartmentLeavesFirebase(deptName, role, category) {
         let query = db.collection("leaves");
         
         if (role === "hr_specialist") {
-            // ✅ المختص بيشوف الطلبات اللي فئتها بتساوي الفئة بتاعته
+            // المختص بيشوف الطلبات اللي فئتها بتساوي الفئة بتاعته
             query = query.where("jobCategory", "==", category);
         } else {
             // المدير بيشوف الطلبات اللي متوجهة له
@@ -2048,8 +2058,8 @@
                 jobCategory: document.getElementById("hiddenJobCategory").value,
                 department: "إدارة الموارد البشرية",
                 role: "employee",
-                newAnnual: 0, 
-                newCasual: 0  
+                newAnnual: 0, // إضافة الحقل ده عشان ميعملش مشكلة لو مرفوعش
+                newCasual: 0  // إضافة الحقل ده عشان ميعملش مشكلة لو مرفوعش
             };
             
             db.collection("users").add(empData).then(() => {
@@ -2106,15 +2116,15 @@
                     
                     let newPrevBal = parseFloat(data.prevBal) || 0;
                     if (carryOverChoice === 'نعم') {
-                        newPrevBal = newPrevBal + currentAnnual;
+                        newPrevBal = newPrevBal + currentAnnual; // ترحيل المتبقي من القديم
                     }
 
                     batch.update(doc.ref, {
-                        annual: newAnnual,
-                        casual: newCasual,
+                        annual: newAnnual,     // الرصيد الحالي بقى هو الجديد
+                        casual: newCasual,     // العارضة الحالية بقت هي الجديدة
                         prevBal: newPrevBal,
-                        newAnnual: 0,
-                        newCasual: 0
+                        newAnnual: 0,          // تصفير الرصيد الجديد
+                        newCasual: 0           // تصفير العارضة الجديدة
                     });
                     updatedCount++;
                 }
