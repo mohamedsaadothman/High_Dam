@@ -666,18 +666,6 @@
         return strVal;
     }
 
-    function normalizeArabicText(text) {
-        if (!text) return "";
-        return text.toString().trim()
-            .replace(/[\u064B-\u065F\u0670]/g, "")
-            .replace(/[أإآٱ]/g, "ا")
-            .replace(/ة/g, "ه")
-            .replace(/[ىي]/g, "ي")
-            .replace(/ؤ/g, "و")
-            .replace(/ئ/g, "ي")
-            .replace(/\s+/g, " ");
-    }
-
     window.addEventListener('DOMContentLoaded', () => {
         let todayStr = new Date().toISOString().split('T')[0];
         let startDateInput = document.getElementById("startDate");
@@ -731,9 +719,7 @@
         document.getElementById("empNationalId").value = "";
         document.getElementById("empLoginPassword").value = "";
         
-        // استدعاء الدالة لجلب المديرين
         loadTargetManagers();
-        
         toggleDualLeaveInputs();
     }
 
@@ -1190,7 +1176,7 @@
         }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات."));
     }
 
-    // ✅ جلب المدراء والمختصين ديناميكياً (مع استبعاد رؤساء الإدارات المركزية)
+    // ✅ جلب المدراء والمختصين ديناميكياً (مع استبعاد رؤساء الإدارات المركزية) وترتيبهم
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -1202,7 +1188,11 @@
         db.collection("users").where("role", ">=", "موظف اجازات").get().then((specSnap) => {
             let specialists = new Set();
             specSnap.forEach(doc => {
-                if(doc.data().role) specialists.add(doc.data().role);
+                let role = String(doc.data().role || "");
+                // الفلترة: نجيب بس اللي في روله "موظف اجازات"
+                if(role.includes("موظف اجازات")) {
+                    specialists.add(role);
+                }
             });
 
             // 2. جلب المدراء (بناءً على الـ centralManager)
@@ -1216,15 +1206,15 @@
                     }
                 });
 
-                // بناء القائمة المنسدلة
-                select.innerHTML = '<option value="">-- اختر --</option>';
+                // بناء القائمة المنسدلة بشكل احترافي (مرتبة أبجدياً)
+                select.innerHTML = '<option value="">-- اختر الجهة --</option>';
                 
                 if (specialists.size > 0) {
                     let optGroup = document.createElement("optgroup");
                     optGroup.label = "المختصين (حسب الفئة)";
                     Array.from(specialists).sort().forEach(role => {
                         let opt = document.createElement("option");
-                        opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "");
+                        opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "").trim();
                         opt.textContent = role;
                         optGroup.appendChild(opt);
                     });
@@ -1312,6 +1302,7 @@
             if (roleType === "hr_specialist") {
                 document.getElementById("dashboardTitle").innerText = "طلبات إجازات فئة: " + category;
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بحضرتك المختص: " + loggedName;
+                // ✅ بنفلتر هنا بناءً على الفئة بالظبط
                 loadDepartmentLeavesFirebase(targetRole, roleType, category);
             } else {
                 document.getElementById("dashboardTitle").innerText = "طلبات إجازات: " + targetRole;
@@ -1333,8 +1324,10 @@
         let query = db.collection("leaves");
         
         if (role === "hr_specialist") {
+            // ✅ المختص بيشوف الطلبات اللي فئتها بتساوي الفئة بتاعته
             query = query.where("jobCategory", "==", category);
         } else {
+            // المدير بيشوف الطلبات اللي متوجهة له
             query = query.where("targetManager", "==", deptName); 
         }
 
@@ -2055,8 +2048,8 @@
                 jobCategory: document.getElementById("hiddenJobCategory").value,
                 department: "إدارة الموارد البشرية",
                 role: "employee",
-                newAnnual: 0, // إضافة الحقل ده عشان ميعملش مشكلة لو مرفوعش
-                newCasual: 0  // إضافة الحقل ده عشان ميعملش مشكلة لو مرفوعش
+                newAnnual: 0, 
+                newCasual: 0  
             };
             
             db.collection("users").add(empData).then(() => {
@@ -2096,7 +2089,6 @@
         document.getElementById('renewCarryOverModal').classList.remove('hidden');
     }
 
-    // ✅ تعديل دالة التصفير عشان تستخدم الأرصدة الجديدة
     function executeRenew(carryOverChoice) {
         let cat = document.getElementById("hiddenJobCategory").value;
         closeRenewModals();
@@ -2114,15 +2106,15 @@
                     
                     let newPrevBal = parseFloat(data.prevBal) || 0;
                     if (carryOverChoice === 'نعم') {
-                        newPrevBal = newPrevBal + currentAnnual; // ترحيل المتبقي من القديم
+                        newPrevBal = newPrevBal + currentAnnual;
                     }
 
                     batch.update(doc.ref, {
-                        annual: newAnnual,     // الرصيد الحالي بقى هو الجديد
-                        casual: newCasual,     // العارضة الحالية بقت هي الجديدة
+                        annual: newAnnual,
+                        casual: newCasual,
                         prevBal: newPrevBal,
-                        newAnnual: 0,          // تصفير الرصيد الجديد
-                        newCasual: 0           // تصفير العارضة الجديدة
+                        newAnnual: 0,
+                        newCasual: 0
                     });
                     updatedCount++;
                 }
@@ -2144,7 +2136,6 @@
         });
     }
 
-    // ✅ تعديل دالة تحميل البيانات عشان تجيب كل الأرصدة من Firebase
     function loadSpecialistData() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
