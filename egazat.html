@@ -737,7 +737,7 @@
         toggleDualLeaveInputs();
     }
 
-    // دالة جلب المديرين ديناميكياً من Firebase
+    // ✅ جلب المديرين العموم فقط (استبعاد رؤساء الإدارات المركزية)
     function loadTargetManagers() {
         let select = document.getElementById("targetManagerDept");
         select.innerHTML = '<option value="">-- جاري تحميل المديرين... --</option>';
@@ -747,8 +747,11 @@
             
             querySnapshot.forEach((doc) => {
                 let data = doc.data();
-                if (data.centralManager && String(data.centralManager).trim() !== "") {
-                    managersSet.add(String(data.centralManager).trim());
+                let cm = String(data.centralManager || "").trim();
+                
+                // الفلترة: نجيب بس اللي مسماه فيه "مدير عام" ونستبعد أي "رئيس"
+                if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
+                    managersSet.add(cm);
                 }
             });
 
@@ -763,7 +766,7 @@
                     select.appendChild(opt);
                 });
             } else {
-                select.innerHTML = '<option value="">لا يوجد مديرين مسجلين حالياً</option>';
+                select.innerHTML = '<option value="">لا يوجد مديرين عموم مسجلين حالياً</option>';
             }
         }).catch((error) => {
             console.error("Error loading managers:", error);
@@ -945,8 +948,8 @@
                 empName: name,
                 nationalId: nationalId,
                 dept: dept,
-                jobCategory: category,
-                targetManager: targetManager,
+                jobCategory: category, // مهم جداً عشان المختص يشوفه
+                targetManager: targetManager, // المدير العام التابع له
                 mgrName: mName,
                 titlePrefix: titlePrefix,
                 leaveType: type,
@@ -1187,7 +1190,7 @@
         }).catch(() => showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات."));
     }
 
-    // جلب المدراء والمختصين ديناميكياً في شاشة تسجيل الدخول
+    // ✅ جلب المدراء والمختصين ديناميكياً (مع استبعاد رؤساء الإدارات المركزية)
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -1206,8 +1209,11 @@
             db.collection("users").get().then((mgrSnap) => {
                 let managers = new Set();
                 mgrSnap.forEach(doc => {
-                    let cm = doc.data().centralManager;
-                    if(cm && String(cm).trim() !== "") managers.add(String(cm).trim());
+                    let cm = String(doc.data().centralManager || "").trim();
+                    // الفلترة: يجيب المديرين العموم فقط ويستبعد أي رئيس
+                    if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
+                        managers.add(cm);
+                    }
                 });
 
                 // بناء القائمة المنسدلة
@@ -1227,7 +1233,7 @@
 
                 if (managers.size > 0) {
                     let optGroup = document.createElement("optgroup");
-                    optGroup.label = "المديرين العامين";
+                    optGroup.label = "المديرين العموم";
                     Array.from(managers).sort().forEach(mgr => {
                         let opt = document.createElement("option");
                         opt.value = mgr + "|manager|";
@@ -2138,6 +2144,7 @@
         });
     }
 
+    // ✅ تعديل دالة تحميل البيانات عشان تجيب كل الأرصدة من Firebase
     function loadSpecialistData() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
@@ -2173,16 +2180,20 @@
                     <th>رصيد سنوات سابقة</th><th>المتبقي</th>
                 </tr></thead><tbody>`;
             currentEmployeesList.forEach((emp, idx) => {
-                let remaining = (parseFloat(emp.annual) || 0) + (parseFloat(emp.casual) || 0) + (parseFloat(emp.prevBal) || 0);
+                let annual = parseFloat(emp.annual) || 0;
+                let casual = parseFloat(emp.casual) || 0;
+                let prevBal = parseFloat(emp.prevBal) || 0;
+                let remaining = annual + casual + prevBal;
+                
                 html += `<tr>
                     <td>${idx + 1}</td>
                     <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                     <td>${emp.nationalId}</td>
-                    <td>${emp.annual}</td>
-                    <td>${emp.casual}</td>
+                    <td>${annual}</td>
+                    <td>${casual}</td>
                     <td>${emp.sick || 0}</td>
                     <td>${emp.sick259 || 'لا'}</td>
-                    <td>${emp.prevBal || 0}</td>
+                    <td>${prevBal}</td>
                     <td style="font-weight:bold; background:#f0fdf4;">${remaining}</td>
                 </tr>`;
             });
