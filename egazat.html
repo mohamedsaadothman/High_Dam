@@ -2190,7 +2190,7 @@
         document.getElementById('renewCarryOverModal').classList.remove('hidden');
     }
 
-    // ✅ التعديل: البحث بالكلمة المفتاحية للتصفير
+    // ✅ التعديل الجديد: تصفير آمن لا يمسح الأرصدة لو القيم الجديدة فارغة
     function executeRenew(carryOverChoice) {
         let cat = document.getElementById("hiddenJobCategory").value;
         closeRenewModals();
@@ -2206,21 +2206,32 @@
                 // الفلترة الذكية للتصفير
                 if (empCat.includes(cat) || empCat.includes(cat.replace("ال", ""))) {
                     if (!isEmployeeRetired(data.nationalId)) {
-                        let currentAnnual = parseFloat(data.annual) || 0;
-                        let newAnnual = parseFloat(data.newAnnual) || 0;
-                        let newCasual = parseFloat(data.newCasual) || 0;
                         
-                        let newPrevBal = parseFloat(data.prevBal) || 0;
+                        // بنقرأ الرصيد الحالي
+                        let currentAnnual = parseFloat(data.annual) || 0;
+                        let currentCasual = parseFloat(data.casual) || 0;
+                        let currentPrevBal = parseFloat(data.prevBal) || 0;
+
+                        // بنقرأ الرصيد الجديد (لو مفيش قيمة، بناخد الحالي عشان منصفروش بالغلط)
+                        let targetNewAnnual = parseFloat(data.newAnnual);
+                        let targetNewCasual = parseFloat(data.newCasual);
+                        
+                        // لو الخانات دي فاضية في الفايربيز، منعملش تصفير ونكمل
+                        if (isNaN(targetNewAnnual)) targetNewAnnual = currentAnnual;
+                        if (isNaN(targetNewCasual)) targetNewCasual = currentCasual;
+
+                        let newPrevBal = currentPrevBal;
                         if (carryOverChoice === 'نعم') {
-                            newPrevBal = newPrevBal + currentAnnual; // ترحيل المتبقي
+                            newPrevBal = currentPrevBal + currentAnnual; // ترحيل المتبقي من القديم
                         }
 
+                        // التحديث: نحط الرصيد الجديد في الحالي، ونسيب رصيد السنوات السابقة زي ما هو
                         batch.update(doc.ref, {
-                            annual: newAnnual,     // الرصيد الحالي بقى هو الجديد
-                            casual: newCasual,     // العارضة الحالية بقت هي الجديدة
-                            prevBal: newPrevBal,
-                            newAnnual: 0,          // تصفير الرصيد الجديد
-                            newCasual: 0           // تصفير العارضة الجديدة
+                            annual: targetNewAnnual,     // الرصيد الحالي بقى هو الجديد
+                            casual: targetNewCasual,     // العارضة الحالية بقت هي الجديدة
+                            prevBal: newPrevBal,         // رصيد السنوات السابقة زي ما هو (أو بزيادة لو اخترنا ترحيل)
+                            newAnnual: 0,                // تصفير الأرصدة الجديدة استعداداً للسنة القادمة
+                            newCasual: 0                 // تصفير الأرصدة الجديدة استعداداً للسنة القادمة
                         });
                         updatedCount++;
                     }
@@ -2229,7 +2240,7 @@
 
             if (updatedCount > 0) {
                 batch.commit().then(() => {
-                    showCustomAlert("تم بنجاح", `تم تصفير أرصدة ${updatedCount} موظف بنجاح، ونقل الأرصدة الجديدة.`);
+                    showCustomAlert("تم بنجاح", `تم تجديد أرصدة ${updatedCount} موظف بنجاح بناءً على الأرصدة الجديدة.`);
                 }).catch((error) => {
                     console.error(error);
                     showCustomAlert("خطأ", "تعذر تحديث البيانات.");
