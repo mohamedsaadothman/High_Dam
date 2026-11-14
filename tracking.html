@@ -73,6 +73,7 @@
         .card-green { background: linear-gradient(135deg, #059669, #047857); }
         .card-red { background: linear-gradient(135deg, #dc2626, #b91c1c); }
         .card-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+        .card-orange { background: linear-gradient(135deg, #ea580c, #c2410c); }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 10px; }
         .modal-content { background: #0f172a; width: 100%; max-width: 1200px; border-radius: 12px; border: 1px solid #334155; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
@@ -179,6 +180,14 @@
                 <div class="stat-card card-red" onclick="openDetailsModal('leave', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
                 <div class="stat-card card-blue" onclick="openDetailsModal('leave', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
             </div>
+
+            <h2 class="section-title"><i class="fas fa-user-slash"></i> بلاغات الانقطاع والعودة</h2>
+            <div class="stats-grid">
+                <div class="stat-card card-orange" onclick="openDetailsModal('absence', 'total')" style="grid-column: span 2; padding: 20px 10px;">
+                    <h3><i class="fas fa-exclamation-triangle"></i> إجمالي بلاغات الانقطاع وطلبات العودة</h3>
+                    <div class="number" id="absenceTotal" style="font-size: 32px;">-</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -190,8 +199,6 @@
             </div>
             <div class="modal-body">
                 <div class="action-bar">
-                    <!-- تم حذف أزرار التبويبات (الكل، معلقة، معتمدة، أوامر توريد) من هنا نهائياً -->
-                    
                     <div class="filter-bar">
                         <div class="filter-group">
                             <label>بحث بالاسم:</label>
@@ -199,7 +206,7 @@
                         </div>
                         <div class="filter-group">
                             <label>رقم الطلب:</label>
-                            <input type="text" id="filterSerial" placeholder="REQ-..." oninput="applyFilters()">
+                            <input type="text" id="filterSerial" placeholder="رقم الطلب..." oninput="applyFilters()">
                         </div>
                         <div class="filter-group">
                             <label>من تاريخ:</label>
@@ -439,12 +446,23 @@
             return "pending";
         }
 
+        // تحديد حالة الإجازة بناءً على حالة المختص والمدير
+        function getLeaveStatus(row) {
+            let spec = String(row.specialistStatus || "");
+            let mgr = String(row.managerStatus || "");
+
+            if (spec.includes("مرفوض") || mgr.includes("مرفوض")) return "rejected";
+            if (mgr.includes("مقبول") || mgr.includes("مؤرشف")) return "approved";
+            return "pending"; // قيد الانتظار أو رصيد متاح بانتظار المدير
+        }
+
         function loadStats() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحديث...';
             document.querySelectorAll('.number').forEach(el => el.innerText = '...');
 
+            // 1. جلب بيانات المشتريات
             db.collection("requests").get({ source: "default" }).then((querySnapshot) => {
                 globalPurchaseData = [];
                 querySnapshot.forEach((doc) => {
@@ -466,26 +484,90 @@
                 document.getElementById('purRejected').innerText = pRejected;
                 document.getElementById('purTotal').innerText = globalPurchaseData.length;
 
-                document.getElementById('leavePending').innerText = 0;
-                document.getElementById('leaveApproved').innerText = 0;
-                document.getElementById('leaveRejected').innerText = 0;
-                document.getElementById('leaveTotal').innerText = 0;
+                // 2. جلب بيانات الإجازات والانقطاعات
+                return db.collection("leaves").get({ source: "default" });
+            }).then((querySnapshot) => {
+                globalLeaveData = [];
+                querySnapshot.forEach((doc) => {
+                    let leave = doc.data();
+                    leave.docId = doc.id; // حفظ ID للمرجعية
+                    globalLeaveData.push(leave);
+                });
 
-            }).catch(err => { console.error(err); }).finally(() => {
+                let lPending = 0, lApproved = 0, lRejected = 0, absTotal = 0;
+
+                globalLeaveData.forEach(row => {
+                    let lt = String(row.leaveType || "");
+                    
+                    // فصل الانقطاعات عن باقي الإجازات
+                    if (lt.includes("منقطع") || lt.includes("ترك عمل") || lt.includes("عودة من انقطاع")) {
+                        absTotal++;
+                    } else {
+                        let st = getLeaveStatus(row);
+                        if (st === 'rejected') lRejected++;
+                        else if (st === 'approved') lApproved++;
+                        else lPending++;
+                    }
+                });
+
+                // تحديث كروت الإجازات
+                document.getElementById('leavePending').innerText = lPending;
+                document.getElementById('leaveApproved').innerText = lApproved;
+                document.getElementById('leaveRejected').innerText = lRejected;
+                document.getElementById('leaveTotal').innerText = lPending + lApproved + lRejected;
+
+                // تحديث كارت الانقطاعات
+                document.getElementById('absenceTotal').innerText = absTotal;
+
+            }).catch(err => { 
+                console.error(err); 
+                alert("حدث خطأ أثناء تحميل البيانات. تأكد من اتصالك بالإنترنت.");
+            }).finally(() => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> تحديث';
             });
         }
 
-        // دالة فتح المودال بناءً على الكارت المضغوط
         function openDetailsModal(type, status) {
             currentType = type;
             
+            // إعداد العنوان والبيانات الأولية
             let titleText = "";
-            if (status === 'pending') titleText = "طلبات المشتريات المعلقة";
-            else if (status === 'approved') titleText = "طلبات المشتريات المعتمدة";
-            else if (status === 'rejected') titleText = "طلبات المشتريات المرفوضة";
-            else titleText = "إجمالي طلبات المشتريات";
+            let baseData = [];
+
+            if (type === 'purchase') {
+                baseData = globalPurchaseData;
+                if (status === 'pending') titleText = "طلبات المشتريات المعلقة";
+                else if (status === 'approved') titleText = "طلبات المشتريات المعتمدة";
+                else if (status === 'rejected') titleText = "طلبات المشتريات المرفوضة";
+                else titleText = "إجمالي طلبات المشتريات";
+
+                if (status === 'pending') baseData = baseData.filter(r => getPurchaseStatus(r) === 'pending');
+                else if (status === 'approved') baseData = baseData.filter(r => getPurchaseStatus(r) === 'approved');
+                else if (status === 'rejected') baseData = baseData.filter(r => getPurchaseStatus(r) === 'rejected');
+
+            } else if (type === 'leave') {
+                baseData = globalLeaveData.filter(r => {
+                    let lt = String(r.leaveType || "");
+                    return !lt.includes("منقطع") && !lt.includes("ترك عمل") && !lt.includes("عودة من انقطاع");
+                });
+
+                if (status === 'pending') titleText = "طلبات الإجازات المعلقة";
+                else if (status === 'approved') titleText = "طلبات الإجازات المعتمدة";
+                else if (status === 'rejected') titleText = "طلبات الإجازات المرفوضة";
+                else titleText = "إجمالي طلبات الإجازات";
+
+                if (status === 'pending') baseData = baseData.filter(r => getLeaveStatus(r) === 'pending');
+                else if (status === 'approved') baseData = baseData.filter(r => getLeaveStatus(r) === 'approved');
+                else if (status === 'rejected') baseData = baseData.filter(r => getLeaveStatus(r) === 'rejected');
+
+            } else if (type === 'absence') {
+                titleText = "إجمالي بلاغات الانقطاع وطلبات العودة";
+                baseData = globalLeaveData.filter(r => {
+                    let lt = String(r.leaveType || "");
+                    return lt.includes("منقطع") || lt.includes("ترك عمل") || lt.includes("عودة من انقطاع");
+                });
+            }
 
             document.getElementById('modalTitle').innerText = titleText;
             
@@ -495,22 +577,8 @@
             document.getElementById('filterDateFrom').value = '';
             document.getElementById('filterDateTo').value = '';
 
-            // تحديد البيانات التي سيتم عرضها بناءً على الكارت
-            let baseData = globalPurchaseData;
-            let filteredData = [];
-
-            if (status === 'pending') {
-                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'pending');
-            } else if (status === 'approved') {
-                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'approved');
-            } else if (status === 'rejected') {
-                filteredData = baseData.filter(r => getPurchaseStatus(r) === 'rejected');
-            } else {
-                filteredData = baseData; // الكل
-            }
-
-            currentActiveData = filteredData;
-            applyFilters(); // استدعاء دالة الفلترة بناءً على المدخلات (ستكون فارغة في البداية)
+            currentActiveData = baseData;
+            applyFilters(); // عرض البيانات بالجدول
             
             document.getElementById('detailsModal').style.display = 'flex';
         }
@@ -522,18 +590,21 @@
             let dateTo = document.getElementById('filterDateTo').value;
 
             let filtered = currentActiveData.filter(row => {
-                let nameVal = (row["applicantName"] || "").toLowerCase();
-                let serialVal = (row["Request_ID"] || "").toLowerCase();
+                // تحديد الحقول بناءً على النوع (مشتريات أو إجازات)
+                let nameVal = currentType === 'purchase' ? (row["applicantName"] || "").toLowerCase() : (row["empName"] || "").toLowerCase();
+                let serialVal = currentType === 'purchase' ? (row["Request_ID"] || "").toLowerCase() : (row["requestId"] || "").toLowerCase();
+                
                 let matchName = !nameQuery || nameVal.includes(nameQuery);
                 let matchSerial = !serialQuery || serialVal.includes(serialQuery);
 
                 let matchDate = true;
                 if (dateFrom || dateTo) {
-                    let ts = row["Timestamp"] || "";
+                    let ts = currentType === 'purchase' ? row["Timestamp"] : (row["requestDate"] || row["startDate"]);
                     let dateVal = "";
                     if (ts) {
                         let d = new Date(ts);
                         if (!isNaN(d.getTime())) dateVal = d.toISOString().split('T')[0];
+                        else dateVal = String(ts).split('T')[0]; // دعم لو التاريخ نصي
                     }
                     if (dateVal) {
                         if (dateFrom && dateVal < dateFrom) matchDate = false;
@@ -557,35 +628,73 @@
             }
 
             let html = '<table class="details-table"><thead><tr>';
-            html += '<th>م</th><th>رقم الطلب</th><th>مقدم الطلب</th><th>الوظيفة</th><th>الإدارة</th><th>التكلفة</th><th>حالة الطلب</th><th>اسم المدير</th>';
+            
+            // تغيير أعمدة الجدول بناءً على النوع
+            if (currentType === 'purchase') {
+                html += '<th>م</th><th>رقم الطلب</th><th>مقدم الطلب</th><th>الوظيفة</th><th>الإدارة</th><th>التكلفة</th><th>حالة الطلب</th><th>اسم المدير</th>';
+            } else {
+                html += '<th>م</th><th>رقم الطلب</th><th>اسم الموظف</th><th>الإدارة</th><th>نوع الطلب</th><th>من تاريخ</th><th>إلى تاريخ</th><th>الأيام</th><th>حالة الطلب</th>';
+            }
+            
             html += '</tr></thead><tbody>';
 
             data.forEach((row, idx) => {
-                let statusVal = getPurchaseStatus(row);
-                let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
-                
-                let finalStatusText = "";
-                if (statusVal === 'approved') {
-                    if (row["PO_Status"] === "approved") {
-                        finalStatusText = "تم إنشاء أمر التوريد ✅";
-                    } else {
-                        finalStatusText = "معتمد نهائياً ✅";
-                    }
-                } else if (statusVal === 'rejected') {
-                    finalStatusText = "مرفوض ❌";
-                } else {
-                    finalStatusText = enhanceStageText(row["Current_Stage"] || row["Status"], row);
-                }
-
                 html += '<tr>';
                 html += `<td>${idx + 1}</td>`;
-                html += `<td>${row.Request_ID || '-'}</td>`;
-                html += `<td>${row.applicantName || '-'}</td>`;
-                html += `<td>${row.role || '-'}</td>`;
-                html += `<td>${row.parentDepartment || '-'}</td>`;
-                html += `<td>${row.totalCost || '0'} ج.م</td>`;
-                html += `<td class="${statusClass}">${finalStatusText}</td>`;
-                html += `<td>${row.managerName || '-'}</td>`;
+
+                if (currentType === 'purchase') {
+                    let statusVal = getPurchaseStatus(row);
+                    let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
+                    let finalStatusText = "";
+                    if (statusVal === 'approved') {
+                        finalStatusText = row["PO_Status"] === "approved" ? "تم إنشاء أمر التوريد ✅" : "معتمد نهائياً ✅";
+                    } else if (statusVal === 'rejected') {
+                        finalStatusText = "مرفوض ❌";
+                    } else {
+                        finalStatusText = enhanceStageText(row["Current_Stage"] || row["Status"], row);
+                    }
+
+                    html += `<td>${row.Request_ID || '-'}</td>`;
+                    html += `<td>${row.applicantName || '-'}</td>`;
+                    html += `<td>${row.role || '-'}</td>`;
+                    html += `<td>${row.parentDepartment || '-'}</td>`;
+                    html += `<td>${row.totalCost || '0'} ج.م</td>`;
+                    html += `<td class="${statusClass}">${finalStatusText}</td>`;
+                    html += `<td>${row.managerName || '-'}</td>`;
+                } else {
+                    // بيانات الإجازات والانقطاعات
+                    let statusVal = getLeaveStatus(row);
+                    let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
+                    
+                    let finalStatusText = "";
+                    if (row.managerStatus && (row.managerStatus.includes("مقبول") || row.managerStatus.includes("مؤرشف"))) {
+                        finalStatusText = "معتمد نهائياً ✅";
+                    } else if (row.specialistStatus && row.specialistStatus.includes("مرفوض") || row.managerStatus && row.managerStatus.includes("مرفوض")) {
+                        finalStatusText = "مرفوض ❌";
+                    } else if (row.specialistStatus === "رصيد متاح") {
+                        finalStatusText = "بانتظار المدير ⏳";
+                    } else {
+                        finalStatusText = "بانتظار المختص ⏳";
+                    }
+
+                    // تنسيق التاريخ
+                    let formatDate = (dStr) => {
+                        if (!dStr) return '-';
+                        let parts = dStr.split('-');
+                        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        return dStr;
+                    };
+
+                    html += `<td>${row.requestId || '-'}</td>`;
+                    html += `<td>${row.empName || '-'}</td>`;
+                    html += `<td>${row.dept || '-'}</td>`;
+                    html += `<td>${row.leaveType || '-'}</td>`;
+                    html += `<td>${formatDate(row.startDate)}</td>`;
+                    html += `<td>${formatDate(row.endDate)}</td>`;
+                    html += `<td>${row.daysCount || '-'}</td>`;
+                    html += `<td class="${statusClass}">${finalStatusText}</td>`;
+                }
+
                 html += '</tr>';
             });
 
