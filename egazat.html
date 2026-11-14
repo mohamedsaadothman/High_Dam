@@ -1566,8 +1566,11 @@
         });
     };
 
+    // ✅ التعديل الجديد: خصم الأرصدة عند الاعتماد
     function processActionFirebase(docId, status, defaultReason, role) {
         let updateData = {};
+        
+        // 1. تحديث حالة الطلب
         if (role === 'manager') {
             updateData.managerStatus = status;
             updateData.rejectionReason = defaultReason;
@@ -1576,8 +1579,77 @@
             updateData.specialistStatus = status;
         }
 
+        // 2. لو المدير بيعتمد الطلب، لازم نخصم الأيام من رصيد الموظف
+        if (role === 'manager' && status === 'مقبول ومؤرشف') {
+            
+            db.collection("leaves").doc(docId).get().then((doc) => {
+                if (doc.exists) {
+                    let leaveData = doc.data();
+                    let nationalId = leaveData.nationalId;
+                    let daysCount = parseFloat(leaveData.daysCount) || 0;
+                    let leaveType = leaveData.leaveType;
+                    let dAnnual = parseFloat(leaveData.daysAnnual) || 0;
+                    let dPrev = parseFloat(leaveData.daysPrev) || 0;
+
+                    // نروح نجيب بيانات الموظف عشان نخصم من رصيده
+                    db.collection("users").where("nationalId", "==", nationalId).get().then((userQuery) => {
+                        if (!userQuery.empty) {
+                            let userDoc = userQuery.docs[0];
+                            let userData = userDoc.data();
+                            
+                            let currentAnnual = parseFloat(userData.annual) || 0;
+                            let currentCasual = parseFloat(userData.casual) || 0;
+                            let currentSick = parseFloat(userData.sick) || 0;
+                            let currentPrevBal = parseFloat(userData.prevBal) || 0;
+
+                            let newAnnual = currentAnnual;
+                            let newCasual = currentCasual;
+                            let newSick = currentSick;
+                            let newPrevBal = currentPrevBal;
+
+                            // الخصم بناءً على نوع الإجازة
+                            if (leaveType === "اعتيادية") {
+                                newAnnual = currentAnnual - daysCount;
+                            } else if (leaveType === "عارضة") {
+                                newCasual = currentCasual - daysCount;
+                            } else if (leaveType === "مرضية" || leaveType === "مرضية بقرار 259") {
+                                newSick = currentSick - daysCount;
+                            } else if (leaveType === "رصيد سنوات سابقة") {
+                                newPrevBal = currentPrevBal - daysCount;
+                            } else if (leaveType === "اعتيادية + رصيد سنوات سابقة") {
+                                newAnnual = currentAnnual - dAnnual;
+                                newPrevBal = currentPrevBal - dPrev;
+                            }
+
+                            // منع الرصيد إنه يبقى بالسالب
+                            if (newAnnual < 0) newAnnual = 0;
+                            if (newCasual < 0) newCasual = 0;
+                            if (newSick < 0) newSick = 0;
+                            if (newPrevBal < 0) newPrevBal = 0;
+
+                            // تحديث رصيد الموظف في الفايربيز
+                            userDoc.ref.update({
+                                annual: newAnnual,
+                                casual: newCasual,
+                                sick: newSick,
+                                prevBal: newPrevBal
+                            }).then(() => {
+                                // بعد ما خصمنا، نحدث حالة الطلب
+                                db.collection("leaves").doc(docId).update(updateData).then(() => {
+                                    showCustomAlert("تم بنجاح", "تم الاعتماد وخصم الأيام من رصيد الموظف بنجاح.");
+                                    loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+                                });
+                            });
+                        }
+                    });
+                }
+            });
+            return; // نوقف هنا عشان منكررش التحديث
+        }
+
+        // لو مختص أو حالة تانية (زي الرفض)، نحدث الطلب بس من غير خصم
         db.collection("leaves").doc(docId).update(updateData).then(() => {
-            showCustomAlert("تم بنجاح", "تم الاعتماد بنجاح.");
+            showCustomAlert("تم بنجاح", "تم تحديث حالة الطلب بنجاح.");
             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
         }).catch((error) => {
             console.error(error);
