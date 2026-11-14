@@ -129,6 +129,15 @@
         .edit-icon { font-size: 14px; transition: 0.2s; }
         .edit-icon:hover { color: #198754 !important; transform: scale(1.2); }
 
+        /* مفتاح التبديل (Toggle Switch) */
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; vertical-align: middle; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #198754; }
+        input:focus + .slider { box-shadow: 0 0 1px #198754; }
+        input:checked + .slider:before { transform: translateX(24px); }
+
         @media print {
             body * { visibility: hidden; }
             #printableSummaryArea, #printableSummaryArea * { visibility: visible; }
@@ -215,7 +224,6 @@
         <div class="watermark-bg">Manage Employee</div>
         <div class="service-card-wrapper">
             <div class="card-header-row">
-                <!-- ✅ زر تسجيل خروج للمختص -->
                 <button class="card-home-btn" onclick="logoutSpecialist()" style="background: #dc3545;"><i class="fas fa-sign-out-alt"></i> تسجيل خروج</button>
                 <div class="service-title-area">
                     <h2>إدارة بيانات الموظفين</h2>
@@ -255,6 +263,16 @@
                 <div class="input-group" id="passwordGroup">
                     <label>كلمة مرور الموظف:</label>
                     <input type="password" id="newEmpPassword" required placeholder="أدخل كلمة المرور للاستعلام">
+                </div>
+
+                <!-- ✅ 3. مفتاح حالة الموظف -->
+                <div class="input-group" id="statusToggleGroup" style="display: flex; align-items: center; gap: 15px; background: #f1f5f9; padding: 10px; border-radius: 8px;">
+                    <label style="margin: 0; font-size: 14px; color: #1e293b;">حالة الموظف (نشط / موقوف):</label>
+                    <label class="switch">
+                        <input type="checkbox" id="empStatusSwitch" onchange="toggleEmpStatusText()">
+                        <span class="slider"></span>
+                    </label>
+                    <span id="empStatusText" style="font-weight: bold; color: #198754;">نشط</span>
                 </div>
                 
                 <div class="input-group">
@@ -452,7 +470,7 @@
                     <div class="input-group"><label>رقم التليفون (11 رقم):</label><input type="tel" id="empPhone" maxlength="11" required placeholder="01xxxxxxxx0"></div>
                     
                     <div class="input-group">
-                        <label>نوع الإجازة:</label>
+                        <label>نوع الطلب / الإجازة:</label>
                         <select id="leaveType" required onchange="toggleDualLeaveInputs()">
                             <option value="اعتيادية">اعتيادية</option>
                             <option value="رصيد سنوات سابقة">رصيد سنوات سابقة</option>
@@ -460,6 +478,19 @@
                             <option value="عارضة">عارضة</option>
                             <option value="مرضية">مرضية</option>
                             <option value="مرضية بقرار 259">مرضية بقرار 259</option>
+                            <option value="تصريح نصف يوم">تصريح نصف يوم</option>
+                            <option value="انقطاع عن العمل">انقطاع عن العمل</option>
+                            <option value="ترك عمل">ترك عمل بدون استئذان</option>
+                        </select>
+                    </div>
+
+                    <!-- حقل إضافي لسبب الانقطاع -->
+                    <div class="input-group hidden" id="absenceReasonGroup">
+                        <label>سبب الانقطاع:</label>
+                        <select id="absenceReason">
+                            <option value="متغيب">متغيب</option>
+                            <option value="وفاة">وفاة</option>
+                            <option value="أخرى">أخرى</option>
                         </select>
                     </div>
 
@@ -479,7 +510,7 @@
                         <div class="input-group"><label>إلى تاريخ:</label><input type="text" id="endDate" placeholder="يوم / شهر / سنة" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'" required onchange="calculateDays()"></div>
                     </div>
                     <div class="input-group"><label>إجمالي عدد الأيام:</label><input type="text" id="calcDays" readonly placeholder="يتم الحساب تلقائياً" style="background:#e2e8f0; font-weight:bold; text-align:center;"></div>
-                    <div class="input-group"><label>السبب: (لا يقل عن 10 أحرف باللغة العربية ومفهومة)</label><textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الإجازة..."></textarea></div>
+                    <div class="input-group"><label>السبب / الملاحظات: (لا يقل عن 10 أحرف)</label><textarea id="leaveReason" rows="2" required placeholder="اكتب سبب الطلب أو ملاحظاتك..."></textarea></div>
 
                     <button type="submit" class="btn-submit-main" id="submitLeaveBtn"><i class="fas fa-paper-plane"></i> إرسال الطلب</button>
                 </div>
@@ -774,14 +805,47 @@
         document.getElementById("empLoginBox").classList.remove("hidden");
     }
 
-    // ✅ دالة تسجيل خروج المختص
     function logoutSpecialist() {
-        cancelEditMode(); // تفريغ الفورم
+        cancelEditMode(); 
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("addEmployeeSection").classList.add("hidden");
-        document.getElementById("specialistAuthModal").classList.remove("hidden"); // فتح شاشة الدخول من جديد
+        document.getElementById("specialistAuthModal").classList.remove("hidden"); 
         document.getElementById("specAuthPassword").value = "";
         document.getElementById("specAuthDept").value = "";
+    }
+
+    // ✅ دالة تبديل حالة الموظف (نشط/موقوف)
+    function toggleEmpStatusText() {
+        let chk = document.getElementById("empStatusSwitch");
+        let txt = document.getElementById("empStatusText");
+        if (chk.checked) {
+            txt.innerText = "نشط";
+            txt.style.color = "#198754";
+        } else {
+            txt.innerText = "موقوف (غير نشط)";
+            txt.style.color = "#dc3545";
+        }
+    }
+
+    // ✅ دالة تبديل حقول الإجازة حسب النوع
+    function toggleDualLeaveInputs() {
+        let type = document.getElementById("leaveType").value;
+        let dualDiv = document.getElementById("dualLeaveInputs");
+        let absenceGroup = document.getElementById("absenceReasonGroup");
+        
+        if (type === "اعتيادية + رصيد سنوات سابقة") {
+            dualDiv.classList.remove("hidden");
+        } else {
+            dualDiv.classList.add("hidden");
+            document.getElementById("daysAnnual").value = "";
+            document.getElementById("daysPrev").value = "";
+        }
+
+        if (type === "انقطاع عن العمل") {
+            absenceGroup.classList.remove("hidden");
+        } else {
+            absenceGroup.classList.add("hidden");
+        }
     }
 
     function openLeaveForm() { 
@@ -798,7 +862,6 @@
         toggleDualLeaveInputs();
     }
 
-    // ✅ جلب المديرين العموم فقط
     function loadTargetManagers() {
         let select = document.getElementById("targetManagerDept");
         select.innerHTML = '<option value="">-- جاري تحميل المديرين... --</option>';
@@ -879,6 +942,13 @@
                 return;
             }
 
+            // ✅ التحقق من حالة الموظف
+            let empStatus = String(userData.status || "active").trim().toLowerCase();
+            if (empStatus !== "active") {
+                showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً (موقوف / على المعاش / إلخ). يرجى مراجعة الموارد البشرية.");
+                return;
+            }
+
             document.getElementById("verifiedEmpName").value = userData.name;
             document.getElementById("verifiedEmpDept").value = userData.department || "إدارة الموارد البشرية";
             
@@ -901,18 +971,6 @@
             console.error(error);
             showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات.");
         });
-    }
-
-    function toggleDualLeaveInputs() {
-        let type = document.getElementById("leaveType").value;
-        let dualDiv = document.getElementById("dualLeaveInputs");
-        if (type === "اعتيادية + رصيد سنوات سابقة") {
-            dualDiv.classList.remove("hidden");
-        } else {
-            dualDiv.classList.add("hidden");
-            document.getElementById("daysAnnual").value = "";
-            document.getElementById("daysPrev").value = "";
-        }
     }
 
     function onStartDateChange() {
@@ -982,6 +1040,16 @@
             }
         }
 
+        // تعديل الأيام في حالة تصريح نصف يوم
+        if (type === "تصريح نصف يوم") {
+            totalDays = 0.5;
+        }
+
+        let absenceReasonText = "";
+        if (type === "انقطاع عن العمل") {
+            absenceReasonText = document.getElementById("absenceReason").value;
+        }
+
         let submitBtn = document.getElementById("submitLeaveBtn");
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص تداخل التواريخ...';
         submitBtn.disabled = true;
@@ -991,7 +1059,7 @@
             querySnapshot.forEach(doc => {
                 let item = doc.data();
                 let st = (item.managerStatus || "").toLowerCase();
-                if (!st.includes("مرفوض")) {
+                if (!st.includes("مرفوض") && item.leaveType !== "ترك عمل" && item.leaveType !== "انقطاع عن العمل") {
                     let existingStart = item.startDate;
                     let existingEnd = item.endDate;
                     if (!(end < existingStart || start > existingEnd)) {
@@ -1003,7 +1071,7 @@
             if (hasOverlap) {
                 submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
                 submitBtn.disabled = false;
-                showCustomAlert("خطأ في التواريخ", "عذراً، يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة الزمنية. لا يمكن تكرار الإجازة لنفس اليوم.");
+                showCustomAlert("خطأ في التواريخ", "عذراً، يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة الزمنية.");
                 return;
             }
 
@@ -1015,7 +1083,7 @@
                 empName: name,
                 nationalId: nationalId,
                 dept: dept,
-                jobCategory: category,
+                jobCategory: category, 
                 targetManager: targetManager, 
                 mgrName: mName,
                 titlePrefix: titlePrefix,
@@ -1024,6 +1092,7 @@
                 endDate: end,
                 daysCount: totalDays,
                 reason: reason,
+                absenceReason: absenceReasonText, // حفظ سبب الانقطاع
                 phone: phone,
                 daysAnnual: dAnnual,
                 daysPrev: dPrev,
@@ -1233,7 +1302,6 @@
         XLSX.writeFile(wb, "سجل_الإجازات.xlsx");
     }
 
-    // ✅ جلب المدراء والمختصين ديناميكياً وتنقية القائمة (مع تحسين الشكل)
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -1369,7 +1437,6 @@
         });
     }
 
-    // ✅ البحث بالكلمة المفتاحية لضمان وصول الطلب للمختص
     function loadDepartmentLeavesFirebase(deptName, role, category) {
         db.collection("leaves").get().then((querySnapshot) => {
             currentLeavesData = [];
@@ -1536,6 +1603,8 @@
 
             let isChecked = selectedLeaveIds.has(item.requestId) ? "checked" : "";
             let dualText = (item.daysAnnual && item.daysPrev) ? `<br><span style="color:#b45309; font-size:12px;">(اعتيادي: ${item.daysAnnual} | سنوات سابقة: ${item.daysPrev})</span>` : "";
+            
+            let absenceReasonHtml = (item.leaveType === "انقطاع عن العمل" && item.absenceReason) ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>سبب الانقطاع:</strong> ${item.absenceReason}</p>` : "";
 
             html += `
             <div class="emp-card-box ${cardClass}" style="position:relative;">
@@ -1545,9 +1614,10 @@
                     الموظف: ${item.empName} (${item.requestId})
                 </h4>
                 <p style="position:relative; z-index:1;"><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
-                <p style="position:relative; z-index:1;"><strong>نوع الإجازة:</strong> ${item.leaveType} ${dualText} (${item.daysCount} أيام)</p>
+                <p style="position:relative; z-index:1;"><strong>نوع الطلب:</strong> ${item.leaveType} ${dualText} (${item.daysCount} أيام)</p>
                 <p style="position:relative; z-index:1;"><strong>الفترة:</strong> من ${formatDateToAr(item.startDate)} إلى ${formatDateToAr(item.endDate)}</p>
-                <p style="position:relative; z-index:1;"><strong>السبب:</strong> ${item.reason}</p>
+                <p style="position:relative; z-index:1;"><strong>السبب / الملاحظات:</strong> ${item.reason}</p>
+                ${absenceReasonHtml}
                 <p style="position:relative; z-index:1;"><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
                 <p style="position:relative; z-index:1;"><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
                 ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
@@ -1641,7 +1711,8 @@
                             let newSick = currentSick;
                             let newPrevBal = currentPrevBal;
 
-                            if (leaveType === "اعتيادية") {
+                            // ✅ الخصم بناءً على نوع الإجازة
+                            if (leaveType === "اعتيادية" || leaveType === "تصريح نصف يوم") {
                                 newAnnual = currentAnnual - daysCount;
                             } else if (leaveType === "عارضة") {
                                 newCasual = currentCasual - daysCount;
@@ -1653,6 +1724,7 @@
                                 newAnnual = currentAnnual - dAnnual;
                                 newPrevBal = currentPrevBal - dPrev;
                             }
+                            // أنواع (انقطاع / ترك عمل) لا تخصم من الرصيد
 
                             if (newAnnual < 0) newAnnual = 0;
                             if (newCasual < 0) newCasual = 0;
@@ -1666,7 +1738,7 @@
                                 prevBal: newPrevBal
                             }).then(() => {
                                 db.collection("leaves").doc(docId).update(updateData).then(() => {
-                                    showCustomAlert("تم بنجاح", "تم الاعتماد وخصم الأيام من رصيد الموظف بنجاح.");
+                                    showCustomAlert("تم بنجاح", "تم الاعتماد وخصم الأيام (إن وجدت) من رصيد الموظف بنجاح.");
                                     loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
                                 });
                             });
@@ -1762,6 +1834,11 @@
             dualDetailsHtml = `<p>وتتضمن الإجازة تفصيلاً كالتالي: <strong>${item.daysAnnual} أيام اعتيادية</strong> و <strong>${item.daysPrev} أيام من رصيد سنوات سابقة</strong>.</p>`;
         }
 
+        let absenceHtml = "";
+        if (item.leaveType === "انقطاع عن العمل" && item.absenceReason) {
+            absenceHtml = `<p style="color:red; font-weight:bold;">سبب الانقطاع: ${item.absenceReason}</p>`;
+        }
+
         let htmlContent = `
             <!DOCTYPE html>
             <html lang="ar" dir="rtl">
@@ -1789,11 +1866,12 @@
                             <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
                         </div>
                     </div>
-                    <div class="title">طلب إجازة رسمي</div>
+                    <div class="title">${item.leaveType === 'انقطاع عن العمل' ? 'إشعار انقطاع عن العمل' : (item.leaveType === 'ترك عمل' ? 'إشعار ترك عمل' : 'طلب إجازة / تصريح رسمي')}</div>
                     <div class="content">
                         <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
                         <p>تحية طيبة وبعد،،،</p>
-                        <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> وحتى تاريخ <strong>${formatDateToAr(item.endDate)}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                        <p>أرجو التكرم بالعلم بخصوص طلب (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> وحتى تاريخ <strong>${formatDateToAr(item.endDate)}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                        ${absenceHtml}
                         ${dualDetailsHtml}
                         <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
                     </div>
@@ -1856,6 +1934,11 @@
                 dualDetailsHtml = `<p>وتتضمن الإجازة تفصيلاً كالتالي: <strong>${item.daysAnnual} أيام اعتيادية</strong> و <strong>${item.daysPrev} أيام من رصيد سنوات سابقة</strong>.</p>`;
             }
 
+            let absenceHtml = "";
+            if (item.leaveType === "انقطاع عن العمل" && item.absenceReason) {
+                absenceHtml = `<p style="color:red; font-weight:bold;">سبب الانقطاع: ${item.absenceReason}</p>`;
+            }
+
             htmlContent += `
                 <div class="page-break">
                     ${watermark}
@@ -1867,11 +1950,12 @@
                                 <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
                             </div>
                         </div>
-                        <div class="title">طلب إجازة رسمي</div>
+                        <div class="title">${item.leaveType === 'انقطاع عن العمل' ? 'إشعار انقطاع عن العمل' : (item.leaveType === 'ترك عمل' ? 'إشعار ترك عمل' : 'طلب إجازة / تصريح رسمي')}</div>
                         <div class="content">
                             <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
                             <p>تحية طيبة وبعد،،،</p>
-                            <p>أرجو التكرم بالموافقة على منحي إجازة (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> وحتى تاريخ <strong>${formatDateToAr(item.endDate)}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                            <p>أرجو التكرم بالعلم بخصوص طلب (<strong>${item.leaveType}</strong>) لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> وحتى تاريخ <strong>${formatDateToAr(item.endDate)}</strong>، نظراً لـ: <strong>${item.reason}</strong>.</p>
+                            ${absenceHtml}
                             ${dualDetailsHtml}
                             <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
                         </div>
@@ -1942,8 +2026,10 @@
             }
             
             let days = parseFloat(item.daysCount) || 0;
+            
+            // أنواع الإجازات التي تخصم من الرصيد
             if (item.leaveType === "عارضة") aggregated[nid].casual += days;
-            else if (item.leaveType === "اعتيادية" || item.leaveType === "رصيد سنوات سابقة" || item.leaveType === "اعتيادية + رصيد سنوات سابقة") aggregated[nid].annual += days;
+            else if (item.leaveType === "اعتيادية" || item.leaveType === "رصيد سنوات سابقة" || item.leaveType === "اعتيادية + رصيد سنوات سابقة" || item.leaveType === "تصريح نصف يوم") aggregated[nid].annual += days;
             else if (item.leaveType === "مرضية") aggregated[nid].sick += days;
             
             else if (item.leaveType === "مرضية بقرار 259") {
@@ -2075,14 +2161,12 @@
         setTimeout(() => { win.focus(); win.print(); }, 500);
     }
 
-    // ✅ الفلترة الصارمة لشاشة إضافة الموظف (لمنع ظهور موظفي العقود) + مسح الفئة القديمة
     function openSpecialistAuthModal() {
         document.getElementById('specAuthPassword').value = "";
         
         document.getElementById("hiddenJobCategory").value = "";
         document.getElementById("specCategoryDisplay").innerText = "";
         
-        // إعادة تعيين واجهة الإضافة
         cancelEditMode(); 
 
         let select = document.getElementById('specAuthDept');
@@ -2145,7 +2229,6 @@
                 document.getElementById("mainEgazatMenu").classList.add("hidden");
                 document.getElementById("addEmployeeSection").classList.remove("hidden");
                 
-                // ✅ تحميل البيانات لتفعيل البحث
                 loadSpecialistData();
             } else {
                 showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
@@ -2187,6 +2270,8 @@
 
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...';
             
+            let empStatus = document.getElementById("empStatusSwitch").checked ? "active" : "inactive";
+            
             let empData = {
                 name: document.getElementById("newEmpName").value.trim(),
                 nationalId: nationalIdVal,
@@ -2202,7 +2287,8 @@
                 department: "إدارة الموارد البشرية",
                 role: "employee",
                 newAnnual: 0, 
-                newCasual: 0  
+                newCasual: 0,
+                status: empStatus
             };
             
             db.collection("users").add(empData).then(() => {
@@ -2210,8 +2296,10 @@
                 btn.disabled = false;
                 showCustomAlert("تم بنجاح", "تمت إضافة الموظف بنجاح."); 
                 document.getElementById("addEmployeeForm").reset(); 
+                document.getElementById("empStatusSwitch").checked = true;
+                toggleEmpStatusText();
                 calcAutoBal();
-                loadSpecialistData(); // تحديث الجدول
+                loadSpecialistData();
             }).catch((error) => {
                 btn.innerHTML = '<i class="fas fa-plus-circle"></i> إضافة موظف جديد'; 
                 btn.disabled = false;
@@ -2226,7 +2314,6 @@
         });
     }
 
-    // ✅ البحث عن الموظف لتعديله
     function searchEmployeeForEdit(query) {
         let suggestBox = document.getElementById("searchResultsBox");
         let currentCategory = document.getElementById("hiddenJobCategory").value;
@@ -2248,7 +2335,7 @@
             matches.slice(0, 10).forEach(emp => {
                 let div = document.createElement("div");
                 div.className = "suggestion-item";
-                div.innerHTML = `<i class="fas fa-user" style="margin-left:5px; color:#64748b;"></i> <strong>${emp.name}</strong> - ${emp.nationalId}`;
+                div.innerHTML = `<i class="fas fa-user" style="margin-left:5px; color:#64748b;"></i> <strong>${emp.name}</strong> - ${emp.nationalId} ${emp.status === 'inactive' ? '<span style="color:red; font-size:10px;">(موقوف)</span>' : ''}`;
                 div.onclick = function() {
                     loadEmployeeForEditing(emp);
                 };
@@ -2261,7 +2348,6 @@
         }
     }
 
-    // ✅ تحميل البيانات في الفورم
     function loadEmployeeForEditing(emp) {
         document.getElementById("searchResultsBox").style.display = "none";
         document.getElementById("searchEmployeeInput").value = emp.name;
@@ -2277,6 +2363,11 @@
         document.getElementById("newEmpSick").value = emp.sick || 0;
         document.getElementById("newEmpSick259").value = emp.sick259 || "لا";
         document.getElementById("newEmpPrevBal").value = emp.prevBal || 0;
+        
+        // ✅ تحميل حالة الموظف
+        let isActive = (emp.status !== 'inactive');
+        document.getElementById("empStatusSwitch").checked = isActive;
+        toggleEmpStatusText();
         
         calcAutoBal();
 
@@ -2308,6 +2399,8 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...';
         btn.disabled = true;
 
+        let empStatus = document.getElementById("empStatusSwitch").checked ? "active" : "inactive";
+
         let updatedData = {
             name: document.getElementById("newEmpName").value.trim(),
             nationalId: document.getElementById("newEmpNationalId").value.trim(),
@@ -2317,7 +2410,8 @@
             casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
             sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
             sick259: document.getElementById("newEmpSick259").value,
-            prevBal: parseFloat(document.getElementById("newEmpPrevBal").value) || 0
+            prevBal: parseFloat(document.getElementById("newEmpPrevBal").value) || 0,
+            status: empStatus // ✅ حفظ الحالة الجديدة
         };
 
         db.collection("users").doc(docId).update(updatedData).then(() => {
@@ -2325,7 +2419,7 @@
             btn.disabled = false;
             showCustomAlert("تم بنجاح", "تم تحديث بيانات الموظف بنجاح.");
             
-            loadSpecialistData(); // تحديث الجدول
+            loadSpecialistData();
             cancelEditMode();
         }).catch((error) => {
             btn.innerHTML = '<i class="fas fa-save"></i> حفظ التعديلات';
@@ -2346,6 +2440,9 @@
         
         document.querySelectorAll('.edit-icon').forEach(icon => icon.classList.add("hidden"));
         document.querySelectorAll('.input-group input, .input-group select').forEach(el => el.disabled = false);
+        
+        document.getElementById("empStatusSwitch").checked = true;
+        toggleEmpStatusText();
         
         calcAutoBal();
     }
@@ -2411,7 +2508,7 @@
             if (updatedCount > 0) {
                 batch.commit().then(() => {
                     showCustomAlert("تم بنجاح", `تم تجديد أرصدة ${updatedCount} موظف بنجاح بناءً على الأرصدة الجديدة.`);
-                    loadSpecialistData(); // تحديث الجدول
+                    loadSpecialistData(); 
                 }).catch((error) => {
                     console.error(error);
                     showCustomAlert("خطأ", "تعذر تحديث البيانات.");
@@ -2459,7 +2556,7 @@
                 <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
                 <table class="summary-report-table"><thead><tr>
                     <th>م</th>
-                    <th>الاسم</th><th>الرقم القومي</th>
+                    <th>الاسم</th><th>الرقم القومي</th><th>الحالة</th>
                     <th>الاعتيادي</th><th>العارضة</th>
                     <th>المرضية</th><th>مرضية 259</th>
                     <th>رصيد سنوات سابقة</th><th>المتبقي</th>
@@ -2469,11 +2566,14 @@
                 let casual = parseFloat(emp.casual) || 0;
                 let prevBal = parseFloat(emp.prevBal) || 0;
                 let remaining = annual + casual + prevBal;
+                let isActive = (emp.status !== 'inactive');
+                let statusText = isActive ? '<span style="color:green;">نشط</span>' : '<span style="color:red;">موقوف</span>';
                 
-                html += `<tr>
+                html += `<tr style="${!isActive ? 'opacity: 0.7; background-color: #fef2f2;' : ''}">
                     <td>${idx + 1}</td>
                     <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                     <td>${emp.nationalId}</td>
+                    <td>${statusText}</td>
                     <td>${annual}</td>
                     <td>${casual}</td>
                     <td>${emp.sick || 0}</td>
