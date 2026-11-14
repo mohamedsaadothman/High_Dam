@@ -1205,7 +1205,7 @@
                 let cm = String(data.centralManager || "").trim();
 
                 // الفلترة للمختصين: لازم يكون في الـ role كلمة "اجازات"
-                if (role.includes("اجازات")) {
+                if (role.includes("اجازات") || role.includes("إجازات")) {
                     specialists.add(role);
                 }
                 
@@ -1959,27 +1959,38 @@
         setTimeout(() => { win.focus(); win.print(); }, 500);
     }
 
+    // ✅ الفلترة الصارمة لشاشة إضافة الموظف (لمنع ظهور موظفي العقود)
     function openSpecialistAuthModal() {
         document.getElementById('specAuthPassword').value = "";
         let select = document.getElementById('specAuthDept');
         select.innerHTML = '<option value="">جاري التحميل...</option>';
         
-        db.collection("users").where("role", ">=", "موظف اجازات").get().then((querySnapshot) => {
+        // الفلترة: هنجيب بس الموظفين اللي في الـ role بتاعهم كلمة "اجازات"
+        db.collection("users").get().then((querySnapshot) => {
             select.innerHTML = '<option value="">اختر الإدارة...</option>';
-            if (!querySnapshot.empty) {
-                querySnapshot.forEach(doc => {
-                    let data = doc.data();
+            let hasSpecialists = false;
+            
+            querySnapshot.forEach(doc => {
+                let data = doc.data();
+                let role = String(data.role || "").trim();
+                
+                // الشرط: لازم يكون فيه كلمة "اجازات" أو "إجازات"
+                if (role.includes("اجازات") || role.includes("إجازات")) {
                     let opt = document.createElement("option");
-                    opt.value = data.role; 
-                    opt.textContent = data.role;
+                    opt.value = role; 
+                    opt.textContent = role;
                     select.appendChild(opt);
-                });
-            } else {
+                    hasSpecialists = true;
+                }
+            });
+            
+            if (!hasSpecialists) {
                 select.innerHTML = '<option value="">لا توجد إدارات مختصة</option>';
             }
         }).catch(() => {
             select.innerHTML = '<option value="">تعذر تحميل الإدارات</option>';
         });
+        
         document.getElementById('specialistAuthModal').classList.remove('hidden');
     }
 
@@ -2066,8 +2077,8 @@
                 jobCategory: document.getElementById("hiddenJobCategory").value,
                 department: "إدارة الموارد البشرية",
                 role: "employee",
-                newAnnual: 0, // إضافة الحقل ده عشان ميعملش مشكلة لو مرفوعش
-                newCasual: 0  // إضافة الحقل ده عشان ميعملش مشكلة لو مرفوعش
+                newAnnual: 0, 
+                newCasual: 0  
             };
             
             db.collection("users").add(empData).then(() => {
