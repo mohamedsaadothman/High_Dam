@@ -65,20 +65,8 @@
             background-size: 16px;
         }
         
-        /* تنسيق فخم للقائمة المنسدلة */
-        .input-group select optgroup {
-            font-weight: 900;
-            color: #1a365d;
-            background-color: #f8fafc;
-            padding: 8px;
-            font-size: 13px;
-        }
-        .input-group select option {
-            font-weight: 600;
-            color: #334155;
-            padding: 10px;
-            font-size: 13px;
-        }
+        .input-group select optgroup { font-weight: 900; color: #1a365d; background-color: #f8fafc; padding: 8px; font-size: 13px; }
+        .input-group select option { font-weight: 600; color: #334155; padding: 10px; font-size: 13px; }
 
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus { 
             border-color: #198754; background-color: #fff; box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.15); 
@@ -821,7 +809,15 @@
 
             document.getElementById("verifiedEmpName").value = userData.name;
             document.getElementById("verifiedEmpDept").value = userData.department || "إدارة الموارد البشرية";
-            document.getElementById("verifiedEmpCategory").value = userData.jobCategory || "تخصصية";
+            
+            // ✅ تخزين الفئة الأساسية فقط
+            let cat = String(userData.jobCategory || "التخصصية").trim();
+            if (cat.includes("تخصص")) cat = "التخصصية";
+            else if (cat.includes("فني")) cat = "الفنية";
+            else if (cat.includes("مكتب")) cat = "المكتبية";
+            else if (cat.includes("حرف")) cat = "الحرفية والخدمات المعاونة";
+            
+            document.getElementById("verifiedEmpCategory").value = cat;
             
             document.getElementById("verifiedEmpNameDisplay").innerText = userData.name;
             
@@ -875,7 +871,7 @@
         let name = document.getElementById("verifiedEmpName").value;
         let nationalId = document.getElementById("empNationalId").value.trim();
         let dept = document.getElementById("verifiedEmpDept").value;
-        let category = document.getElementById("verifiedEmpCategory").value;
+        let category = document.getElementById("verifiedEmpCategory").value; // هتكون نضيفة من verify
         let targetManager = document.getElementById("targetManagerDept").value;
         let titlePrefix = document.getElementById("managerTitle").value;
         let mName = document.getElementById("managerName").value.trim();
@@ -948,8 +944,8 @@
                 empName: name,
                 nationalId: nationalId,
                 dept: dept,
-                jobCategory: category, // مهم جداً عشان المختص يشوفه
-                targetManager: targetManager, // المدير العام التابع له
+                jobCategory: category, // هيتخزن "التخصصية" فقط
+                targetManager: targetManager, 
                 mgrName: mName,
                 titlePrefix: titlePrefix,
                 leaveType: type,
@@ -1333,21 +1329,31 @@
 
     // ✅ التعديل الجوهري: البحث بالكلمة المفتاحية لضمان وصول الطلب للمختص
     function loadDepartmentLeavesFirebase(deptName, role, category) {
-        let query = db.collection("leaves");
-        
-        if (role === "hr_specialist") {
-            // المختص بيشوف الطلبات اللي فئتها بتساوي الفئة بتاعته
-            query = query.where("jobCategory", "==", category);
-        } else {
-            // المدير بيشوف الطلبات اللي متوجهة له
-            query = query.where("targetManager", "==", deptName); 
-        }
-
-        query.get().then((querySnapshot) => {
+        // بنجيب كل الطلبات من قاعدة البيانات عشان نتفادى مشاكل الفلترة الدقيقة
+        db.collection("leaves").get().then((querySnapshot) => {
             currentLeavesData = [];
+            
             querySnapshot.forEach(doc => {
                 let data = doc.data();
                 data.docId = doc.id; 
+                
+                // فلترة المختص
+                if (role === "hr_specialist") {
+                    let reqCat = String(data.jobCategory || "").trim();
+                    let searchCat = String(category || "").trim();
+                    
+                    // لو الفئة اللي في الطلب مش فيها كلمة المختص (تخصصية)، نتخطاه
+                    if (!reqCat.includes(searchCat) && !reqCat.includes(searchCat.replace("ال", ""))) {
+                        return; // تخطي
+                    }
+                } 
+                // فلترة المدير
+                else {
+                    if (data.targetManager !== deptName) {
+                        return; // تخطي
+                    }
+                }
+
                 currentLeavesData.push(data);
             });
             
