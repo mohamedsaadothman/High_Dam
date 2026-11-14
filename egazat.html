@@ -505,6 +505,7 @@
             <div id="printableSummaryArea" style="margin-top: 15px; display: none; background: #fff; padding: 10px; border-radius: 8px; overflow-x: auto;">
                 <div style="text-align: center; margin-bottom: 10px;">
                     <h2 style="font-size: 16px; font-weight: 900; color: #000; margin-bottom: 5px;">تقرير تجميعي لبيانات الإجازات</h2>
+                    <h3 id="reportCategoryText" style="font-size: 14px; font-weight: bold; color: #c59b27; margin-bottom: 5px;"></h3>
                     <p id="reportPeriodText" style="font-size: 12px; color: #333; margin-bottom: 5px;"></p>
                 </div>
                 <table class="summary-report-table" id="summaryReportTable">
@@ -1907,7 +1908,8 @@
                 aggregated[nid] = {
                     empName: item.empName,
                     nationalId: nid,
-                    casual: 0, annual: 0, sick: 0, sick259: 0
+                    casual: 0, annual: 0, sick: 0, 
+                    sick259: "لا" // ✅ القيمة الافتراضية
                 };
             }
             
@@ -1915,21 +1917,28 @@
             if (item.leaveType === "عارضة") aggregated[nid].casual += days;
             else if (item.leaveType === "اعتيادية" || item.leaveType === "رصيد سنوات سابقة" || item.leaveType === "اعتيادية + رصيد سنوات سابقة") aggregated[nid].annual += days;
             else if (item.leaveType === "مرضية") aggregated[nid].sick += days;
-            else if (item.leaveType === "مرضية بقرار 259") aggregated[nid].sick259 += days;
+            
+            // ✅ تعديل: لو نوع الإجازة "مرضية بقرار 259" بنكتب "نعم" بدل ما نجمع أيام
+            else if (item.leaveType === "مرضية بقرار 259") {
+                aggregated[nid].sick259 = "نعم";
+            }
         });
 
         let finalData = Object.values(aggregated).map(emp => {
-            let total = emp.casual + emp.annual + emp.sick + emp.sick259;
+            // ✅ المجموع هنا بقى بيجمع الأيام فقط (الاعتيادي + العارضة + المرضي العادي)
+            let total = emp.casual + emp.annual + emp.sick;
             return { ...emp, total: total };
         });
 
-        let grandTotalCasual = 0, grandTotalAnnual = 0, grandTotalSick = 0, grandTotalSick259 = 0, grandTotal = 0;
+        let grandTotalCasual = 0, grandTotalAnnual = 0, grandTotalSick = 0, grandTotal = 0;
+        let hasSick259 = false;
+
         finalData.forEach(emp => {
             grandTotalCasual += emp.casual;
             grandTotalAnnual += emp.annual;
             grandTotalSick += emp.sick;
-            grandTotalSick259 += emp.sick259;
             grandTotal += emp.total;
+            if (emp.sick259 === "نعم") hasSick259 = true;
         });
 
         let tbody = document.getElementById("summaryReportBody");
@@ -1950,18 +1959,24 @@
             `;
         });
 
+        // في صف الإجمالي العام، بنكتب "نعم" لو فيه أي حد أخد القرار، أو "لا" لو مفيش حد
         rowsHtml += `
             <tr class="total-row">
                 <td colspan="3">الإجمالي العام</td>
                 <td>${grandTotalCasual}</td>
                 <td>${grandTotalAnnual}</td>
                 <td>${grandTotalSick}</td>
-                <td>${grandTotalSick259}</td>
+                <td>${hasSick259 ? 'نعم' : 'لا'}</td>
                 <td>${grandTotal}</td>
             </tr>
         `;
 
         tbody.innerHTML = rowsHtml;
+        
+        // ✅ إضافة اسم الفئة في العنوان
+        let catDisplay = document.getElementById("dashboardTitle").innerText; // بيجيب العنوان اللي فوق (اسم الفئة)
+        document.getElementById("reportCategoryText").innerText = catDisplay;
+        
         document.getElementById("reportPeriodText").innerText = `عن الفترة من: ${formatDateToAr(sDate)} إلى: ${formatDateToAr(eDate)}`;
         document.getElementById("printableSummaryArea").style.display = "block";
 
@@ -1971,7 +1986,7 @@
         finalData.forEach((emp, index) => {
             summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.sick259, emp.total]);
         });
-        summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, grandTotalSick259, grandTotal]);
+        summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, hasSick259 ? 'نعم' : 'لا', grandTotal]);
 
         showCustomAlert("تم التقرير", "تم إنشاء التقرير بنجاح. يمكنك الآن طباعته أو تحميله كملف إكسل.");
     }
@@ -2031,9 +2046,14 @@
         setTimeout(() => { win.focus(); win.print(); }, 500);
     }
 
-    // ✅ الفلترة الصارمة لشاشة إضافة الموظف (لمنع ظهور موظفي العقود)
+    // ✅ الفلترة الصارمة لشاشة إضافة الموظف (لمنع ظهور موظفي العقود) + مسح الفئة القديمة
     function openSpecialistAuthModal() {
         document.getElementById('specAuthPassword').value = "";
+        
+        // ✅ مسح الفئة المخزنة مسبقاً لمنع التداخل
+        document.getElementById("hiddenJobCategory").value = "";
+        document.getElementById("specCategoryDisplay").innerText = "";
+
         let select = document.getElementById('specAuthDept');
         select.innerHTML = '<option value="">جاري التحميل...</option>';
         
