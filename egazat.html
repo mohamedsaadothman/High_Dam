@@ -2190,34 +2190,40 @@
         document.getElementById('renewCarryOverModal').classList.remove('hidden');
     }
 
+    // ✅ التعديل: البحث بالكلمة المفتاحية للتصفير
     function executeRenew(carryOverChoice) {
         let cat = document.getElementById("hiddenJobCategory").value;
         closeRenewModals();
         
-        db.collection("users").where("jobCategory", "==", cat).get().then((querySnapshot) => {
+        db.collection("users").get().then((querySnapshot) => {
             let batch = db.batch();
             let updatedCount = 0;
 
             querySnapshot.forEach(doc => {
                 let data = doc.data();
-                if (!isEmployeeRetired(data.nationalId)) {
-                    let currentAnnual = parseFloat(data.annual) || 0;
-                    let newAnnual = parseFloat(data.newAnnual) || 0;
-                    let newCasual = parseFloat(data.newCasual) || 0;
-                    
-                    let newPrevBal = parseFloat(data.prevBal) || 0;
-                    if (carryOverChoice === 'نعم') {
-                        newPrevBal = newPrevBal + currentAnnual; // ترحيل المتبقي من القديم
-                    }
+                let empCat = String(data.jobCategory || "").trim();
+                
+                // الفلترة الذكية للتصفير
+                if (empCat.includes(cat) || empCat.includes(cat.replace("ال", ""))) {
+                    if (!isEmployeeRetired(data.nationalId)) {
+                        let currentAnnual = parseFloat(data.annual) || 0;
+                        let newAnnual = parseFloat(data.newAnnual) || 0;
+                        let newCasual = parseFloat(data.newCasual) || 0;
+                        
+                        let newPrevBal = parseFloat(data.prevBal) || 0;
+                        if (carryOverChoice === 'نعم') {
+                            newPrevBal = newPrevBal + currentAnnual; // ترحيل المتبقي
+                        }
 
-                    batch.update(doc.ref, {
-                        annual: newAnnual,     // الرصيد الحالي بقى هو الجديد
-                        casual: newCasual,     // العارضة الحالية بقت هي الجديدة
-                        prevBal: newPrevBal,
-                        newAnnual: 0,          // تصفير الرصيد الجديد
-                        newCasual: 0           // تصفير العارضة الجديدة
-                    });
-                    updatedCount++;
+                        batch.update(doc.ref, {
+                            annual: newAnnual,     // الرصيد الحالي بقى هو الجديد
+                            casual: newCasual,     // العارضة الحالية بقت هي الجديدة
+                            prevBal: newPrevBal,
+                            newAnnual: 0,          // تصفير الرصيد الجديد
+                            newCasual: 0           // تصفير العارضة الجديدة
+                        });
+                        updatedCount++;
+                    }
                 }
             });
 
@@ -2237,19 +2243,27 @@
         });
     }
 
+    // ✅ التعديل: البحث بالكلمة المفتاحية لتحميل البيانات
     function loadSpecialistData() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
         
         document.getElementById("specialistDataContainer").innerHTML = '<p style="text-align:center; padding:15px; color:#64748b;">جاري تحميل البيانات...</p>';
         
-        db.collection("users").where("jobCategory", "==", cat).get().then((querySnapshot) => {
+        // بنجيب كل الموظفين ونفلترهم هنا عشان نتفادى مشاكل الكلمات
+        db.collection("users").get().then((querySnapshot) => {
             currentEmployeesList = [];
+            
             querySnapshot.forEach(doc => {
                 let data = doc.data();
-                data.docId = doc.id;
-                if (!isEmployeeRetired(data.nationalId)) {
-                    currentEmployeesList.push(data);
+                let empCat = String(data.jobCategory || "").trim();
+                
+                // الفلترة الذكية: لو الفئة فيها كلمة "تخصصية" أو "التخصصية"
+                if (empCat.includes(cat) || empCat.includes(cat.replace("ال", ""))) {
+                    data.docId = doc.id;
+                    if (!isEmployeeRetired(data.nationalId)) {
+                        currentEmployeesList.push(data);
+                    }
                 }
             });
 
