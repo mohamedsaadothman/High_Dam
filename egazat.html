@@ -256,14 +256,6 @@
                         <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpNationalId')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
                     </div>
                 </div>
-                
-                <div class="input-group">
-                    <label>الإدارة التابع لها الموظف:</label>
-                    <div style="position: relative;">
-                        <input type="text" id="newEmpDept" required placeholder="مثال: الشئون المالية، المشتريات..." style="padding-left: 35px;">
-                        <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpDept')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
-                    </div>
-                </div>
 
                 <div class="input-group" id="passwordGroup">
                     <label>كلمة مرور الموظف:</label>
@@ -822,12 +814,26 @@
         </div>
     </div>
 
+    <!-- مودال المختص المحدث -->
     <div id="specialistActionModal" class="custom-modal-overlay hidden">
         <div class="custom-modal-box">
             <div class="custom-modal-header">
                 <i class="fas fa-check-circle" style="color: #198754;"></i>
-                <h3>إجراء المختص</h3>
+                <h3>مراجعة الإجراء</h3>
             </div>
+            
+            <div id="absenceCalcSection" class="hidden" style="text-align: right; margin-bottom: 15px; background: #fffbeb; padding: 10px; border-radius: 8px; border: 1px solid #f59e0b;">
+                <label style="font-weight: 800; font-size: 13px; color: #b45309; margin-bottom: 5px; display: block;">احتساب المدة المنقطعة كـ:</label>
+                <select id="absenceCalcType" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; margin-bottom: 8px;">
+                    <option value="اعتيادية">إجازة اعتيادية</option>
+                    <option value="رصيد سنوات سابقة">رصيد سنوات سابقة</option>
+                    <option value="مرضية">إجازة مرضية (تسجل فقط لا تخصم)</option>
+                    <option value="مرضية بقرار 259">مرضية بقرار 259</option>
+                </select>
+                <label id="absenceDaysLabel" style="font-weight: 800; font-size: 13px; color: #b45309; margin-bottom: 5px; display: block;">عدد الأيام:</label>
+                <input type="number" id="absenceCalcDays" placeholder="أدخل عدد الأيام..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc;">
+            </div>
+
             <div class="input-group" style="text-align: right;">
                 <label>ملاحظات / تفاصيل (اختياري):</label>
                 <input type="text" id="specActionReason" placeholder="اكتب ملاحظاتك هنا..." style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
@@ -1333,7 +1339,6 @@
         }).catch(err => console.error(err));
     }
 
-    // *** تعديل: قراءة حقول المدير في البلاغ ***
     function submitAbsenceReport() {
         let otherNid = document.getElementById("otherEmpNationalId").value.trim();
         let absenceType = document.getElementById("absenceType").value;
@@ -1359,14 +1364,20 @@
             if (q.empty) { showCustomAlert("خطأ", "الموظف المبلغ عنه غير مسجل."); btn.disabled = false; return; }
             let otherData = q.docs[0].data();
             
-            let empDept = otherData.department || otherData.dept || "غير محددة";
+            // استخراج الإدارة تلقائياً من اسم المدير (مثلاً: مدير عام التخطيط والمتابعة -> التخطيط والمتابعة)
+            let autoDept = "غير محددة";
+            if(absManagerDept.includes("مدير عام")){
+                autoDept = "إدارة " + absManagerDept.replace("مدير عام", "").trim();
+            } else {
+                autoDept = absManagerDept;
+            }
             
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
             let leaveData = {
                 requestId: randomId,
                 empName: otherData.name,
                 nationalId: otherNid,
-                dept: empDept,
+                dept: autoDept,
                 jobCategory: otherData.jobCategory || "غير محدد", 
                 targetManager: absManagerDept, 
                 mgrName: absManagerName,       
@@ -1374,7 +1385,7 @@
                 leaveType: "التبليغ عن منقطع",
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: "",
-                daysCount: 0, // تعديل: بدون تحديد أيام للانقطاع
+                daysCount: 0,
                 reason: absenceType === "إجازة مرضية" ? sickReason : "بلاغ انقطاع: " + absenceType,
                 absenceReason: absenceType,
                 phone: "-",
@@ -1467,7 +1478,6 @@
         });
     }
 
-    // *** تعديل: جلب قائمة المديرين لمربع اختيار المدير في البلاغ ***
     function loadTargetManagers() {
         let select = document.getElementById("targetManagerDept");
         let select2 = document.getElementById("permManagerDept");
@@ -1986,7 +1996,7 @@
                     الموظف: ${item.empName} (${item.requestId})
                 </h4>
                 <p style="position:relative; z-index:1;"><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
-                <p style="position:relative; z-index:1;"><strong>نوع الطلب:</strong> ${item.leaveType} ${dualText} (${item.daysCount} أيام)</p>
+                <p style="position:relative; z-index:1;"><strong>نوع الطلب:</strong> ${item.leaveType} ${dualText} ${item.daysCount > 0 ? '('+item.daysCount+' أيام)' : ''}</p>
                 <p style="position:relative; z-index:1;"><strong>الفترة:</strong> من ${formatDateToAr(item.startDate)} ${item.endDate ? 'إلى ' + formatDateToAr(item.endDate) : ''}</p>
                 <p style="position:relative; z-index:1;"><strong>السبب / الملاحظات:</strong> ${item.reason}</p>
                 ${absenceReasonHtml}
@@ -1999,14 +2009,11 @@
                     ${loggedInRole === 'hr_specialist' ? `
                         ${item.specialistStatus === "قيد الانتظار" ? `
                             ${(item.leaveType === "التبليغ عن منقطع" || item.leaveType === "التبليغ عن ترك عمل" || item.leaveType === "طلب عودة من انقطاع") ? `
-                                <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'مقبول ومؤرشف', 'علم بالتبليغ')">تأكيد التبليغ / العودة</button>
+                                <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'تم المراجعة')">مراجعة واعتماد</button>
                             ` : `
                                 <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
                             `}
                             <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
-                        ` : ''}
-                        ${item.specialistStatus === "رصيد متاح" && item.managerStatus === "مقبول ومؤرشف" ? `
-                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
                         ` : ''}
                     ` : `
                         ${item.managerStatus === "قيد الانتظار" && (item.specialistStatus === "رصيد متاح" || item.leaveType === "التبليغ عن منقطع") ? `
@@ -2031,11 +2038,26 @@
         currentSpecActionDocId = docId;
         currentSpecActionStatus = statusType;
         document.getElementById("specActionReason").value = defaultText;
+        
+        // إظهار حقول احتساب المدة إذا كان الطلب تبليغ انقطاع
+        let targetItem = currentLeavesData.find(i => i.docId === docId);
+        if (targetItem && targetItem.leaveType === "التبليغ عن منقطع") {
+            document.getElementById("absenceCalcSection").classList.remove("hidden");
+            document.getElementById("absenceCalcType").value = "اعتيادية";
+            document.getElementById("absenceCalcDays").value = "";
+        } else {
+            document.getElementById("absenceCalcSection").classList.add("hidden");
+        }
+
         document.getElementById("specialistActionModal").classList.remove("hidden");
     }
 
+    // تم تحديث هذا الجزء لمعالجة احتساب المدة للمنقطع
     document.getElementById("specActionConfirmBtn").onclick = function() {
         let reason = document.getElementById("specActionReason").value;
+        let calcType = document.getElementById("absenceCalcType").value;
+        let calcDays = parseFloat(document.getElementById("absenceCalcDays").value) || 0;
+        
         document.getElementById("specialistActionModal").classList.add("hidden");
         
         let updateData = {
@@ -2049,15 +2071,12 @@
                 let leaveData = doc.data();
                 let nationalId = leaveData.nationalId;
 
-                if ((leaveData.leaveType === "التبليغ عن منقطع") && currentSpecActionStatus === "مقبول ومؤرشف") {
-                    db.collection("users").where("nationalId", "==", nationalId).get().then((u) => {
-                        if (!u.empty) u.docs[0].ref.update({ status: "inactive" });
-                    });
-                }
-                if ((leaveData.leaveType === "طلب عودة من انقطاع") && currentSpecActionStatus === "مقبول ومؤرشف") {
-                    db.collection("users").where("nationalId", "==", nationalId).get().then((u) => {
-                        if (!u.empty) u.docs[0].ref.update({ status: "active" });
-                    });
+                // إذا كان الطلب تبليغ عن منقطع، نقوم بتسجيل المدة والرصيد
+                if (leaveData.leaveType === "التبليغ عن منقطع" && currentSpecActionStatus === "رصيد متاح") {
+                    updateData.absenceCalcType = calcType;
+                    updateData.absenceCalcDays = calcDays;
+                    updateData.daysCount = calcDays;
+                    updateData.reason = "تم احتساب المدة كـ: " + calcType + " | " + reason;
                 }
 
                 db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
@@ -2092,7 +2111,9 @@
                     let leaveType = leaveData.leaveType;
                     let dAnnual = parseFloat(leaveData.daysAnnual) || 0;
                     let dPrev = parseFloat(leaveData.daysPrev) || 0;
+                    let calcType = leaveData.absenceCalcType;
 
+                    // تحديث حالة الموظف إلى نشط بمجرد اعتماد المدير
                     db.collection("users").where("nationalId", "==", nationalId).get().then((userQuery) => {
                         if (!userQuery.empty) {
                             let userDoc = userQuery.docs[0];
@@ -2107,8 +2128,23 @@
                             let newCasual = currentCasual;
                             let newSick = currentSick;
                             let newPrevBal = currentPrevBal;
+                            let newStatus = userData.status; // الحالة الافتراضية
+                            let newSick259 = userData.sick259;
 
-                            if (leaveType === "اعتيادية" || leaveType === "تصريح نصف يوم") {
+                            // إذا كان الطلب تبليغ عن منقطع يتم تغيير الحالة إلى active
+                            if (leaveType === "التبليغ عن منقطع") {
+                                newStatus = "active";
+                                // خصم المدة التي اختارها المختص
+                                if (calcType === "اعتيادية") {
+                                    newAnnual = currentAnnual - daysCount;
+                                } else if (calcType === "رصيد سنوات سابقة") {
+                                    newPrevBal = currentPrevBal - daysCount;
+                                } else if (calcType === "مرضية") {
+                                    newSick = currentSick - daysCount; 
+                                } else if (calcType === "مرضية بقرار 259") {
+                                    newSick259 = "نعم";
+                                }
+                            } else if (leaveType === "اعتيادية" || leaveType === "تصريح نصف يوم") {
                                 newAnnual = currentAnnual - daysCount;
                             } else if (leaveType === "عارضة") {
                                 newCasual = currentCasual - daysCount;
@@ -2130,7 +2166,9 @@
                                 annual: newAnnual,
                                 casual: newCasual,
                                 sick: newSick,
-                                prevBal: newPrevBal
+                                prevBal: newPrevBal,
+                                status: newStatus,
+                                sick259: newSick259
                             }).then(() => {
                                 db.collection("leaves").doc(docId).update(updateData).then(() => {
                                     showCustomAlert("تم بنجاح", "تم الاعتماد وخصم الأيام (إن وجدت) من رصيد الموظف بنجاح.");
@@ -2226,7 +2264,7 @@
         });
     }
 
-    // *** تعديل: صيغة الطباعة الخاصة بالانقطاع بدون ذكر عدد أيام ***
+    // *** تعديل: صيغة الطباعة الخاصة بالانقطاع بدون ذكر عدد أيام وتصحيح أدناه ***
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2255,7 +2293,7 @@
         
         if (isAbsence) {
             requestVerb = "بالعلم";
-            requestPhrase = `بخصوص (<strong>${item.leaveType}</strong>) للموظف المذكور أعلاه`;
+            requestPhrase = `بخصوص (<strong>${item.leaveType}</strong>) للموظف المذكور <b>أدناه</b>`;
         }
 
         let titleText = "طلب إجازة / تصريح رسمي";
@@ -2348,6 +2386,7 @@
         if (latestSubmittedData) { openPrintWindow(latestSubmittedData); }
     }
 
+    // *** تعديل: دالة استخراج أيام الغياب بين تاريخين (تستخدم في التقرير التجميعي) ***
     function getDaysInPeriod(startStr, endStr, filterStartStr, filterEndStr) {
         let leaveStart = new Date(startStr);
         let leaveEnd = endStr ? new Date(endStr) : null;
@@ -2402,7 +2441,8 @@
                     nationalId: nid,
                     casual: 0, annual: 0, sick: 0, 
                     sick259: "لا",
-                    prevBalUsed: 0
+                    prevBalUsed: 0,
+                    absenceDetails: "" // لإضافة تفاصيل الانقطاع
                 };
             }
             
@@ -2415,9 +2455,17 @@
             else if (item.leaveType === "اعتيادية + رصيد سنوات سابقة") {
                 aggregated[nid].annual += days;
             }
-            
-            else if (item.leaveType === "مرضية بقرار 259") {
-                aggregated[nid].sick259 = "نعم";
+            else if (item.leaveType === "التبليغ عن منقطع") {
+                if (item.managerStatus === "مقبول ومؤرشف" || item.managerStatus.includes("مقبول")) {
+                    // إذا كان معتمداً، نخصم المدة
+                    if (item.absenceCalcType === "اعتيادية") aggregated[nid].annual += days;
+                    else if (item.absenceCalcType === "رصيد سنوات سابقة") aggregated[nid].prevBalUsed += days;
+                    else if (item.absenceCalcType === "مرضية") aggregated[nid].sick += days;
+                    else if (item.absenceCalcType === "مرضية بقرار 259") aggregated[nid].sick259 = "نعم";
+                } else {
+                    // إذا لم يعتمد بعد، نكتب منقطع من تاريخ ...
+                    aggregated[nid].absenceDetails = "منقطع من " + formatDateToAr(item.startDate) + " وحتى الآن";
+                }
             }
         });
 
@@ -2442,19 +2490,33 @@
         let rowsHtml = "";
         
         finalData.forEach((emp, index) => {
-            rowsHtml += `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td style="text-align: right; font-weight: bold;">${emp.empName}</td>
-                    <td>${emp.nationalId}</td>
-                    <td>${emp.casual}</td>
-                    <td>${emp.annual}</td>
-                    <td>${emp.sick}</td>
-                    <td>${emp.sick259}</td>
-                    <td>${emp.prevBalUsed}</td>
-                    <td style="font-weight: bold; background-color: #f0fdf4;">${emp.total}</td>
-                </tr>
-            `;
+            // إذا كان الموظف منقطع ولم يعتمد بعد، نقوم بدمج الخلايا وإظهار التفاصيل
+            if (emp.absenceDetails !== "") {
+                rowsHtml += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td style="text-align: right; font-weight: bold;">${emp.empName}</td>
+                        <td>${emp.nationalId}</td>
+                        <td colspan="6" style="color: #dc3545; font-weight: bold; text-align: center; background-color: #fef2f2;">
+                            ${emp.absenceDetails}
+                        </td>
+                    </tr>
+                `;
+            } else {
+                rowsHtml += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td style="text-align: right; font-weight: bold;">${emp.empName}</td>
+                        <td>${emp.nationalId}</td>
+                        <td>${emp.casual}</td>
+                        <td>${emp.annual}</td>
+                        <td>${emp.sick}</td>
+                        <td>${emp.sick259}</td>
+                        <td>${emp.prevBalUsed}</td>
+                        <td style="font-weight: bold; background-color: #f0fdf4;">${emp.total}</td>
+                    </tr>
+                `;
+            }
         });
 
         rowsHtml += `
@@ -2481,7 +2543,11 @@
             ['م', 'اسم الموظف', 'الرقم القومي', 'إجازة عارضة', 'إجازة اعتيادية', 'إجازة مرضية', 'مرضية 259', 'سنوات سابقة', 'المجموع']
         ];
         finalData.forEach((emp, index) => {
-            summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.sick259, emp.prevBalUsed, emp.total]);
+            if (emp.absenceDetails !== "") {
+                summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.absenceDetails, "", "", "", "", ""]);
+            } else {
+                summaryDataForExcel.push([index + 1, emp.empName, emp.nationalId, emp.casual, emp.annual, emp.sick, emp.sick259, emp.prevBalUsed, emp.total]);
+            }
         });
         summaryDataForExcel.push(['', 'الإجمالي العام', '', grandTotalCasual, grandTotalAnnual, grandTotalSick, hasSick259 ? 'نعم' : 'لا', grandTotalPrevBal, grandTotal]);
 
@@ -2670,7 +2736,6 @@
                 sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
                 sick259: document.getElementById("newEmpSick259").value,
                 prevBal: parseFloat(document.getElementById("newEmpPrevBal").value) || 0,
-                department: document.getElementById("newEmpDept").value.trim(),
                 jobCategory: document.getElementById("hiddenJobCategory").value,
                 role: "employee",
                 newAnnual: 0, 
@@ -2743,7 +2808,6 @@
         
         document.getElementById("newEmpName").value = emp.name || "";
         document.getElementById("newEmpNationalId").value = emp.nationalId || "";
-        document.getElementById("newEmpDept").value = emp.department || emp.dept || "";
         document.getElementById("newEmpHireDate").value = emp.hireDate || "";
         document.getElementById("newEmpRetireDate").value = emp.retireDate || emp.pensionDate || "";
         document.getElementById("newEmpAnnual").value = emp.annual || 0;
@@ -2764,7 +2828,7 @@
         
         document.querySelectorAll('.edit-icon').forEach(icon => icon.classList.remove("hidden"));
         
-        ['newEmpName', 'newEmpNationalId', 'newEmpDept', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
+        ['newEmpName', 'newEmpNationalId', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
             let el = document.getElementById(id);
             if (el) el.disabled = true;
         });
@@ -2791,7 +2855,6 @@
         let updatedData = {
             name: document.getElementById("newEmpName").value.trim(),
             nationalId: document.getElementById("newEmpNationalId").value.trim(),
-            department: document.getElementById("newEmpDept").value.trim(),
             hireDate: document.getElementById("newEmpHireDate").value,
             retireDate: document.getElementById("newEmpRetireDate").value,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
