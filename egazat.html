@@ -54,7 +54,6 @@
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
         
-        /* تعديل: الحقول بتاخد خصائص الـ Input العادية ومش بتتحول لقائمة منسدلة */
         .input-group input, .input-group textarea { 
             width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; 
             background-color: #ffffff; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; 
@@ -360,7 +359,7 @@
                 </button>
             </div>
 
-            <!-- الخانة اللي كانت ناقصة -->
+            <!-- خانة تسجيل العودة -->
             <div style="margin-top: 20px; background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #86efac;">
                 <h3 style="color: #166534; font-size: 14px; font-weight: 900; margin-bottom: 10px;"><i class="fas fa-user-check"></i> تسجيل عودة موظف من الانقطاع</h3>
                 <p style="font-size: 11px; color: #15803d; margin-bottom: 10px;">ابحث باسم الموظف المنقطع، ثم اضغط "تسجيل عودة" لإنشاء طلب رسمي يُرحل لمدير عام الموارد البشرية.</p>
@@ -369,7 +368,6 @@
                     <div id="searchReturnResults" class="suggestions-box" style="border-color: #86efac; border-top: none;"></div>
                 </div>
             </div>
-            <!-- نهاية الخانة -->
             
             <div id="specialistDataContainer" style="margin-top: 20px; overflow-x: auto;"></div>
         </div>
@@ -855,6 +853,24 @@
         </div>
     </div>
 
+    <!-- مودال رفض احترافي -->
+    <div id="rejectionModal" class="custom-modal-overlay hidden">
+        <div class="custom-modal-box">
+            <div class="custom-modal-header">
+                <i class="fas fa-times-circle" style="color: #dc3545;"></i>
+                <h3>رفض الطلب</h3>
+            </div>
+            <div class="input-group" style="text-align: right;">
+                <label>يرجى كتابة سبب الرفض:</label>
+                <textarea id="rejectReasonInput" rows="3" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px;"></textarea>
+            </div>
+            <div class="modal-btn-group">
+                <button class="custom-modal-btn" style="background: #dc3545;" id="confirmRejectBtn">تأكيد الرفض</button>
+                <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('rejectionModal').classList.add('hidden')">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
 <script>
     // === إعدادات Firebase ===
     const firebaseConfig = {
@@ -1179,65 +1195,94 @@
             showCustomAlert("تنبيه هام", "مجموع الأيام لا يتطابق مع المدة المحسوبة."); return;
         }
 
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص التداخل...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص الرصيد...';
         btn.disabled = true;
 
-        db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((querySnapshot) => {
-            let hasOverlap = false;
-            querySnapshot.forEach(doc => {
-                let item = doc.data();
-                let st = (item.managerStatus || "").toLowerCase();
-                if (!st.includes("مرفوض") && !item.leaveType.includes("منقطع") && !item.leaveType.includes("بلاغ")) {
-                    let existingStart = item.startDate;
-                    let existingEnd = item.endDate || "9999-12-31";
-                    if (!(end < existingStart || start > existingEnd)) { hasOverlap = true; }
-                }
-            });
+        // التحقق من الرصيد قبل الإرسال
+        db.collection("users").where("nationalId", "==", currentSubmitEmpNationalId).get().then((userSnap) => {
+            if (userSnap.empty) { showCustomAlert("خطأ", "الموظف غير موجود."); btn.disabled = false; return; }
+            let u = userSnap.docs[0].data();
+            let currentAnnual = parseFloat(u.annual) || 0;
+            let currentPrevBal = parseFloat(u.prevBal) || 0;
 
-            if (hasOverlap) {
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                btn.disabled = false;
-                showCustomAlert("تداخل تواريخ", "يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة.");
-                return;
+            if (leaveType === "اعتيادية" || leaveType === "اعتيادية + رصيد سنوات سابقة") {
+                let daysToDeduct = (leaveType === "اعتيادية" ? totalDays : dAnnual);
+                if (currentAnnual < daysToDeduct) {
+                    showCustomAlert("رصيد غير كافٍ", "عذراً، رصيدك الحالي من الإجازة الاعتيادية (" + currentAnnual + " يوم) لا يكفي لتقديم هذا الطلب الذي يتطلب (" + daysToDeduct + " يوم).");
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                    return;
+                }
             }
 
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
-            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-            
-            let leaveData = {
-                requestId: randomId,
-                empName: currentSubmitEmpName,
-                nationalId: currentSubmitEmpNationalId,
-                dept: currentSubmitEmpDept,
-                jobCategory: currentSubmitEmpCategory, 
-                targetManager: targetManager, 
-                titlePrefix: titlePrefix,
-                leaveType: leaveType,
-                startDate: start,
-                endDate: end,
-                daysCount: totalDays,
-                reason: reason,
-                phone: phone,
-                daysAnnual: dAnnual,
-                daysPrev: dPrev,
-                specialistStatus: "قيد الانتظار",
-                managerStatus: "قيد الانتظار",
-                rejectionReason: "",
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                requestDate: new Date().toISOString().split('T')[0]
-            };
+            if (leaveType === "رصيد سنوات سابقة" || leaveType === "اعتيادية + رصيد سنوات سابقة") {
+                let daysToDeductPrev = (leaveType === "رصيد سنوات سابقة" ? totalDays : dPrev);
+                if (currentPrevBal < daysToDeductPrev) {
+                    showCustomAlert("رصيد غير كافٍ", "عذراً، رصيدك الحالي من سنوات سابقة (" + currentPrevBal + " يوم) لا يكفي لتقديم هذا الطلب الذي يتطلب (" + daysToDeductPrev + " يوم).");
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                    return;
+                }
+            }
 
-            db.collection("leaves").add(leaveData).then(() => {
-                latestSubmittedData = leaveData;
-                document.getElementById("leaveFormContainer").classList.add("hidden");
-                document.getElementById("leaveResultContainer").classList.remove("hidden");
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                btn.disabled = false;
-            }).catch((error) => {
-                console.error(error);
-                showCustomAlert("خطأ", "تعذر إرسال الطلب.");
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                btn.disabled = false;
+            // فحص التداخل
+            db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((querySnapshot) => {
+                let hasOverlap = false;
+                querySnapshot.forEach(doc => {
+                    let item = doc.data();
+                    let st = (item.managerStatus || "").toLowerCase();
+                    if (!st.includes("مرفوض") && !item.leaveType.includes("منقطع") && !item.leaveType.includes("بلاغ")) {
+                        let existingStart = item.startDate;
+                        let existingEnd = item.endDate || "9999-12-31";
+                        if (!(end < existingStart || start > existingEnd)) { hasOverlap = true; }
+                    }
+                });
+
+                if (hasOverlap) {
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                    showCustomAlert("تداخل تواريخ", "يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة.");
+                    return;
+                }
+
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+                let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+                
+                let leaveData = {
+                    requestId: randomId,
+                    empName: currentSubmitEmpName,
+                    nationalId: currentSubmitEmpNationalId,
+                    dept: currentSubmitEmpDept,
+                    jobCategory: currentSubmitEmpCategory, 
+                    targetManager: targetManager, 
+                    titlePrefix: titlePrefix,
+                    leaveType: leaveType,
+                    startDate: start,
+                    endDate: end,
+                    daysCount: totalDays,
+                    reason: reason,
+                    phone: phone,
+                    daysAnnual: dAnnual,
+                    daysPrev: dPrev,
+                    specialistStatus: "قيد الانتظار",
+                    managerStatus: "قيد الانتظار",
+                    rejectionReason: "",
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    requestDate: new Date().toISOString().split('T')[0]
+                };
+
+                db.collection("leaves").add(leaveData).then(() => {
+                    latestSubmittedData = leaveData;
+                    document.getElementById("leaveFormContainer").classList.add("hidden");
+                    document.getElementById("leaveResultContainer").classList.remove("hidden");
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                }).catch((error) => {
+                    console.error(error);
+                    showCustomAlert("خطأ", "تعذر إرسال الطلب.");
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                });
             });
         });
     }
@@ -1992,7 +2037,8 @@
                             <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'موافقة المدير العام', 'موافقة', 'manager')">موافقة</button>
                             <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير', 'manager')">رفض</button>
                         ` : ''}
-                        ${item.managerStatus === "موافقة المدير العام" && item.specialistStatus === "رصيد متاح" ? `
+                        
+                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
                             <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', 'اعتماد', 'manager')">اعتماد</button>
                         ` : ''}
                     `}
@@ -2023,7 +2069,6 @@
         db.collection("leaves").doc(currentSpecActionDocId).get().then((doc) => {
             if (doc.exists) {
                 let leaveData = doc.data();
-                // لو المختص وافق على التبليغ، نغير الهدف لمدير الموارد البشرية عشان يقدر يعتمده
                 if (leaveData.leaveType === "التبليغ عن منقطع" && currentSpecActionStatus === "رصيد متاح") {
                     updateData.targetManager = "مدير عام الموارد البشرية";
                 }
@@ -2039,7 +2084,6 @@
         });
     };
 
-    // *** تعديل: الاعتماد بس هو اللي بيأرشف ويغير الحالة ***
     function processActionFirebase(docId, status, defaultReason, role) {
         let updateData = {};
         
@@ -2052,7 +2096,6 @@
             updateData.specialistStatus = status;
         }
 
-        // الاعتماد النهائي بس هو اللي بيأرشف ويغير الحالة
         if (status === 'مقبول ومؤرشف' || status === 'اعتماد') {
             db.collection("leaves").doc(docId).get().then((doc) => {
                 if (doc.exists) {
@@ -2094,7 +2137,6 @@
             return;
         }
 
-        // أي إجراء تاني غير الاعتماد
         db.collection("leaves").doc(docId).update(updateData).then(() => {
             showCustomAlert("تم بنجاح", "تم تحديث حالة الطلب بنجاح.");
             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
@@ -2104,28 +2146,36 @@
         });
     }
 
+    // *** تعديل: دالة رفض احترافية ***
     function promptActionFirebase(docId, status, role) {
-        let reason = prompt("يرجى كتابة سبب الرفض أو الملاحظات:", "عذراً لعدم توافر الشروط");
-        if (!reason) return;
+        document.getElementById("rejectionModal").classList.remove("hidden");
+        document.getElementById("rejectReasonInput").value = "";
         
-        let updateData = {};
-        if (role === 'manager') {
-            updateData.managerStatus = status;
-            updateData.rejectionReason = reason;
-            updateData.mgrRejectTime = new Date().toISOString();
-        } else {
-            updateData.specialistStatus = status;
-            updateData.rejectionReason = reason;
-            updateData.specRejectTime = new Date().toISOString();
-        }
+        document.getElementById("confirmRejectBtn").onclick = function() {
+            let reason = document.getElementById("rejectReasonInput").value.trim();
+            if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
 
-        db.collection("leaves").doc(docId).update(updateData).then(() => {
-            showCustomAlert("تم بنجاح", "تم تسجيل الرفض بنجاح.");
-            loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-        }).catch((error) => {
-            console.error(error);
-            showCustomAlert("خطأ", "تعذر تحديث البيانات.");
-        });
+            document.getElementById("rejectionModal").classList.add("hidden");
+
+            let updateData = {};
+            if (role === 'manager') {
+                updateData.managerStatus = status;
+                updateData.rejectionReason = reason;
+                updateData.mgrRejectTime = new Date().toISOString();
+            } else {
+                updateData.specialistStatus = status;
+                updateData.rejectionReason = reason;
+                updateData.specRejectTime = new Date().toISOString();
+            }
+
+            db.collection("leaves").doc(docId).update(updateData).then(() => {
+                showCustomAlert("تم بنجاح", "تم تسجيل الرفض بنجاح.");
+                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+            }).catch((error) => {
+                console.error(error);
+                showCustomAlert("خطأ", "تعذر تحديث البيانات.");
+            });
+        };
     }
 
     function resubmitToSpecialistFirebase(docId) {
@@ -2177,7 +2227,6 @@
         });
     }
 
-    // *** تعديل: صيغة الطباعة (اسم المدير في الاعتماد فقط) ***
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2227,7 +2276,6 @@
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، نظراً لـ: <strong>${item.reason}</strong>.`;
         
-        // اسم المدير في خانة الاعتماد
         let approverName = item.approvedBy || item.mgrName || ".................................";
 
         let htmlContent = `
@@ -2259,7 +2307,6 @@
                     </div>
                     <div class="title">${titleText}</div>
                     <div class="content">
-                        <!-- الجهة الموجه إليها: المسمى فقط وليس الاسم -->
                         <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.targetManager}</p>
                         <p>تحية طيبة وبعد،،،</p>
                         <p>أرجو التكرم <strong>${requestVerb}</strong> ${requestPhrase}${durationText} اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${reasonText}</p>
@@ -2272,7 +2319,6 @@
                         <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.reportedBy || item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.reporterNationalId || item.nationalId}</p></div>
                         <div style="text-align: left;">
                             <p><strong>يعتمد المدير المسؤول،،</strong></p>
-                            <!-- اسم المدير الشخصي تحت -->
                             <p style="margin-top: 40px; font-weight:bold; font-size: 18px;">${approverName}</p>
                         </div>
                     </div>
