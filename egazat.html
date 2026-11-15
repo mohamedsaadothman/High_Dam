@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1888,9 +1889,12 @@
                     }
                 } 
                 else if (role === "hr_manager") {
-                    // مدير عام الموارد البشرية يرى كافة الطلبات التي وافق عليها المدير العام التابع
+                    // إصلاح 3: مدير عام الموارد البشرية يرى الطلبات التي وافق عليها المدير العام التابع أو طلبات العودة الواردة له
                     let mStat = data.managerStatus || "";
-                    if (mStat === "موافق من المدير العام") {
+                    let specStat = data.specialistStatus || "";
+                    let hrmStat = data.hrManagerStatus || "";
+                    
+                    if (mStat === "موافق من المدير العام" || specStat === "تمت المراجعة والتحويل" || hrmStat === "قيد الاعتماد النهائي") {
                         currentLeavesData.push(data);
                     }
                 }
@@ -2068,7 +2072,7 @@
                     <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'مرفوض لعدم استيفاء الشروط')">رفض</button>
                 `;
             }
-            if (hrmStat === "معتمد من مدير الموارد البشرية" && hrStat === "قيد الانتظار") {
+            if ((hrmStat === "معتمد من مدير الموارد البشرية" || hrmStat === "معتمد نهائياً") && hrStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="archiveLeaveRequest('${item.docId}')">أرشفة نهائية وخصم الرصيد</button>
                 `;
@@ -2083,10 +2087,10 @@
             }
         } 
         else if (loggedInRole === 'hr_manager') {
-            // مدير عام الموارد البشرية يظهر له الطلب فور موافقة المدير العام التابع
-            if (mStat === "موافق من المدير العام" && hrmStat === "قيد الانتظار") {
+            // إصلاح 3 و 6: ظهور زر الاعتماد لمدير عام الموارد البشرية سواء للإجازات العادية أو طلبات العودة من الانقطاع
+            if ((mStat === "موافق من المدير العام" || sStat === "تمت المراجعة والتحويل") && hrmStat === "قيد الاعتماد النهائي") {
                 html += `
-                    <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد من مدير الموارد البشرية', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
+                    <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد نهائياً', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
                     <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من مدير الموارد البشرية', 'hr_manager')">رفض</button>
                 `;
             }
@@ -2141,6 +2145,7 @@
         document.getElementById("specialistActionModal").classList.remove("hidden");
     }
 
+    // إصلاح 4 و 5: خصم الأيام بدقة عند الأرشفة النهائية وتحديث حالة ورصيد الموظف ومعالجة العودة من الانقطاع
     function archiveLeaveRequest(docId) {
         db.collection("leaves").doc(docId).get().then(doc => {
             if (doc.exists) {
@@ -2172,9 +2177,19 @@
                             if (leaveData.absenceCalcType === "مرضية بقرار 259") {
                                 updates.sick259 = "نعم";
                             } else if (leaveData.absenceCalcType === "اعتيادية") {
-                                updates.annual = Math.max(0, (parseFloat(userData.annual)||0) - daysCount);
+                                let curAnnual = parseFloat(userData.annual) || 0;
+                                if (curAnnual < daysCount) {
+                                    showCustomAlert("خطأ في الرصيد", "رصيد الاعتيادي للموظف لا يكفي لتغطية مدة الانقطاع.");
+                                    return;
+                                }
+                                updates.annual = Math.max(0, curAnnual - daysCount);
                             } else if (leaveData.absenceCalcType === "رصيد سنوات سابقة") {
-                                updates.prevBal = Math.max(0, (parseFloat(userData.prevBal)||0) - daysCount);
+                                let curPrev = parseFloat(userData.prevBal) || 0;
+                                if (curPrev < daysCount) {
+                                    showCustomAlert("خطأ في الرصيد", "رصيد السنوات السابقة للموظف لا يكفي لتغطية مدة الانقطاع.");
+                                    return;
+                                }
+                                updates.prevBal = Math.max(0, curPrev - daysCount);
                             }
                         } else if (leaveType === "التبليغ عن منقطع") {
                             updates.status = "inactive";
@@ -2278,6 +2293,7 @@
             absenceHtml = `<p style="color:#dc3545; font-weight:bold; margin: 10px 0;">تفاصيل بلاغ الانقطاع: ${item.absenceReason}</p>`;
         }
 
+        // إصلاح 2: ضبط صيغة طلب الإجازة لتكون بصيغة "بمنحي" بدلاً من "منح المذكور" عندما يكون الموظف هو من يطلب إجازته بنفسه
         let requestVerb = "بالموافقة";
         let requestPhrase = `على منح المذكور (<strong>${item.leaveType}</strong>)`;
         if (!isAbsence && item.leaveType.includes("إجازة")) {
@@ -2286,9 +2302,9 @@
         } else if (item.leaveType === "تصريح نصف يوم") {
             requestVerb = "بمنحي";
             requestPhrase = `تصريح نصف يوم`;
-        } else if (isAbsence) {
+        } else if (isAbsence || item.leaveType === "طلب عودة من انقطاع") {
             requestVerb = "بالاطلاع والإحاطة";
-            requestPhrase = `بشأن بلاغ تغيب/انقطاع الموظف / <strong>${item.empName}</strong>`;
+            requestPhrase = `بشأن عودة/تغيب الموظف / <strong>${item.empName}</strong>`;
         }
 
         let titleText = item.leaveType.includes("إجازة") || item.leaveType.includes("عارضة") ? `نموذج طلب ${item.leaveType}` : `نموذج ${item.leaveType}`;
@@ -2923,3 +2939,4 @@
 </script>
 </body>
 </html>
+
