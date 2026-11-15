@@ -253,6 +253,14 @@
                     </div>
                 </div>
 
+                <div class="input-group">
+                    <label>الإدارة التابع لها الموظف:</label>
+                    <div style="position: relative;">
+                        <input type="text" id="newEmpDept" required placeholder="مثال: إدارة الشئون الإدارية" style="padding-left: 35px;">
+                        <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpDept')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
+                    </div>
+                </div>
+
                 <div class="input-group" id="passwordGroup">
                     <label>كلمة مرور الموظف:</label>
                     <input type="password" id="newEmpPassword" required placeholder="أدخل كلمة المرور للاستعلام">
@@ -1101,7 +1109,7 @@
 
             currentSubmitEmpName = userData.name;
             currentSubmitEmpNationalId = userData.nationalId;
-            currentSubmitEmpDept = userData.department || userData.dept || "غير محدد";
+            currentSubmitEmpDept = userData.department || userData.dept || "إدارة الشئون الإدارية";
             currentSubmitEmpData = userData;
             
             let cat = String(userData.jobCategory || "التخصصية").trim();
@@ -1220,7 +1228,6 @@
             showCustomAlert("تنبيه هام", "مجموع الأيام لا يتطابق مع المدة المحسوبة."); return;
         }
 
-        // [المشكلة 1]: مراجعة رصيد الموظف قبل قبول الطلب مبدئياً
         let u = currentSubmitEmpData;
         let empAnnual = parseFloat(u.annual) || 0;
         let empCasual = parseFloat(u.casual) || 0;
@@ -1250,49 +1257,75 @@
             }
         }
 
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق من التواريخ والإرسال...';
         btn.disabled = true;
 
-        let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-        
-        let leaveData = {
-            requestId: randomId,
-            empName: currentSubmitEmpName,
-            nationalId: currentSubmitEmpNationalId,
-            dept: currentSubmitEmpDept,
-            jobCategory: currentSubmitEmpCategory, 
-            targetManager: targetManager, 
-            titlePrefix: titlePrefix,
-            mgrName: targetManagerName, // [المشكلة 2]: حفظ الاسم الشخصي للمدير
-            leaveType: leaveType,
-            startDate: start,
-            endDate: end,
-            daysCount: totalDays,
-            reason: reason,
-            phone: phone,
-            daysAnnual: dAnnual,
-            daysPrev: dPrev,
-            specialistStatus: "قيد الانتظار", // الدورة: موظف -> مدير عام -> مختص للفئة -> مدير عام موارد بشرية -> مختص للأرشفة
-            managerStatus: "قيد الانتظار",
-            hrManagerStatus: "قيد الانتظار",
-            hrSpecialistStatus: "قيد الانتظار",
-            hrStatus: "قيد الانتظار",
-            rejectionReason: "",
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            requestDate: new Date().toISOString().split('T')[0]
-        };
+        // [التحقق من تداخل التواريخ لنفس الموظف]
+        db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((snapshot) => {
+            let hasOverlap = false;
+            snapshot.forEach(doc => {
+                let d = doc.data();
+                if (d.hrStatus !== "مرفوض" && d.managerStatus !== "مرفوض" && d.specialistStatus !== "مرفوض") {
+                    let existingStart = d.startDate;
+                    let existingEnd = d.endDate || d.startDate;
+                    let newStart = start;
+                    let newEnd = end;
+                    
+                    if (!(newEnd < existingStart || newStart > existingEnd)) {
+                        hasOverlap = true;
+                    }
+                }
+            });
 
-        db.collection("leaves").add(leaveData).then(() => {
-            latestSubmittedData = leaveData;
-            document.getElementById("leaveFormContainer").classList.add("hidden");
-            document.getElementById("leaveResultContainer").classList.remove("hidden");
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            btn.disabled = false;
-        }).catch((error) => {
-            console.error(error);
-            showCustomAlert("خطأ", "تعذر إرسال الطلب.");
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            btn.disabled = false;
+            if (hasOverlap) {
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                btn.disabled = false;
+                showCustomAlert("تداخل في تواريخ الإجازات", "عذراً، لديك طلب إجازة آخر مسجل ويتداخل مع نفس هذه الفترة الزمنية.");
+                return;
+            }
+
+            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+            
+            let leaveData = {
+                requestId: randomId,
+                empName: currentSubmitEmpName,
+                nationalId: currentSubmitEmpNationalId,
+                dept: currentSubmitEmpDept,
+                jobCategory: currentSubmitEmpCategory, 
+                targetManager: targetManager, 
+                titlePrefix: titlePrefix,
+                mgrName: targetManagerName,
+                leaveType: leaveType,
+                startDate: start,
+                endDate: end,
+                daysCount: totalDays,
+                reason: reason,
+                phone: phone,
+                daysAnnual: dAnnual,
+                daysPrev: dPrev,
+                // الدورة المستندية الصحيحة: موظف -> مختص للفئة -> مدير عام -> مدير عام موارد بشرية -> مختص للأرشفة
+                specialistStatus: "قيد الانتظار",
+                managerStatus: "قيد الانتظار",
+                hrManagerStatus: "قيد الانتظار",
+                hrSpecialistStatus: "قيد الانتظار",
+                hrStatus: "قيد الانتظار",
+                rejectionReason: "",
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                requestDate: new Date().toISOString().split('T')[0]
+            };
+
+            db.collection("leaves").add(leaveData).then(() => {
+                latestSubmittedData = leaveData;
+                document.getElementById("leaveFormContainer").classList.add("hidden");
+                document.getElementById("leaveResultContainer").classList.remove("hidden");
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                btn.disabled = false;
+            }).catch((error) => {
+                console.error(error);
+                showCustomAlert("خطأ", "تعذر إرسال الطلب.");
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                btn.disabled = false;
+            });
         });
     }
 
@@ -1344,7 +1377,7 @@
                         matches.push({ 
                             name: data.name, 
                             nationalId: data.nationalId,
-                            dept: data.department || data.dept || "غير محدد"
+                            dept: data.department || data.dept || "إدارة الشئون الإدارية"
                         });
                     }
                 }
@@ -1398,12 +1431,7 @@
             if (q.empty) { showCustomAlert("خطأ", "الموظف المبلغ عنه غير مسجل."); btn.disabled = false; return; }
             let otherData = q.docs[0].data();
             
-            let autoDept = "غير محددة";
-            if(absManagerDept.includes("مدير عام")){
-                autoDept = "إدارة " + absManagerDept.replace("مدير عام", "").trim();
-            } else {
-                autoDept = absManagerDept;
-            }
+            let autoDept = otherData.department || otherData.dept || "إدارة الشئون الإدارية";
             
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
             let leaveData = {
@@ -1416,7 +1444,7 @@
                 titlePrefix: absManagerTitle,  
                 mgrName: absManagerName,
                 leaveType: "التبليغ عن منقطع",
-                startDate: absenceStartDate, // [المشكلة 4]: تفعيل تقويم البداية من أول الشهر
+                startDate: absenceStartDate,
                 endDate: "",
                 daysCount: 0,
                 reason: absenceType === "إجازة مرضية" ? sickReason : `بلاغ انقطاع (${absenceType}) اعتباراً من تاريخ ${formatDateToAr(absenceStartDate)}`,
@@ -1592,6 +1620,7 @@
                 <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name}</div>
                 <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${userData.nationalId}</div>
                 <div class="inquiry-data-item"><strong>الفئة:</strong> ${userData.jobCategory || '-'}</div>
+                <div class="inquiry-data-item"><strong>الإدارة:</strong> ${userData.department || userData.dept || 'إدارة الشئون الإدارية'}</div>
                 <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${annual}</span></div>
                 <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${casual}</span></div>
                 <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${userData.sick || 0}</span></div>
@@ -1710,6 +1739,7 @@
         XLSX.writeFile(wb, "سجل_الإجازات.xlsx");
     }
 
+    // [المشكلة 4]: تنسيق قائمة الاختيارات بشكل فخم ومرتب كما في الصورة
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -1738,7 +1768,7 @@
                 }
             });
 
-            select.innerHTML = '<option value="">-- اختر الجهة --</option>';
+            select.innerHTML = '<option value="">-- اختر الجهة التابع لها --</option>';
             
             if (hrManagers.size > 0) {
                 let optGroup = document.createElement("optgroup");
@@ -1746,7 +1776,7 @@
                 Array.from(hrManagers).sort().forEach(hrm => {
                     let opt = document.createElement("option");
                     opt.value = hrm + "|hr_manager|";
-                    opt.textContent = hrm;
+                    opt.textContent = "   " + hrm;
                     optGroup.appendChild(opt);
                 });
                 select.appendChild(optGroup);
@@ -1758,7 +1788,7 @@
                 Array.from(specialists).sort().forEach(role => {
                     let opt = document.createElement("option");
                     opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "").replace("مختص ", "").trim();
-                    opt.textContent = role;
+                    opt.textContent = "   " + role;
                     optGroup.appendChild(opt);
                 });
                 select.appendChild(optGroup);
@@ -1770,7 +1800,7 @@
                 Array.from(managers).sort().forEach(mgr => {
                     let opt = document.createElement("option");
                     opt.value = mgr + "|manager|";
-                    opt.textContent = mgr;
+                    opt.textContent = "   " + mgr;
                     optGroup.appendChild(opt);
                 });
                 select.appendChild(optGroup);
@@ -1845,13 +1875,11 @@
                 if (role === "hr_specialist") {
                     let reqCat = String(data.jobCategory || "").trim();
                     let searchCat = String(category || "").trim();
-                    // إذا كان مختص أرشفة عام أو مختص فئة محددة
                     if (searchCat.includes("أرشفة") || searchCat.includes("عام") || reqCat.includes(searchCat) || reqCat.includes(searchCat.replace("ال", ""))) {
                         currentLeavesData.push(data);
                     }
                 } 
                 else if (role === "hr_manager") {
-                    // مدير عام الموارد البشرية يرى الطلبات التي اعتمدها المدير العام ومختص الفئة
                     currentLeavesData.push(data);
                 }
                 else {
@@ -1962,7 +1990,7 @@
         }
     }
 
-    // [المشكلة 3 & 4]: عرض الحالات طبقاً للدورة المستندية الدقيقة
+    // [المشكلة 3]: الدورة المستندية الصحيحة (موظف -> مختص الفئة -> المدير العام التابع -> مدير عام الموارد البشرية -> مختص الأرشفة)
     function renderLeavesCards(dataList) {
         let container = document.getElementById("leavesCardsContainer");
         if (!dataList || dataList.length === 0) {
@@ -1998,8 +2026,8 @@
                 ${absenceReasonHtml}
                 ${reporterHtml}
                 <hr style="margin: 8px 0; border-color: #cbd5e1;">
-                <p style="position:relative; z-index:1; font-size:12px;"><strong>1. المدير العام التابع (${item.targetManager || 'غير محدد'}):</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
-                <p style="position:relative; z-index:1; font-size:12px;"><strong>2. المختص للفئة (${item.jobCategory}):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
+                <p style="position:relative; z-index:1; font-size:12px;"><strong>1. المختص للفئة (${item.jobCategory}):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
+                <p style="position:relative; z-index:1; font-size:12px;"><strong>2. المدير العام التابع (${item.targetManager || 'غير محدد'}):</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
                 <p style="position:relative; z-index:1; font-size:12px;"><strong>3. مدير عام الموارد البشرية (ثابت):</strong> <span style="color:#198754; font-weight:bold;">${item.hrManagerStatus || 'قيد الانتظار'}</span></p>
                 <p style="position:relative; z-index:1; font-size:12px;"><strong>4. المختص (أرشفة نهائية):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1; margin-top:5px;"><strong>سبب الرفض:</strong> ${item.rejectionReason}</p>` : ''}
@@ -2020,33 +2048,33 @@
         let hrmStat = item.hrManagerStatus || "قيد الانتظار";
         let hrStat = item.hrStatus || "قيد الانتظار";
 
-        if (loggedInRole === 'manager') {
-            // خطوة المدير العام التابع
-            if (mStat === "قيد الانتظار") {
+        if (loggedInRole === 'hr_specialist') {
+            // خطوة أولى: المختص للفئة يراجع الطلب والرسيد أولاً
+            if (sStat === "قيد الانتظار") {
                 html += `
-                    <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'موافق من المدير العام', 'موافق', 'manager')">موافق</button>
-                    <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير العام', 'manager')">رفض</button>
-                `;
-            }
-        } 
-        else if (loggedInRole === 'hr_specialist') {
-            // خطوة المختص لفئة الموظف (بعد المدير العام)
-            if (mStat === "موافق من المدير العام" && sStat === "قيد الانتظار") {
-                html += `
-                    <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'مراجعة وموافق من المختص', 'تم التحقق من الرصيد والبيانات')">مراجعة وتحويل لمدير الموارد البشرية</button>
+                    <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'مراجعة وموافق من المختص', 'تم التحقق من الرصيد والبيانات')">مراجعة وتحويل للمدير العام</button>
                     <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'مرفوض لعدم استيفاء الشروط')">رفض</button>
                 `;
             }
-            // خطوة الأرشفة النهائية (بعد اعتماد مدير عام الموارد البشرية)
+            // خطوة أخيرة: المختص يؤرشف الطلب بعد اعتماد مدير الموارد البشرية
             if (hrmStat === "معتمد من مدير الموارد البشرية" && hrStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="archiveLeaveRequest('${item.docId}')">أرشفة نهائية وخصم الرصيد</button>
                 `;
             }
         } 
+        else if (loggedInRole === 'manager') {
+            // خطوة ثانية: المدير العام التابع يعتمد الطلب المحول من المختص
+            if (sStat === "مراجعة وموافق من المختص" && mStat === "قيد الانتظار") {
+                html += `
+                    <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'موافق من المدير العام', 'موافق', 'manager')">موافق</button>
+                    <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير العام', 'manager')">رفض</button>
+                `;
+            }
+        } 
         else if (loggedInRole === 'hr_manager') {
-            // خطوة مدير عام الموارد البشرية (بصفة ثابتة)
-            if (sStat === "مراجعة وموافق من المختص" && hrmStat === "قيد الانتظار") {
+            // خطوة ثالثة: مدير عام الموارد البشرية يعتمد الطلب بصفة ثابتة
+            if (mStat === "موافق من المدير العام" && hrmStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد من مدير الموارد البشرية', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
                     <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من مدير الموارد البشرية', 'hr_manager')">رفض</button>
@@ -2073,8 +2101,6 @@
             db.collection("leaves").doc(currentSpecActionDocId).get().then((doc) => {
                 if (doc.exists) {
                     let leaveData = doc.data();
-                    
-                    // [المشكلة 1]: التحقق الدقيق من الرصيد عند موافقة المختص
                     if (currentSpecActionStatus.includes("موافق") && (leaveData.leaveType.includes("اعتيادية") || leaveData.leaveType.includes("رصيد سنوات سابقة"))) {
                         db.collection("users").where("nationalId", "==", leaveData.nationalId).get().then(userSnap => {
                             if (userSnap.empty) { showCustomAlert("خطأ", "الموظف غير موجود."); return; }
@@ -2088,7 +2114,7 @@
                             }
                             
                             db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
-                                showCustomAlert("تم بنجاح", "تم تحويل الطلب لمدير عام الموارد البشرية.");
+                                showCustomAlert("تم بنجاح", "تم تحويل الطلب للمدير العام التابع.");
                                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
                             });
                         });
@@ -2105,7 +2131,6 @@
         document.getElementById("specialistActionModal").classList.remove("hidden");
     }
 
-    // [المشكلة 3]: الأرشفة النهائية وخصم الأرصدة أو تعديل حالات الانقطاع والعودة
     function archiveLeaveRequest(docId) {
         db.collection("leaves").doc(docId).get().then(doc => {
             if (doc.exists) {
@@ -2133,7 +2158,6 @@
                             updates.annual = Math.max(0, (parseFloat(userData.annual)||0) - dAnnual);
                             updates.prevBal = Math.max(0, (parseFloat(userData.prevBal)||0) - dPrev);
                         } else if (leaveType === "طلب عودة من انقطاع") {
-                            // [المشكلة 5]: معالجة العودة وتحويل حالة الموظف لـ active
                             updates.status = "active";
                             if (leaveData.absenceCalcType === "مرضية بقرار 259") {
                                 updates.sick259 = "نعم";
@@ -2143,7 +2167,6 @@
                                 updates.prevBal = Math.max(0, (parseFloat(userData.prevBal)||0) - daysCount);
                             }
                         } else if (leaveType === "التبليغ عن منقطع") {
-                            // [المشكلة 4]: عند اعتماد بلاغ الانقطاع يتحول الموظف إلى inactive
                             updates.status = "inactive";
                         }
 
@@ -2219,7 +2242,7 @@
             let deptToPrint = item.dept;
             if (!qs.empty) {
                 let u = qs.docs[0].data();
-                deptToPrint = u.department || u.dept || item.dept || "غير محددة";
+                deptToPrint = u.department || u.dept || item.dept || "إدارة الشئون الإدارية";
             }
             item.dept = deptToPrint;
             performPrint(item);
@@ -2228,7 +2251,7 @@
         });
     }
 
-    // [المشكلة 6]: صياغة الطلبات أكثر وضوحاً ودقة باللغة العربية مع توقيع المدير العام
+    // [المشكلة 2]: تعديل الصياغة لتصبح "بمنحي" وإظهار إدارة الموظف الحقيقية واسم المدير العام
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2259,11 +2282,11 @@
             requestPhrase = `بشأن بلاغ تغيب/انقطاع الموظف / <strong>${item.empName}</strong>`;
         }
 
-        let titleText = `نموذج طلب ${item.leaveType}`;
+        // تصحيح العنوان ليصبح مثلاً "نموذج طلب إجازة عارضة"
+        let titleText = item.leaveType.includes("إجازة") || item.leaveType.includes("عارضة") ? `نموذج طلب ${item.leaveType}` : `نموذج ${item.leaveType}`;
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، وذلك نظراً لـ: <strong>${item.reason}</strong>.`;
         
-        // [المشكلة 2]: كتابة الاسم الشخصي للمدير العام المسؤول تحت في نهاية الطلب
         let approverName = item.mgrName || item.targetManager || ".................................";
 
         let htmlContent = `
@@ -2287,7 +2310,7 @@
                 ${watermark}
                 <div class="page-container">
                     <div class="header">
-                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept || 'الإدارة العامة'}</span></div>
+                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept || 'إدارة الشئون الإدارية'}</span></div>
                         <div style="text-align: left;">
                             <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
                             <span style="font-size: 13px; color: #333;">تاريخ التحرير: <strong>${reqDate}</strong></span>
@@ -2315,8 +2338,8 @@
                     </div>
                     <div class="status-box">
                         <strong>موقف الدورة المستندية والاعتمادات:</strong><br>
-                        - المدير العام التابع: <b>${item.managerStatus}</b><br>
                         - المختص للفئة: <b>${item.specialistStatus}</b><br>
+                        - المدير العام التابع: <b>${item.managerStatus}</b><br>
                         - مدير عام الموارد البشرية: <b>${item.hrManagerStatus || 'قيد الانتظار'}</b><br>
                         - المختص (الأرشفة النهائية): <b>${item.hrStatus || 'قيد الانتظار'}</b>
                         ${item.rejectionReason ? `<br><span style="color:red;">ملاحظات الرفض: ${item.rejectionReason}</span>` : ''}
@@ -2564,6 +2587,7 @@
             let empData = {
                 name: document.getElementById("newEmpName").value.trim(),
                 nationalId: nationalIdVal,
+                department: document.getElementById("newEmpDept").value.trim(),
                 password: document.getElementById("newEmpPassword").value,
                 hireDate: document.getElementById("newEmpHireDate").value,
                 retireDate: document.getElementById("newEmpRetireDate").value,
@@ -2620,6 +2644,7 @@
         document.getElementById("editingEmpDocId").value = emp.docId;
         document.getElementById("newEmpName").value = emp.name || "";
         document.getElementById("newEmpNationalId").value = emp.nationalId || "";
+        document.getElementById("newEmpDept").value = emp.department || emp.dept || "";
         document.getElementById("newEmpHireDate").value = emp.hireDate || "";
         document.getElementById("newEmpRetireDate").value = emp.retireDate || "";
         document.getElementById("newEmpAnnual").value = emp.annual || 0;
@@ -2637,7 +2662,7 @@
         document.getElementById("saveEmployeeBtn").classList.add("hidden");
         document.getElementById("editActions").classList.remove("hidden");
         document.querySelectorAll('.edit-icon').forEach(icon => icon.classList.remove("hidden"));
-        ['newEmpName', 'newEmpNationalId', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
+        ['newEmpName', 'newEmpNationalId', 'newEmpDept', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
             let el = document.getElementById(id);
             if (el) el.disabled = true;
         });
@@ -2656,6 +2681,7 @@
         let updatedData = {
             name: document.getElementById("newEmpName").value.trim(),
             nationalId: document.getElementById("newEmpNationalId").value.trim(),
+            department: document.getElementById("newEmpDept").value.trim(),
             hireDate: document.getElementById("newEmpHireDate").value,
             retireDate: document.getElementById("newEmpRetireDate").value,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
@@ -2760,7 +2786,7 @@
                 </div>
                 <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
                 <table class="summary-report-table"><thead><tr>
-                    <th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الحالة</th>
+                    <th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الإدارة</th><th>الحالة</th>
                     <th>الاعتيادي</th><th>العارضة</th><th>المرضية</th><th>مرضية 259</th>
                     <th>سنوات سابقة</th><th>المتبقي</th>
                 </tr></thead><tbody>`;
@@ -2776,6 +2802,7 @@
                     <td>${idx + 1}</td>
                     <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                     <td>${emp.nationalId}</td>
+                    <td>${emp.department || emp.dept || 'الإدارة'}</td>
                     <td>${isActive ? '<span style="color:green;">نشط</span>' : '<span style="color:red;">منقطع</span>'}</td>
                     <td>${annual}</td><td>${casual}</td><td>${emp.sick || 0}</td><td>${emp.sick259 || 'لا'}</td>
                     <td>${prevBal}</td><td style="font-weight:bold; background:#f0fdf4;">${remaining}</td>
@@ -2841,7 +2868,6 @@
         }
     }
 
-    // [المشكلة 5]: الدورة المستندية عند العودة من الانقطاع
     function submitReturnFromAbsence() {
         let nid = document.getElementById("returnEmpNationalId").value;
         let empName = document.getElementById("returnEmpNameDisplay").innerText;
@@ -2861,7 +2887,7 @@
             requestId: randomId,
             empName: empName,
             nationalId: nid,
-            dept: "إدارة الموارد البشرية",
+            dept: "إدارة الشئون الإدارية",
             jobCategory: "غير محدد",
             targetManager: "مدير عام الموارد البشرية",
             titlePrefix: "السيد الاستاذ /",
@@ -2869,11 +2895,11 @@
             startDate: aDate.split(' / ').reverse().join('-'),
             endDate: returnDate,
             daysCount: diffDays,
-            absenceCalcType: returnCalcType, // "مرضية بقرار 259" أو "اعتيادية" أو "رصيد سنوات سابقة"
+            absenceCalcType: returnCalcType,
             reason: `طلب عودة من الانقطاع ومعالجة المدة كـ: (${returnCalcType})`,
             specialistStatus: "تمت المراجعة والتحويل",
-            managerStatus: "للعلم فقط", // المدير التابع للعلم فقط
-            hrManagerStatus: "قيد الاعتماد النهائي", // مدير عام الموارد البشرية بصفة ثابته
+            managerStatus: "للعلم فقط",
+            hrManagerStatus: "قيد الاعتماد النهائي",
             hrStatus: "قيد الانتظار",
             rejectionReason: "",
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
