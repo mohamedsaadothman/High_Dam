@@ -545,6 +545,7 @@
                 </div>
             </div>
 
+            <!-- تعديل: فورم التبليغ -->
             <div id="absenceFormContainer" class="hidden">
                 <h3 style="color: #dc3545; font-size: 16px; margin-bottom: 15px; border-bottom: 2px solid #dc3545; padding-bottom: 5px;"><i class="fas fa-user-slash"></i> بلاغ انقطاع</h3>
                 
@@ -574,6 +575,11 @@
                             <option value="السيد الاستاذ /">السيد الاستاذ /</option>
                             <option value="السيد المحامي /">السيد المحامي /</option>
                         </select>
+                    </div>
+                    <!-- إضافة: اسم المدير العام -->
+                    <div class="input-group">
+                        <label>اسم المدير العام (رباعي):</label>
+                        <input type="text" id="absManagerName" required placeholder="اكتب اسم المدير العام رباعياً...">
                     </div>
                     <div class="input-group">
                         <label>نوع الانقطاع:</label>
@@ -1303,9 +1309,11 @@
         
         let absManagerDept = document.getElementById("absManagerDept").value;
         let absManagerTitle = document.getElementById("absManagerTitle").value;
+        let absManagerName = document.getElementById("absManagerName").value.trim();
 
         if (!otherNid || otherNid.length !== 14) { showCustomAlert("خطأ", "يرجى البحث واختيار الموظف المبلغ عنه."); return; }
         if (!absManagerDept) { showCustomAlert("خطأ", "يرجى اختيار المدير العام."); return; }
+        if (!isArabicOnly(absManagerName) || !isQuadrupleName(absManagerName)) { showCustomAlert("خطأ", "يجب أن يكون اسم المدير المسؤول رباعياً باللغة العربية."); return; }
 
         if (absenceType === "إجازة مرضية") {
             if (!isValidArabicReason(sickReason)) { showCustomAlert("خطأ", "يرجى كتابة سبب الإجازة المرضية باللغة العربية وبأكثر من 10 أحرف."); return; }
@@ -1335,6 +1343,7 @@
                 jobCategory: otherData.jobCategory || "غير محدد", 
                 targetManager: absManagerDept, 
                 titlePrefix: absManagerTitle,  
+                mgrName: absManagerName,
                 leaveType: "التبليغ عن منقطع",
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: "",
@@ -1354,7 +1363,6 @@
             };
 
             db.collection("leaves").add(leaveData).then(() => {
-                // لا يتم تغيير حالة الموظف هنا. الحالة تتغير فقط عند اعتماد مدير الموارد البشرية.
                 latestSubmittedData = leaveData;
                 document.getElementById("absenceFormContainer").classList.add("hidden");
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
@@ -1906,6 +1914,7 @@
         }
     }
 
+    // *** تعديل: زرار المدير العام -> اعتماد البلاغ ***
     function renderLeavesCards(dataList) {
         let container = document.getElementById("leavesCardsContainer");
         if (!dataList || dataList.length === 0) {
@@ -1960,7 +1969,7 @@
                     ${loggedInRole === 'hr_specialist' ? `
                         ${item.specialistStatus === "قيد الانتظار" ? `
                             ${(item.leaveType === "التبليغ عن منقطع") ? `
-                                <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'تم تحويل الطلب لمدير الموارد البشرية')">تحويل لمدير الموارد البشرية</button>
+                                <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'تم المراجعة')">رصيد متاح</button>
                             ` : `
                                 <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'رصيد متاح')">رصيد متاح</button>
                             `}
@@ -1968,8 +1977,8 @@
                         ` : ''}
                     ` : `
                         ${item.managerStatus === "قيد الانتظار" && (item.specialistStatus === "رصيد متاح" || item.leaveType === "التبليغ عن منقطع") ? `
-                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', '${item.leaveType === 'التبليغ عن منقطع' ? 'علم بالتبليغ واعتماد' : 'تم الاعتماد النهائي'}', 'manager')">
-                                ${item.leaveType === 'التبليغ عن منقطع' ? 'علم بالتبليغ واعتماد' : 'موافق (اعتماد)'}
+                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', 'اعتماد البلاغ', 'manager')">
+                                اعتماد البلاغ
                             </button>
                             ${item.leaveType !== 'التبليغ عن منقطع' ? `<button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير', 'manager')">مرفوض</button>` : ''}
                         ` : ''}
@@ -2184,6 +2193,7 @@
         });
     }
 
+    // *** تعديل: صيغة الطباعة (اسم المدير في الاعتماد فقط) ***
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
