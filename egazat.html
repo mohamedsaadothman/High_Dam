@@ -257,6 +257,15 @@
                     </div>
                 </div>
                 
+                <!-- حقل الإدارة -->
+                <div class="input-group">
+                    <label>الإدارة التابع لها الموظف:</label>
+                    <div style="position: relative;">
+                        <input type="text" id="newEmpDept" required placeholder="مثال: الشئون المالية، المشتريات..." style="padding-left: 35px;">
+                        <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpDept')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
+                    </div>
+                </div>
+
                 <div class="input-group" id="passwordGroup">
                     <label>كلمة مرور الموظف:</label>
                     <input type="password" id="newEmpPassword" required placeholder="أدخل كلمة المرور للاستعلام">
@@ -429,7 +438,6 @@
                 </div>
             </div>
 
-            <!-- 1. التحقق من الهوية -->
             <div id="authSection">
                 <div class="input-group">
                     <label>الرقم القومي (14 رقماً):</label>
@@ -444,7 +452,6 @@
                 </button>
             </div>
 
-            <!-- 2. اختيار نوع الطلب (الكروت الثلاثة التي ستظهر بعد تسجيل الدخول) -->
             <div id="leaveTypeSelectionSection" class="hidden">
                 <div style="background: #e0f2fe; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #7dd3fc;">
                     <p style="color: #0369a1; font-weight: bold; margin: 0;">مرحباً، <span id="verifiedEmpNameDisplay"></span> 👋 (الإدارة: <span id="verifiedEmpDeptDisplay"></span>)</p>
@@ -471,7 +478,6 @@
                 </div>
             </div>
 
-            <!-- 3. نموذج الإجازة -->
             <div id="leaveFormContainer" class="hidden">
                 <h3 style="color: #198754; font-size: 16px; margin-bottom: 15px; border-bottom: 2px solid #198754; padding-bottom: 5px;"><i class="fas fa-calendar-plus"></i> طلب إجازة</h3>
                 
@@ -568,7 +574,6 @@
                 </div>
             </div>
 
-            <!-- 4. نموذج البلاغ بالانقطاع -->
             <div id="absenceFormContainer" class="hidden">
                 <h3 style="color: #dc3545; font-size: 16px; margin-bottom: 15px; border-bottom: 2px solid #dc3545; padding-bottom: 5px;"><i class="fas fa-user-slash"></i> بلاغ انقطاع</h3>
                 
@@ -602,7 +607,6 @@
                 </div>
             </div>
 
-            <!-- 5. نموذج التصريح -->
             <div id="permissionFormContainer" class="hidden">
                 <h3 style="color: #f59e0b; font-size: 16px; margin-bottom: 15px; border-bottom: 2px solid #f59e0b; padding-bottom: 5px;"><i class="fas fa-clock"></i> طلب تصريح</h3>
                 
@@ -641,7 +645,6 @@
                 </div>
             </div>
 
-            <!-- شاشة النجاح -->
             <div id="leaveResultContainer" class="hidden" style="text-align: center; padding: 20px;">
                 <i class="fas fa-check-circle" style="font-size: 50px; color: #198754; margin-bottom: 15px;"></i>
                 <h3 style="color: #1a365d; font-size: 18px; margin-bottom: 8px; font-weight: 900;">تم تقديم الطلب بنجاح</h3>
@@ -762,7 +765,6 @@
         </div>
     </section>
 
-    <!-- المودالات (Modals) -->
     <div id="renewWarningModal" class="custom-modal-overlay hidden">
         <div class="custom-modal-box">
             <div class="custom-modal-header">
@@ -1045,13 +1047,13 @@
 
             let empStatus = String(userData.status || "active").trim().toLowerCase();
             if (empStatus !== "active") {
-                showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً (موقوف / على المعاش / إلخ). يرجى مراجعة الموارد البشرية.");
+                showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً. يرجى مراجعة الموارد البشرية.");
                 return;
             }
 
             currentSubmitEmpName = userData.name;
             currentSubmitEmpNationalId = userData.nationalId;
-            currentSubmitEmpDept = userData.department || "إدارة غير محددة";
+            currentSubmitEmpDept = userData.department || userData.dept || "غير محدد";
             
             let cat = String(userData.jobCategory || "التخصصية").trim();
             if (cat.includes("تخصص")) cat = "التخصصية";
@@ -1256,6 +1258,7 @@
         }
     }
 
+    // *** تعديل: البحث في جميع المستخدمين وليس فقط الدور employee ***
     function searchOtherEmployee(query) {
         let suggestBox = document.getElementById("otherEmpSuggestions");
         let hiddenId = document.getElementById("otherEmpNationalId");
@@ -1268,12 +1271,23 @@
 
         query = query.trim().toLowerCase();
         
-        db.collection("users").where("role", "==", "employee").get().then((snapshot) => {
+        db.collection("users").get().then((snapshot) => {
             let matches = [];
             snapshot.forEach(doc => {
                 let data = doc.data();
-                if (data.name && data.name.toLowerCase().includes(query)) {
-                    matches.push({ name: data.name, nationalId: data.nationalId });
+                let role = String(data.role || "").trim();
+                
+                // استبعاد المديرين والمختصين
+                let isManager = role === "manager" || role.includes("اجازات") || role.includes("إجازات");
+                
+                if (!isManager) {
+                    if (data.name && data.name.toLowerCase().includes(query)) {
+                        matches.push({ 
+                            name: data.name, 
+                            nationalId: data.nationalId,
+                            dept: data.department || data.dept || "غير محدد"
+                        });
+                    }
                 }
             });
 
@@ -1282,7 +1296,7 @@
                 matches.slice(0, 5).forEach(m => {
                     let div = document.createElement("div");
                     div.className = "suggestion-item";
-                    div.innerText = m.name + " - " + m.nationalId;
+                    div.innerHTML = `<strong>${m.name}</strong> - ${m.nationalId} <span style="color:#64748b; font-size:10px;">(${m.dept})</span>`;
                     div.onclick = function() {
                         document.getElementById("otherEmpNameSearch").value = m.name;
                         hiddenId.value = m.nationalId;
@@ -1316,12 +1330,14 @@
             if (q.empty) { showCustomAlert("خطأ", "الموظف المبلغ عنه غير مسجل."); btn.disabled = false; return; }
             let otherData = q.docs[0].data();
             
+            let empDept = otherData.department || otherData.dept || "غير محددة";
+            
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
             let leaveData = {
                 requestId: randomId,
                 empName: otherData.name,
                 nationalId: otherNid,
-                dept: otherData.department || "غير محدد",
+                dept: empDept,
                 jobCategory: otherData.jobCategory || "غير محدد", 
                 targetManager: "مدير عام الموارد البشرية",
                 mgrName: "مدير عام الموارد البشرية",
@@ -1454,8 +1470,6 @@
         });
     }
 
-    // ... (باقي الدوال الخاصة بالاستعلام والمختص والمدير موجودة أدناه بنفس التتابع) ...
-    
     function openBalanceInquiry() {
         document.getElementById("inquiryUsername").value = "";
         document.getElementById("inquiryPassword").value = "";
@@ -2161,7 +2175,22 @@
         return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
     }
 
+    // *** تعديل: جلب الإدارة ديناميكياً من Firestore قبل الطباعة ***
     function openPrintWindow(item) {
+        db.collection("users").where("nationalId", "==", item.nationalId).get().then((qs) => {
+            let deptToPrint = item.dept;
+            if (!qs.empty) {
+                let u = qs.docs[0].data();
+                deptToPrint = u.department || u.dept || item.dept || "غير محددة";
+            }
+            item.dept = deptToPrint;
+            performPrint(item);
+        }).catch(() => {
+            performPrint(item);
+        });
+    }
+
+    function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
         let specStatusText = item.specialistStatus || "قيد الانتظار";
@@ -2227,7 +2256,7 @@
                 ${watermark}
                 <div class="page-container">
                     <div class="header">
-                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
+                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept || 'غير محددة'}</span></div>
                         <div style="text-align: left;">
                             <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
                             <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
@@ -2266,111 +2295,8 @@
     function printSelectedLeaves() {
         let itemsToPrint = filteredLeavesData.filter(item => selectedLeaveIds.has(item.requestId));
         if(itemsToPrint.length === 0) return;
-
-        let printWindow = window.open('', '_blank');
-        let htmlContent = `
-            <!DOCTYPE html>
-            <html lang="ar" dir="rtl">
-            <head>
-                <meta charset="UTF-8">
-                <title>طباعة طلبات متعددة</title>
-                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-                <style>
-                    body { font-family: 'Cairo', sans-serif; padding: 20px; color: #000; direction: rtl; font-size: 16px; }
-                    .page-break { page-break-after: always; margin-bottom: 40px; border-bottom: 2px dashed #ccc; padding-bottom: 20px; }
-                    .page-container { position: relative; z-index: 1; padding: 20px; }
-                    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 25px; }
-                    .title { text-align: center; margin: 35px 0; font-size: 22px; font-weight: bold; text-decoration: underline; }
-                    .content { font-size: 17px; line-height: 2.3; text-align: justify; margin-bottom: 45px; }
-                    .footer { display: flex; justify-content: space-between; margin-top: 70px; font-size: 15px; }
-                    .status-box { margin-top: 45px; border: 2px solid #000; padding: 18px; text-align: center; background: #f9f9f9; font-size: 15px; }
-                </style>
-            </head>
-            <body>
-        `;
-
-        itemsToPrint.forEach(item => {
-            let specStatusText = item.specialistStatus || "قيد الانتظار";
-            let specColor = specStatusText.includes("مرفوض") ? "red" : (specStatusText.includes("رصيد متاح") ? "green" : "#333");
-            let mgrStatusText = item.managerStatus || "قيد الانتظار";
-            let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
-            let reqDate = item.requestDate ? formatDateToAr(item.requestDate) : formatDateToAr(new Date().toISOString().split('T')[0]);
-            let watermark = getPrintWatermarkHtml(item);
-
-            let dualDetailsHtml = "";
-            if (item.daysAnnual && item.daysPrev) {
-                dualDetailsHtml = `<p>وتتضمن الإجازة تفصيلاً كالتالي: <strong>${item.daysAnnual} أيام اعتيادية</strong> و <strong>${item.daysPrev} أيام من رصيد سنوات سابقة</strong>.</p>`;
-            }
-
-            let absenceHtml = "";
-            if (item.leaveType === "التبليغ عن منقطع" && item.absenceReason) {
-                absenceHtml = `<p style="color:red; font-weight:bold;">سبب الانقطاع: ${item.absenceReason}</p>`;
-            }
-
-            let requestVerb = "بالموافقة";
-            let requestPhrase = `على (<strong>${item.leaveType}</strong>)`;
-            
-            if (item.leaveType === 'التبليغ عن منقطع' || item.leaveType === 'التبليغ عن ترك عمل') {
-                requestVerb = "بالعلم";
-                requestPhrase = `بخصوص (<strong>${item.leaveType}</strong>)`;
-            }
-
-            let titleText = "طلب إجازة / تصريح رسمي";
-            if (item.leaveType.includes("تصريح")) titleText = "طلب تصريح رسمي";
-            else if (item.leaveType.includes("اعتيادية")) titleText = "طلب إجازة اعتيادية";
-            else if (item.leaveType.includes("عارضة")) titleText = "طلب إجازة عارضة";
-            else if (item.leaveType.includes("مرضية")) titleText = "طلب إجازة مرضية";
-            else if (item.leaveType.includes("رصيد")) titleText = "طلب إجازة رصيد سنوات سابقة";
-            else if (item.leaveType === 'التبليغ عن منقطع') titleText = 'إشعار انقطاع عن العمل';
-            else if (item.leaveType === 'التبليغ عن ترك عمل') titleText = 'إشعار ترك عمل';
-            else if (item.leaveType === 'طلب عودة من انقطاع') titleText = 'طلب عودة من انقطاع';
-
-            let reportedByText = "";
-            if (item.reportedBy) {
-                reportedByText = `<p><strong>اسم الموظف المبلغ عنه:</strong> ${item.empName}</p>`;
-            }
-
-            htmlContent += `
-                <div class="page-break">
-                    ${watermark}
-                    <div class="page-container">
-                        <div class="header">
-                            <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept}</span></div>
-                            <div style="text-align: left;">
-                                <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
-                                <span style="font-size: 13px; color: #333;">تاريخ التسجيل: <strong>${reqDate}</strong></span>
-                            </div>
-                        </div>
-                        <div class="title">${titleText}</div>
-                        <div class="content">
-                            <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
-                            <p>تحية طيبة وبعد،،،</p>
-                            <p>أرجو التكرم <strong>${requestVerb}</strong> ${requestPhrase} لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${requestVerb === "بالعلم" ? '.' : '، نظراً لـ: <strong>' + item.reason + '</strong>.'}</p>
-                            ${reportedByText}
-                            ${absenceHtml}
-                            ${dualDetailsHtml}
-                            <p>وتفضلوا بقبول فائق الاحترام والتقدير،،،</p>
-                        </div>
-                        <div class="footer">
-                            <div><p><strong>مقدمه لسيادتكم:</strong></p><p><strong>${item.reportedBy || item.empName}</strong></p><p><strong>الرقم القومي:</strong> ${item.reporterNationalId || item.nationalId}</p></div>
-                            <div style="text-align: left;"><p><strong>يعتمد المدير المسؤول،،</strong></p><p style="margin-top: 40px;"><strong>${item.mgrName}</strong></p></div>
-                        </div>
-                        <div class="status-box">
-                            <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
-                            <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
-                            <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
-                            ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        htmlContent += `</body></html>`;
-        printWindow.document.open();
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        printWindow.onload = function() { printWindow.focus(); printWindow.print(); };
+        // نطبع كل عنصر لوحده بشكل متزامن
+        itemsToPrint.forEach(item => { openPrintWindow(item); });
     }
 
     function printCardEmp(itemObj) {
@@ -2666,6 +2592,7 @@
         document.getElementById('newEmpCurrentBal').value = annual + casual;
     }
 
+    // *** تعديل: قراءة الإدارة من الحقل الجديد ***
     function submitAddEmployee(e) {
         e.preventDefault();
         let btn = document.getElementById("saveEmployeeBtn");
@@ -2703,8 +2630,8 @@
                 sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
                 sick259: document.getElementById("newEmpSick259").value,
                 prevBal: parseFloat(document.getElementById("newEmpPrevBal").value) || 0,
+                department: document.getElementById("newEmpDept").value.trim(),
                 jobCategory: document.getElementById("hiddenJobCategory").value,
-                department: "إدارة الموارد البشرية",
                 role: "employee",
                 newAnnual: 0, 
                 newCasual: 0,
@@ -2768,6 +2695,7 @@
         }
     }
 
+    // *** تعديل: جلب قيمة الإدارة في حقل التعديل ***
     function loadEmployeeForEditing(emp) {
         document.getElementById("searchResultsBox").style.display = "none";
         document.getElementById("searchEmployeeInput").value = emp.name;
@@ -2776,6 +2704,7 @@
         
         document.getElementById("newEmpName").value = emp.name || "";
         document.getElementById("newEmpNationalId").value = emp.nationalId || "";
+        document.getElementById("newEmpDept").value = emp.department || emp.dept || "";
         document.getElementById("newEmpHireDate").value = emp.hireDate || "";
         document.getElementById("newEmpRetireDate").value = emp.retireDate || emp.pensionDate || "";
         document.getElementById("newEmpAnnual").value = emp.annual || 0;
@@ -2796,7 +2725,7 @@
         
         document.querySelectorAll('.edit-icon').forEach(icon => icon.classList.remove("hidden"));
         
-        ['newEmpName', 'newEmpNationalId', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
+        ['newEmpName', 'newEmpNationalId', 'newEmpDept', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
             let el = document.getElementById(id);
             if (el) el.disabled = true;
         });
@@ -2810,6 +2739,7 @@
         }
     }
 
+    // *** تعديل: قراءة الإدارة من الحقل عند حفظ التعديلات ***
     function saveEmployeeEdits() {
         let docId = document.getElementById("editingEmpDocId").value;
         if (!docId) return showCustomAlert("خطأ", "لم يتم اختيار موظف للتعديل.");
@@ -2823,6 +2753,7 @@
         let updatedData = {
             name: document.getElementById("newEmpName").value.trim(),
             nationalId: document.getElementById("newEmpNationalId").value.trim(),
+            department: document.getElementById("newEmpDept").value.trim(),
             hireDate: document.getElementById("newEmpHireDate").value,
             retireDate: document.getElementById("newEmpRetireDate").value,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
