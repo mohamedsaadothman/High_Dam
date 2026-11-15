@@ -257,7 +257,6 @@
                     </div>
                 </div>
                 
-                <!-- حقل الإدارة -->
                 <div class="input-group">
                     <label>الإدارة التابع لها الموظف:</label>
                     <div style="position: relative;">
@@ -574,6 +573,7 @@
                 </div>
             </div>
 
+            <!-- نموذج البلاغ بالانقطاع بعد التعديل -->
             <div id="absenceFormContainer" class="hidden">
                 <h3 style="color: #dc3545; font-size: 16px; margin-bottom: 15px; border-bottom: 2px solid #dc3545; padding-bottom: 5px;"><i class="fas fa-user-slash"></i> بلاغ انقطاع</h3>
                 
@@ -588,6 +588,29 @@
                 </div>
 
                 <div id="absenceStep2" class="step-box hidden">
+                    <!-- حقول المدير المضافة -->
+                    <div class="input-group">
+                        <label>توجيه الطلب إلى (المدير العام التابع له):</label>
+                        <select id="absManagerDept" required>
+                            <option value="">-- اختر المدير العام --</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>المسمى الوظيفي للمدير:</label>
+                        <select id="absManagerTitle" required>
+                            <option value="السيد المهندس /">السيد المهندس /</option>
+                            <option value="السيد المحاسب /">السيد المحاسب /</option>
+                            <option value="السيد الدكتور /">السيد الدكتور /</option>
+                            <option value="السيد الاستاذ /">السيد الاستاذ /</option>
+                            <option value="السيد المحامي /">السيد المحامي /</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>اسم المدير المسؤول (رباعي):</label>
+                        <input type="text" id="absManagerName" required placeholder="اكتب اسم المدير رباعياً...">
+                    </div>
+                    <!-- نهاية حقول المدير -->
+
                     <div class="input-group">
                         <label>نوع الانقطاع:</label>
                         <select id="absenceType" required onchange="checkAbsenceType()">
@@ -1258,7 +1281,6 @@
         }
     }
 
-    // *** تعديل: البحث في جميع المستخدمين وليس فقط الدور employee ***
     function searchOtherEmployee(query) {
         let suggestBox = document.getElementById("otherEmpSuggestions");
         let hiddenId = document.getElementById("otherEmpNationalId");
@@ -1277,7 +1299,6 @@
                 let data = doc.data();
                 let role = String(data.role || "").trim();
                 
-                // استبعاد المديرين والمختصين
                 let isManager = role === "manager" || role.includes("اجازات") || role.includes("إجازات");
                 
                 if (!isManager) {
@@ -1312,12 +1333,20 @@
         }).catch(err => console.error(err));
     }
 
+    // *** تعديل: قراءة حقول المدير في البلاغ ***
     function submitAbsenceReport() {
         let otherNid = document.getElementById("otherEmpNationalId").value.trim();
         let absenceType = document.getElementById("absenceType").value;
         let sickReason = document.getElementById("sickReason").value.trim();
+        
+        let absManagerDept = document.getElementById("absManagerDept").value;
+        let absManagerTitle = document.getElementById("absManagerTitle").value;
+        let absManagerName = document.getElementById("absManagerName").value.trim();
 
         if (!otherNid || otherNid.length !== 14) { showCustomAlert("خطأ", "يرجى البحث واختيار الموظف المبلغ عنه."); return; }
+        if (!absManagerDept) { showCustomAlert("خطأ", "يرجى اختيار المدير العام."); return; }
+        if (!isArabicOnly(absManagerName) || !isQuadrupleName(absManagerName)) { showCustomAlert("خطأ", "يجب أن يكون اسم المدير المسؤول رباعياً باللغة العربية."); return; }
+
         if (absenceType === "إجازة مرضية") {
             if (!isValidArabicReason(sickReason)) { showCustomAlert("خطأ", "يرجى كتابة سبب الإجازة المرضية باللغة العربية وبأكثر من 10 أحرف."); return; }
         }
@@ -1339,13 +1368,13 @@
                 nationalId: otherNid,
                 dept: empDept,
                 jobCategory: otherData.jobCategory || "غير محدد", 
-                targetManager: "مدير عام الموارد البشرية",
-                mgrName: "مدير عام الموارد البشرية",
-                titlePrefix: "السيد الاستاذ /",
+                targetManager: absManagerDept, 
+                mgrName: absManagerName,       
+                titlePrefix: absManagerTitle,  
                 leaveType: "التبليغ عن منقطع",
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: "",
-                daysCount: 1,
+                daysCount: 0, // تعديل: بدون تحديد أيام للانقطاع
                 reason: absenceType === "إجازة مرضية" ? sickReason : "بلاغ انقطاع: " + absenceType,
                 absenceReason: absenceType,
                 phone: "-",
@@ -1438,12 +1467,15 @@
         });
     }
 
+    // *** تعديل: جلب قائمة المديرين لمربع اختيار المدير في البلاغ ***
     function loadTargetManagers() {
         let select = document.getElementById("targetManagerDept");
         let select2 = document.getElementById("permManagerDept");
+        let select3 = document.getElementById("absManagerDept"); 
         
         select.innerHTML = '<option value="">-- جاري التحميل --</option>';
         if (select2) select2.innerHTML = '<option value="">-- جاري التحميل --</option>';
+        if (select3) select3.innerHTML = '<option value="">-- جاري التحميل --</option>';
 
         db.collection("users").get().then((querySnapshot) => {
             let managersSet = new Set();
@@ -1465,8 +1497,11 @@
 
             select.innerHTML = options;
             if (select2) select2.innerHTML = options;
+            if (select3) select3.innerHTML = options;
         }).catch(() => {
             select.innerHTML = '<option value="">تعذر التحميل</option>';
+            if (select2) select2.innerHTML = '<option value="">تعذر التحميل</option>';
+            if (select3) select3.innerHTML = '<option value="">تعذر التحميل</option>';
         });
     }
 
@@ -1974,8 +2009,10 @@
                             <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مؤرشف نهائي', 'تم الأرشفة النهائية', 'hr_specialist')">أرشفة نهائية</button>
                         ` : ''}
                     ` : `
-                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
-                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', 'تم الاعتماد النهائي', 'manager')">موافق (اعتماد)</button>
+                        ${item.managerStatus === "قيد الانتظار" && (item.specialistStatus === "رصيد متاح" || item.leaveType === "التبليغ عن منقطع") ? `
+                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', '${item.leaveType === 'التبليغ عن منقطع' ? 'علم بالتبليغ واعتماد' : 'تم الاعتماد النهائي'}', 'manager')">
+                                ${item.leaveType === 'التبليغ عن منقطع' ? 'علم بالتبليغ واعتماد' : 'موافق (اعتماد)'}
+                            </button>
                             <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير', 'manager')">مرفوض</button>
                         ` : ''}
                         ${item.managerStatus === "مرفوض من المدير" ? `
@@ -2175,7 +2212,6 @@
         return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
     }
 
-    // *** تعديل: جلب الإدارة ديناميكياً من Firestore قبل الطباعة ***
     function openPrintWindow(item) {
         db.collection("users").where("nationalId", "==", item.nationalId).get().then((qs) => {
             let deptToPrint = item.dept;
@@ -2190,6 +2226,7 @@
         });
     }
 
+    // *** تعديل: صيغة الطباعة الخاصة بالانقطاع بدون ذكر عدد أيام ***
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2208,16 +2245,17 @@
         }
 
         let absenceHtml = "";
-        if (item.leaveType === "التبليغ عن منقطع" && item.absenceReason) {
+        let isAbsence = (item.leaveType === "التبليغ عن منقطع" || item.leaveType === "التبليغ عن ترك عمل");
+        if (isAbsence && item.absenceReason) {
             absenceHtml = `<p style="color:red; font-weight:bold;">سبب الانقطاع: ${item.absenceReason}</p>`;
         }
 
         let requestVerb = "بالموافقة";
         let requestPhrase = `على (<strong>${item.leaveType}</strong>)`;
         
-        if (item.leaveType === 'التبليغ عن منقطع' || item.leaveType === 'التبليغ عن ترك عمل') {
+        if (isAbsence) {
             requestVerb = "بالعلم";
-            requestPhrase = `بخصوص (<strong>${item.leaveType}</strong>)`;
+            requestPhrase = `بخصوص (<strong>${item.leaveType}</strong>) للموظف المذكور أعلاه`;
         }
 
         let titleText = "طلب إجازة / تصريح رسمي";
@@ -2234,6 +2272,10 @@
         if (item.reportedBy) {
             reportedByText = `<p><strong>اسم الموظف المبلغ عنه:</strong> ${item.empName}</p>`;
         }
+
+        // التفريق بين صيغة الطباعة للانقطاع (بدون أيام) وبين الإجازات العادية
+        let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
+        let reasonText = isAbsence ? '.' : `، نظراً لـ: <strong>${item.reason}</strong>.`;
 
         let htmlContent = `
             <!DOCTYPE html>
@@ -2266,7 +2308,7 @@
                     <div class="content">
                         <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.mgrName}</p>
                         <p>تحية طيبة وبعد،،،</p>
-                        <p>أرجو التكرم <strong>${requestVerb}</strong> ${requestPhrase} لمدة (<strong>${item.daysCount} أيام</strong>)، اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${requestVerb === "بالعلم" ? '.' : '، نظراً لـ: <strong>' + item.reason + '</strong>.'}</p>
+                        <p>أرجو التكرم <strong>${requestVerb}</strong> ${requestPhrase}${durationText} اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${reasonText}</p>
                         ${reportedByText}
                         ${absenceHtml}
                         ${dualDetailsHtml}
@@ -2295,7 +2337,6 @@
     function printSelectedLeaves() {
         let itemsToPrint = filteredLeavesData.filter(item => selectedLeaveIds.has(item.requestId));
         if(itemsToPrint.length === 0) return;
-        // نطبع كل عنصر لوحده بشكل متزامن
         itemsToPrint.forEach(item => { openPrintWindow(item); });
     }
 
@@ -2592,7 +2633,6 @@
         document.getElementById('newEmpCurrentBal').value = annual + casual;
     }
 
-    // *** تعديل: قراءة الإدارة من الحقل الجديد ***
     function submitAddEmployee(e) {
         e.preventDefault();
         let btn = document.getElementById("saveEmployeeBtn");
@@ -2695,7 +2735,6 @@
         }
     }
 
-    // *** تعديل: جلب قيمة الإدارة في حقل التعديل ***
     function loadEmployeeForEditing(emp) {
         document.getElementById("searchResultsBox").style.display = "none";
         document.getElementById("searchEmployeeInput").value = emp.name;
@@ -2739,7 +2778,6 @@
         }
     }
 
-    // *** تعديل: قراءة الإدارة من الحقل عند حفظ التعديلات ***
     function saveEmployeeEdits() {
         let docId = document.getElementById("editingEmpDocId").value;
         if (!docId) return showCustomAlert("خطأ", "لم يتم اختيار موظف للتعديل.");
