@@ -169,7 +169,7 @@
         <div class="section-container">
             <a href="index.html" class="back-home-btn" style="margin-bottom: 16px;"><i class="fas fa-arrow-right"></i> العودة للرئيسية</a>
             <h2>إدارة الإجازات</h2>
-            <p>تقديم ومتابعة طلبات الإجازات الرسمية والحالات الوظيفية بكل أمان واحرافية</p>
+            <p>تقديم ومتابعة طلبات الإجازات الرسمية والحالات الوظيفية بكل أمان واحترافية</p>
             
             <div class="buttons-grid">
                 <div class="feature-card" onclick="openLeaveForm()">
@@ -1129,7 +1129,7 @@
             btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
             btn.disabled = false;
             console.error(error);
-            showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات.");
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به لطلبات قاعدة البيانات (Quota Exceeded). يرجى المحاولة لاحقاً.");
         });
     }
 
@@ -1260,7 +1260,6 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق من التواريخ والإرسال...';
         btn.disabled = true;
 
-        // [التحقق من تداخل التواريخ لنفس الموظف]
         db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((snapshot) => {
             let hasOverlap = false;
             snapshot.forEach(doc => {
@@ -1321,10 +1320,14 @@
                 btn.disabled = false;
             }).catch((error) => {
                 console.error(error);
-                showCustomAlert("خطأ", "تعذر إرسال الطلب.");
+                showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded). يرجى الانتظار لتجديد الحصة.");
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
                 btn.disabled = false;
             });
+        }).catch(() => {
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded).");
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            btn.disabled = false;
         });
     }
 
@@ -1400,7 +1403,7 @@
                 suggestBox.innerHTML = '<div style="padding:10px; color:red; text-align:center;">لا يوجد موظف مطابق</div>';
                 suggestBox.style.display = "block";
             }
-        }).catch(err => console.error(err));
+        }).catch(() => {});
     }
 
     function submitAbsenceReport() {
@@ -1468,12 +1471,14 @@
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال البلاغ';
                 btn.disabled = false;
-            }).catch((error) => {
-                console.error(error);
-                showCustomAlert("خطأ", "تعذر إرسال البلاغ.");
+            }).catch(() => {
+                showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال البلاغ';
                 btn.disabled = false;
             });
+        }).catch(() => {
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            btn.disabled = false;
         });
     }
 
@@ -1530,6 +1535,8 @@
             latestSubmittedData = leaveData;
             document.getElementById("permissionFormContainer").classList.add("hidden");
             document.getElementById("leaveResultContainer").classList.remove("hidden");
+        }).catch(() => {
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
         });
     }
 
@@ -1632,10 +1639,10 @@
             
             loadEmployeeHistoryFirebase(userData.nationalId);
 
-        }).catch((error) => {
+        }).catch(() => {
             btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
             btn.disabled = false;
-            showCustomAlert("خطأ", "تعذر الاتصال بقاعدة البيانات.");
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
         });
     }
 
@@ -1648,7 +1655,7 @@
             currentInquiryHistory.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
             populateFiscalYears(currentInquiryHistory);
             renderHistoryTable(currentInquiryHistory); 
-        });
+        }).catch(() => {});
     }
 
     function populateFiscalYears(data) {
@@ -1802,6 +1809,8 @@
                 });
                 select.appendChild(optGroup);
             }
+        }).catch(() => {
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
         });
     }
 
@@ -1858,6 +1867,8 @@
             }
             
             loadDepartmentLeavesFirebase(targetRole, roleType, category);
+        }).catch(() => {
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
         });
     }
 
@@ -1877,8 +1888,11 @@
                     }
                 } 
                 else if (role === "hr_manager") {
-                    // مدير عام الموارد البشرية يرى كافة الطلبات المعتمدة من المدير العام التابع
-                    currentLeavesData.push(data);
+                    // مدير عام الموارد البشرية يرى كافة الطلبات التي وافق عليها المدير العام التابع
+                    let mStat = data.managerStatus || "";
+                    if (mStat === "موافق من المدير العام") {
+                        currentLeavesData.push(data);
+                    }
                 }
                 else {
                     if (data.targetManager === deptName) {
@@ -1893,6 +1907,8 @@
             filteredLeavesData = [...currentLeavesData]; 
             renderLeavesCards(filteredLeavesData);
             applyDashboardDateFilter(); 
+        }).catch(() => {
+            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
         });
     }
 
@@ -2067,7 +2083,7 @@
             }
         } 
         else if (loggedInRole === 'hr_manager') {
-            // مدير عام الموارد البشرية يمكنه الاعتماد بمجرد موافقة المدير العام التابع
+            // مدير عام الموارد البشرية يظهر له الطلب فور موافقة المدير العام التابع
             if (mStat === "موافق من المدير العام" && hrmStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد من مدير الموارد البشرية', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
@@ -2110,16 +2126,16 @@
                             db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
                                 showCustomAlert("تم بنجاح", "تم تحويل الطلب للمدير العام التابع.");
                                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-                            });
+                            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
                         });
                     } else {
                         db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
                             showCustomAlert("تم بنجاح", "تم تسجيل الإجراء.");
                             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-                        });
+                        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
                     }
                 }
-            });
+            }).catch(() => {});
         };
 
         document.getElementById("specialistActionModal").classList.remove("hidden");
@@ -2175,7 +2191,7 @@
                     }
                 });
             }
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function processActionFirebase(docId, status, defaultReason, role) {
@@ -2192,7 +2208,7 @@
         db.collection("leaves").doc(docId).update(updateData).then(() => {
             showCustomAlert("تم بنجاح", "تم تحديث حالة الطلب بنجاح.");
             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function promptActionFirebase(docId, status, role) {
@@ -2217,7 +2233,7 @@
             db.collection("leaves").doc(docId).update(updateData).then(() => {
                 showCustomAlert("تم بنجاح", "تم تسجيل الرفض.");
                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-            });
+            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
         };
     }
 
@@ -2493,7 +2509,7 @@
         win.document.write(`
             <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>تقرير تجميعي</title>
             <style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#1e293b; color:#fff;}</style></head>
-            <body><h2 style="text-align:center;">تقرير تجميعي لبيانات الإجازات</h2>${summaryArea.innerHTML}</body></html>
+            <body><h2>تقرير تجميعي لبيانات الإجازات</h2>${summaryArea.innerHTML}</body></html>
         `);
         win.document.close();
         setTimeout(() => { win.focus(); win.print(); }, 500);
@@ -2525,7 +2541,7 @@
             });
             
             if (!hasSpecialists) select.innerHTML = '<option value="">لا توجد إدارات مختصة</option>';
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
         
         document.getElementById('specialistAuthModal').classList.remove('hidden');
     }
@@ -2552,7 +2568,7 @@
             } else {
                 showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
             }
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function calcAutoBal() {
@@ -2601,7 +2617,7 @@
                 calcAutoBal();
                 loadSpecialistData();
             });
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function searchEmployeeForEdit(query) {
@@ -2688,7 +2704,7 @@
             showCustomAlert("تم بنجاح", "تم تحديث بيانات الموظف بنجاح.");
             loadSpecialistData();
             cancelEditMode();
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function cancelEditMode() {
@@ -2752,7 +2768,7 @@
                     loadSpecialistData(); 
                 });
             }
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function loadSpecialistData() {
@@ -2802,7 +2818,7 @@
             });
             html += `</tbody></table></div>`;
             document.getElementById("specialistDataContainer").innerHTML = html;
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
     function exportSpecialistExcel(cat) {
@@ -2849,7 +2865,7 @@
                         let aDate = "غير مسجل";
                         q.forEach(d => { if(d.data().leaveType === "التبليغ عن منقطع") aDate = d.data().startDate; });
                         document.getElementById("returnStartDateDisplay").innerText = formatDateToAr(aDate);
-                    });
+                    }).catch(() => {});
 
                     suggestBox.style.display = "none";
                     document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
@@ -2902,7 +2918,7 @@
             showCustomAlert("تم بنجاح", "تم إرسال طلب العودة للمختص ثم لمدير عام الموارد البشرية للاعتماد وتحويل الحالة إلى نشط (active).");
             document.getElementById("returnFromAbsenceModal").classList.add("hidden");
             document.getElementById("searchReturnInput").value = "";
-        });
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 </script>
 </body>
