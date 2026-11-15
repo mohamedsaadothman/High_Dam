@@ -54,7 +54,14 @@
         .input-group { margin-bottom: 12px; position: relative; }
         .input-group label { display: block; margin-bottom: 4px; font-weight: 800; font-size: 12px; color: #1e293b; }
         
-        .input-group input, .input-group select, .input-group textarea { 
+        /* تعديل: الحقول بتاخد خصائص الـ Input العادية ومش بتتحول لقائمة منسدلة */
+        .input-group input, .input-group textarea { 
+            width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; 
+            background-color: #ffffff; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .input-group select {
             width: 100%; padding: 10px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; 
             background-color: #ffffff; font-family: 'Cairo', sans-serif; color: #0f172a; transition: 0.2s; 
             box-shadow: 0 1px 3px rgba(0,0,0,0.05); appearance: none;
@@ -352,6 +359,17 @@
                     <i class="fas fa-sync-alt"></i> تجديد/ترحيل أرصدة الفئة
                 </button>
             </div>
+
+            <!-- الخانة اللي كانت ناقصة -->
+            <div style="margin-top: 20px; background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #86efac;">
+                <h3 style="color: #166534; font-size: 14px; font-weight: 900; margin-bottom: 10px;"><i class="fas fa-user-check"></i> تسجيل عودة موظف من الانقطاع</h3>
+                <p style="font-size: 11px; color: #15803d; margin-bottom: 10px;">ابحث باسم الموظف المنقطع، ثم اضغط "تسجيل عودة" لإنشاء طلب رسمي يُرحل لمدير عام الموارد البشرية.</p>
+                <div style="position: relative;">
+                    <input type="text" id="searchReturnInput" placeholder="ابحث بالاسم أو الرقم القومي للموظف الموقوف..." style="width: 100%; padding: 10px; border: 1px solid #86efac; border-radius: 8px; font-size: 13px;" onkeyup="searchReturnEmployee(this.value)" autocomplete="off">
+                    <div id="searchReturnResults" class="suggestions-box" style="border-color: #86efac; border-top: none;"></div>
+                </div>
+            </div>
+            <!-- نهاية الخانة -->
             
             <div id="specialistDataContainer" style="margin-top: 20px; overflow-x: auto;"></div>
         </div>
@@ -2975,6 +2993,54 @@
         `);
         win.document.close();
         setTimeout(() => { win.focus(); win.print(); }, 500);
+    }
+
+    function searchReturnEmployee(query) {
+        let suggestBox = document.getElementById("searchReturnResults");
+        if (!query || query.trim().length < 1) {
+            suggestBox.style.display = "none";
+            return;
+        }
+
+        query = query.trim().toLowerCase();
+        let matches = currentEmployeesList.filter(emp => 
+            emp.status === 'inactive' && 
+            ((emp.name && emp.name.toLowerCase().includes(query)) || 
+            (emp.nationalId && emp.nationalId.includes(query)))
+        );
+
+        if (matches.length > 0) {
+            suggestBox.innerHTML = "";
+            matches.slice(0, 5).forEach(emp => {
+                let div = document.createElement("div");
+                div.className = "suggestion-item";
+                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId}`;
+                div.onclick = function() {
+                    document.getElementById("searchReturnInput").value = emp.name;
+                    document.getElementById("returnEmpNationalId").value = emp.nationalId;
+                    document.getElementById("returnEmpNameDisplay").innerText = emp.name;
+                    
+                    // جلب تاريخ الانقطاع
+                    db.collection("leaves").where("nationalId", "==", emp.nationalId).get().then(q => {
+                        let aDate = "غير مسجل";
+                        q.forEach(d => {
+                            if(d.data().leaveType === "التبليغ عن منقطع") {
+                                aDate = d.data().startDate;
+                            }
+                        });
+                        document.getElementById("returnStartDateDisplay").innerText = formatDateToAr(aDate);
+                    });
+
+                    suggestBox.style.display = "none";
+                    document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
+                };
+                suggestBox.appendChild(div);
+            });
+            suggestBox.style.display = "block";
+        } else {
+            suggestBox.innerHTML = '<div style="padding:10px; color:red; text-align:center;">لا يوجد موظف موقوف مطابق</div>';
+            suggestBox.style.display = "block";
+        }
     }
 
     function submitReturnFromAbsence() {
