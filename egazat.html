@@ -346,15 +346,6 @@
                 </button>
             </form>
 
-            <div style="margin-top: 25px; background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #86efac;">
-                <h3 style="color: #166534; font-size: 14px; font-weight: 900; margin-bottom: 10px;"><i class="fas fa-user-check"></i> تسجيل عودة موظف من الانقطاع</h3>
-                <p style="font-size: 11px; color: #15803d; margin-bottom: 10px;">ابحث باسم الموظف المنقطع، ثم اضغط "تسجيل عودة" لإنشاء طلب رسمي يُرحل لمدير عام الموارد البشرية.</p>
-                <div style="position: relative;">
-                    <input type="text" id="searchReturnInput" placeholder="ابحث بالاسم أو الرقم القومي للموظف الموقوف..." style="width: 100%; padding: 10px; border: 1px solid #86efac; border-radius: 8px; font-size: 13px;" onkeyup="searchReturnEmployee(this.value)" autocomplete="off">
-                    <div id="searchReturnResults" class="suggestions-box" style="border-color: #86efac; border-top: none;"></div>
-                </div>
-            </div>
-
             <div style="margin-top: 20px; background: #fffbeb; padding: 12px; border-radius: 8px; border: 1px solid #f59e0b; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <span style="font-weight: 900; color: #b45309; font-size: 13px;"><i class="fas fa-exclamation-triangle"></i> إجراء سنوي:</span>
                 <button class="act-btn btn-warning" onclick="renewBalances()" style="flex: 1; padding: 10px; font-size: 13px;">
@@ -827,7 +818,6 @@
         </div>
     </div>
 
-    <!-- مودال العودة المحدث -->
     <div id="returnFromAbsenceModal" class="custom-modal-overlay hidden">
         <div class="custom-modal-box">
             <div class="custom-modal-header">
@@ -851,6 +841,12 @@
                     <option value="مرضية بقرار 259">مرضية بقرار 259</option>
                     <option value="اعتيادية">إجازة اعتيادية (تخصم)</option>
                     <option value="رصيد سنوات سابقة">رصيد سنوات سابقة (تخصم)</option>
+                </select>
+            </div>
+            <div class="input-group" style="text-align: right;">
+                <label>توجيه الطلب إلى (المدير العام التابع له الموظف للعلم):</label>
+                <select id="returnManagerDept" style="padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%;">
+                    <option value="">-- اختر المدير العام --</option>
                 </select>
             </div>
             <div class="modal-btn-group" style="margin-top: 15px;">
@@ -1388,9 +1384,7 @@
             };
 
             db.collection("leaves").add(leaveData).then(() => {
-                // تغيير حالة الموظف إلى inactive بمجرد رفع البلاغ
-                q.docs[0].ref.update({ status: "inactive" });
-
+                // لا يتم تغيير حالة الموظف هنا. الحالة تتغير فقط عند اعتماد مدير الموارد البشرية.
                 latestSubmittedData = leaveData;
                 document.getElementById("absenceFormContainer").classList.add("hidden");
                 document.getElementById("leaveResultContainer").classList.remove("hidden");
@@ -1472,10 +1466,12 @@
         let select = document.getElementById("targetManagerDept");
         let select2 = document.getElementById("permManagerDept");
         let select3 = document.getElementById("absManagerDept"); 
+        let select4 = document.getElementById("returnManagerDept");
         
         select.innerHTML = '<option value="">-- جاري التحميل --</option>';
         if (select2) select2.innerHTML = '<option value="">-- جاري التحميل --</option>';
         if (select3) select3.innerHTML = '<option value="">-- جاري التحميل --</option>';
+        if (select4) select4.innerHTML = '<option value="">-- جاري التحميل --</option>';
 
         db.collection("users").get().then((querySnapshot) => {
             let managersSet = new Set();
@@ -1498,10 +1494,12 @@
             select.innerHTML = options;
             if (select2) select2.innerHTML = options;
             if (select3) select3.innerHTML = options;
+            if (select4) select4.innerHTML = options;
         }).catch(() => {
             select.innerHTML = '<option value="">تعذر التحميل</option>';
             if (select2) select2.innerHTML = '<option value="">تعذر التحميل</option>';
             if (select3) select3.innerHTML = '<option value="">تعذر التحميل</option>';
+            if (select4) select4.innerHTML = '<option value="">تعذر التحميل</option>';
         });
     }
 
@@ -1999,16 +1997,16 @@
                     ${loggedInRole === 'hr_specialist' ? `
                         ${item.specialistStatus === "قيد الانتظار" ? `
                             ${(item.leaveType === "التبليغ عن منقطع") ? `
-                                <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'تم المراجعة')">مراجعة واعتماد</button>
+                                <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', '${item.nationalId}', '${item.empName}')">مراجعة واعتماد</button>
                             ` : ''}
-                            <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'ليس لديه رصيد')">رفض</button>
+                            <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', '', '')">رفض</button>
                         ` : ''}
                     ` : `
                         ${item.managerStatus === "قيد الانتظار" && (item.specialistStatus === "رصيد متاح" || item.leaveType === "التبليغ عن منقطع") ? `
                             <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', '${item.leaveType === 'التبليغ عن منقطع' ? 'علم بالتبليغ واعتماد' : 'تم الاعتماد النهائي'}', 'manager')">
                                 ${item.leaveType === 'التبليغ عن منقطع' ? 'علم بالتبليغ واعتماد' : 'موافق (اعتماد)'}
                             </button>
-                            <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير', 'manager')">مرفوض</button>
+                            ${item.leaveType !== 'التبليغ عن منقطع' ? `<button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير', 'manager')">مرفوض</button>` : ''}
                         ` : ''}
                         ${item.managerStatus === "مرفوض من المدير" ? `
                             <button class="act-btn btn-warning" onclick="resubmitToSpecialistFirebase('${item.docId}')">تصحيح وإعادة</button>
@@ -2022,11 +2020,33 @@
         container.innerHTML = html;
     }
 
-    function openSpecialistActionModal(docId, statusType, defaultText) {
-        currentSpecActionDocId = docId;
-        currentSpecActionStatus = statusType;
-        document.getElementById("specActionReason").value = defaultText;
-        document.getElementById("specialistActionModal").classList.remove("hidden");
+    function openSpecialistActionModal(docId, nationalId, empName) {
+        let targetItem = currentLeavesData.find(i => i.docId === docId);
+        
+        if (targetItem && targetItem.leaveType === "التبليغ عن منقطع") {
+            // فتح مودال تسجيل العودة
+            document.getElementById("returnEmpNationalId").value = nationalId;
+            document.getElementById("returnEmpNameDisplay").innerText = empName;
+            
+            // جلب تاريخ الانقطاع
+            db.collection("leaves").where("nationalId", "==", nationalId).get().then(q => {
+                let aDate = "غير مسجل";
+                q.forEach(d => {
+                    if(d.data().leaveType === "التبليغ عن منقطع") {
+                        aDate = d.data().startDate;
+                    }
+                });
+                document.getElementById("returnStartDateDisplay").innerText = formatDateToAr(aDate);
+            });
+            
+            document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
+        } else {
+            // فتح مودال الإجراء العادي
+            currentSpecActionDocId = docId;
+            currentSpecActionStatus = 'رصيد متاح'; // افتراضي
+            document.getElementById("specActionReason").value = 'تم المراجعة';
+            document.getElementById("specialistActionModal").classList.remove("hidden");
+        }
     }
 
     document.getElementById("specActionConfirmBtn").onclick = function() {
@@ -2044,16 +2064,7 @@
                 let leaveData = doc.data();
                 let nationalId = leaveData.nationalId;
 
-                if ((leaveData.leaveType === "التبليغ عن منقطع") && currentSpecActionStatus === "مقبول ومؤرشف") {
-                    db.collection("users").where("nationalId", "==", nationalId).get().then((u) => {
-                        if (!u.empty) u.docs[0].ref.update({ status: "inactive" });
-                    });
-                }
-                if ((leaveData.leaveType === "طلب عودة من انقطاع") && currentSpecActionStatus === "مقبول ومؤرشف") {
-                    db.collection("users").where("nationalId", "==", nationalId).get().then((u) => {
-                        if (!u.empty) u.docs[0].ref.update({ status: "active" });
-                    });
-                }
+                // تم إزالة تغيير الحالة من هنا. الحالة لا تتغير إلا بموافقة مدير الموارد البشرية.
 
                 db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
                     showCustomAlert("تم بنجاح", "تم تسجيل الإجراء بنجاح.");
@@ -2113,7 +2124,8 @@
                                 else if (calcType === "مرضية") newSick = currentSick - daysCount; 
                                 else if (calcType === "مرضية بقرار 259") newSick259 = "نعم";
                             } else if (leaveType === "التبليغ عن منقطع") {
-                                newStatus = "active";
+                                // تغيير حالة الموظف إلى inactive عند اعتماد التبليغ
+                                newStatus = "inactive";
                             } else if (leaveType === "اعتيادية" || leaveType === "تصريح نصف يوم") {
                                 newAnnual = currentAnnual - daysCount;
                             } else if (leaveType === "عارضة") {
@@ -3071,15 +3083,12 @@
                     // جلب تاريخ الانقطاع
                     db.collection("leaves").where("nationalId", "==", emp.nationalId).get().then(q => {
                         let aDate = "غير مسجل";
-                        let mgrDept = "مدير عام الموارد البشرية";
                         q.forEach(d => {
                             if(d.data().leaveType === "التبليغ عن منقطع") {
                                 aDate = d.data().startDate;
-                                mgrDept = d.data().targetManager;
                             }
                         });
                         document.getElementById("returnStartDateDisplay").innerText = formatDateToAr(aDate);
-                        document.getElementById("returnTargetManager").value = mgrDept;
                     });
 
                     suggestBox.style.display = "none";
@@ -3099,9 +3108,10 @@
         let empName = document.getElementById("returnEmpNameDisplay").innerText;
         let returnDate = document.getElementById("returnDate").value;
         let returnCalcType = document.getElementById("returnCalcType").value;
-        let targetManager = document.getElementById("returnTargetManager").value;
+        let targetManager = document.getElementById("returnManagerDept").value;
 
         if (!returnDate) return showCustomAlert("خطأ", "يرجى تحديد تاريخ العودة.");
+        if (!targetManager) return showCustomAlert("خطأ", "يرجى اختيار المدير العام التابع له الموظف.");
 
         // حساب عدد الأيام من تاريخ الانقطاع
         let aDate = document.getElementById("returnStartDateDisplay").innerText;
