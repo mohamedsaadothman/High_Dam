@@ -169,7 +169,7 @@
         <div class="section-container">
             <a href="index.html" class="back-home-btn" style="margin-bottom: 16px;"><i class="fas fa-arrow-right"></i> العودة للرئيسية</a>
             <h2>إدارة الإجازات</h2>
-            <p>تقديم ومتابعة طلبات الإجازات الرسمية والحالات الوظيفية بكل أمان واحترافية</p>
+            <p>تقديم ومتابعة طلبات الإجازات الرسمية والحالات الوظيفية بكل أمان واحرافية</p>
             
             <div class="buttons-grid">
                 <div class="feature-card" onclick="openLeaveForm()">
@@ -1303,7 +1303,6 @@
                 phone: phone,
                 daysAnnual: dAnnual,
                 daysPrev: dPrev,
-                // الدورة المستندية الصحيحة: موظف -> مختص للفئة -> مدير عام -> مدير عام موارد بشرية -> مختص للأرشفة
                 specialistStatus: "قيد الانتظار",
                 managerStatus: "قيد الانتظار",
                 hrManagerStatus: "قيد الانتظار",
@@ -1430,7 +1429,6 @@
         db.collection("users").where("nationalId", "==", otherNid).get().then((q) => {
             if (q.empty) { showCustomAlert("خطأ", "الموظف المبلغ عنه غير مسجل."); btn.disabled = false; return; }
             let otherData = q.docs[0].data();
-            
             let autoDept = otherData.department || otherData.dept || "إدارة الشئون الإدارية";
             
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
@@ -1739,7 +1737,6 @@
         XLSX.writeFile(wb, "سجل_الإجازات.xlsx");
     }
 
-    // [المشكلة 4]: تنسيق قائمة الاختيارات بشكل فخم ومرتب كما في الصورة
     function openManagerLogin() {
         document.getElementById("mainEgazatMenu").classList.add("hidden");
         document.getElementById("managerLoginSection").classList.remove("hidden");
@@ -1880,6 +1877,7 @@
                     }
                 } 
                 else if (role === "hr_manager") {
+                    // مدير عام الموارد البشرية يرى كافة الطلبات المعتمدة من المدير العام التابع
                     currentLeavesData.push(data);
                 }
                 else {
@@ -1990,7 +1988,6 @@
         }
     }
 
-    // [المشكلة 3]: الدورة المستندية الصحيحة (موظف -> مختص الفئة -> المدير العام التابع -> مدير عام الموارد البشرية -> مختص الأرشفة)
     function renderLeavesCards(dataList) {
         let container = document.getElementById("leavesCardsContainer");
         if (!dataList || dataList.length === 0) {
@@ -2049,14 +2046,12 @@
         let hrStat = item.hrStatus || "قيد الانتظار";
 
         if (loggedInRole === 'hr_specialist') {
-            // خطوة أولى: المختص للفئة يراجع الطلب والرسيد أولاً
             if (sStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'مراجعة وموافق من المختص', 'تم التحقق من الرصيد والبيانات')">مراجعة وتحويل للمدير العام</button>
                     <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'مرفوض لعدم استيفاء الشروط')">رفض</button>
                 `;
             }
-            // خطوة أخيرة: المختص يؤرشف الطلب بعد اعتماد مدير الموارد البشرية
             if (hrmStat === "معتمد من مدير الموارد البشرية" && hrStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="archiveLeaveRequest('${item.docId}')">أرشفة نهائية وخصم الرصيد</button>
@@ -2064,7 +2059,6 @@
             }
         } 
         else if (loggedInRole === 'manager') {
-            // خطوة ثانية: المدير العام التابع يعتمد الطلب المحول من المختص
             if (sStat === "مراجعة وموافق من المختص" && mStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'موافق من المدير العام', 'موافق', 'manager')">موافق</button>
@@ -2073,7 +2067,7 @@
             }
         } 
         else if (loggedInRole === 'hr_manager') {
-            // خطوة ثالثة: مدير عام الموارد البشرية يعتمد الطلب بصفة ثابتة
+            // مدير عام الموارد البشرية يمكنه الاعتماد بمجرد موافقة المدير العام التابع
             if (mStat === "موافق من المدير العام" && hrmStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد من مدير الموارد البشرية', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
@@ -2251,7 +2245,6 @@
         });
     }
 
-    // [المشكلة 2]: تعديل الصياغة لتصبح "بمنحي" وإظهار إدارة الموظف الحقيقية واسم المدير العام
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2282,7 +2275,6 @@
             requestPhrase = `بشأن بلاغ تغيب/انقطاع الموظف / <strong>${item.empName}</strong>`;
         }
 
-        // تصحيح العنوان ليصبح مثلاً "نموذج طلب إجازة عارضة"
         let titleText = item.leaveType.includes("إجازة") || item.leaveType.includes("عارضة") ? `نموذج طلب ${item.leaveType}` : `نموذج ${item.leaveType}`;
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، وذلك نظراً لـ: <strong>${item.reason}</strong>.`;
