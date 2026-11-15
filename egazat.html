@@ -1195,95 +1195,46 @@
             showCustomAlert("تنبيه هام", "مجموع الأيام لا يتطابق مع المدة المحسوبة."); return;
         }
 
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري فحص الرصيد...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
         btn.disabled = true;
 
-        // التحقق من الرصيد قبل الإرسال
-        db.collection("users").where("nationalId", "==", currentSubmitEmpNationalId).get().then((userSnap) => {
-            if (userSnap.empty) { showCustomAlert("خطأ", "الموظف غير موجود."); btn.disabled = false; return; }
-            let u = userSnap.docs[0].data();
-            let currentAnnual = parseFloat(u.annual) || 0;
-            let currentPrevBal = parseFloat(u.prevBal) || 0;
+        let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+        
+        let leaveData = {
+            requestId: randomId,
+            empName: currentSubmitEmpName,
+            nationalId: currentSubmitEmpNationalId,
+            dept: currentSubmitEmpDept,
+            jobCategory: currentSubmitEmpCategory, 
+            targetManager: targetManager, 
+            titlePrefix: titlePrefix,
+            leaveType: leaveType,
+            startDate: start,
+            endDate: end,
+            daysCount: totalDays,
+            reason: reason,
+            phone: phone,
+            daysAnnual: dAnnual,
+            daysPrev: dPrev,
+            specialistStatus: "قيد الانتظار",
+            managerStatus: "قيد الانتظار",
+            hrStatus: "قيد الانتظار",
+            rejectionReason: "",
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            requestDate: new Date().toISOString().split('T')[0]
+        };
 
-            if (leaveType === "اعتيادية" || leaveType === "اعتيادية + رصيد سنوات سابقة") {
-                let daysToDeduct = (leaveType === "اعتيادية" ? totalDays : dAnnual);
-                if (currentAnnual < daysToDeduct) {
-                    showCustomAlert("رصيد غير كافٍ", "عذراً، رصيدك الحالي من الإجازة الاعتيادية (" + currentAnnual + " يوم) لا يكفي لتقديم هذا الطلب الذي يتطلب (" + daysToDeduct + " يوم).");
-                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    btn.disabled = false;
-                    return;
-                }
-            }
-
-            if (leaveType === "رصيد سنوات سابقة" || leaveType === "اعتيادية + رصيد سنوات سابقة") {
-                let daysToDeductPrev = (leaveType === "رصيد سنوات سابقة" ? totalDays : dPrev);
-                if (currentPrevBal < daysToDeductPrev) {
-                    showCustomAlert("رصيد غير كافٍ", "عذراً، رصيدك الحالي من سنوات سابقة (" + currentPrevBal + " يوم) لا يكفي لتقديم هذا الطلب الذي يتطلب (" + daysToDeductPrev + " يوم).");
-                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    btn.disabled = false;
-                    return;
-                }
-            }
-
-            // فحص التداخل
-            db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((querySnapshot) => {
-                let hasOverlap = false;
-                querySnapshot.forEach(doc => {
-                    let item = doc.data();
-                    let st = (item.managerStatus || "").toLowerCase();
-                    if (!st.includes("مرفوض") && !item.leaveType.includes("منقطع") && !item.leaveType.includes("بلاغ")) {
-                        let existingStart = item.startDate;
-                        let existingEnd = item.endDate || "9999-12-31";
-                        if (!(end < existingStart || start > existingEnd)) { hasOverlap = true; }
-                    }
-                });
-
-                if (hasOverlap) {
-                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    btn.disabled = false;
-                    showCustomAlert("تداخل تواريخ", "يوجد لديك طلب إجازة معتمد أو قيد الانتظار يتقاطع مع هذه الفترة.");
-                    return;
-                }
-
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
-                let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-                
-                let leaveData = {
-                    requestId: randomId,
-                    empName: currentSubmitEmpName,
-                    nationalId: currentSubmitEmpNationalId,
-                    dept: currentSubmitEmpDept,
-                    jobCategory: currentSubmitEmpCategory, 
-                    targetManager: targetManager, 
-                    titlePrefix: titlePrefix,
-                    leaveType: leaveType,
-                    startDate: start,
-                    endDate: end,
-                    daysCount: totalDays,
-                    reason: reason,
-                    phone: phone,
-                    daysAnnual: dAnnual,
-                    daysPrev: dPrev,
-                    specialistStatus: "قيد الانتظار",
-                    managerStatus: "قيد الانتظار",
-                    rejectionReason: "",
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    requestDate: new Date().toISOString().split('T')[0]
-                };
-
-                db.collection("leaves").add(leaveData).then(() => {
-                    latestSubmittedData = leaveData;
-                    document.getElementById("leaveFormContainer").classList.add("hidden");
-                    document.getElementById("leaveResultContainer").classList.remove("hidden");
-                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    btn.disabled = false;
-                }).catch((error) => {
-                    console.error(error);
-                    showCustomAlert("خطأ", "تعذر إرسال الطلب.");
-                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                    btn.disabled = false;
-                });
-            });
+        db.collection("leaves").add(leaveData).then(() => {
+            latestSubmittedData = leaveData;
+            document.getElementById("leaveFormContainer").classList.add("hidden");
+            document.getElementById("leaveResultContainer").classList.remove("hidden");
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            btn.disabled = false;
+        }).catch((error) => {
+            console.error(error);
+            showCustomAlert("خطأ", "تعذر إرسال الطلب.");
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+            btn.disabled = false;
         });
     }
 
@@ -1416,6 +1367,7 @@
                 daysPrev: 0,
                 specialistStatus: "قيد الانتظار",
                 managerStatus: "قيد الانتظار",
+                hrStatus: "قيد الانتظار",
                 rejectionReason: "",
                 reportedBy: currentSubmitEmpName,
                 reporterNationalId: currentSubmitEmpNationalId,
@@ -1479,6 +1431,7 @@
             daysPrev: 0,
             specialistStatus: "قيد الانتظار",
             managerStatus: "قيد الانتظار",
+            hrStatus: "قيد الانتظار",
             rejectionReason: "",
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             requestDate: new Date().toISOString().split('T')[0]
@@ -1987,7 +1940,8 @@
         dataList.forEach((item, index) => {
             let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
             let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-            let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || (item.managerStatus && item.managerStatus.includes("مقبول"));
+            let isHrRejected = item.hrStatus === "مرفوض من الموارد البشرية" || item.hrStatus === "مرفوض نهائي";
+            let isApprovedByHr = item.hrStatus === "مقبول ومؤرشف" || (item.hrStatus && item.hrStatus.includes("مقبول"));
             
             let cardClass = "";
             let watermarkHtml = "";
@@ -1998,7 +1952,10 @@
             } else if (isMgrRejected) {
                 cardClass = "rejected-mgr locked";
                 watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من المدير<br><span style="font-size: 14px;">${item.mgrRejectTime ? formatDateToAr(item.mgrRejectTime.split(' ')[0]) : ''}</span></div>`;
-            } else if (isApprovedByMgr) {
+            } else if (isHrRejected) {
+                cardClass = "rejected-mgr locked";
+                watermarkHtml = `<div class="watermark-rejected mgr">مرفوض من الموارد البشرية<br><span style="font-size: 14px;">${item.hrRejectTime ? formatDateToAr(item.hrRejectTime.split(' ')[0]) : ''}</span></div>`;
+            } else if (isApprovedByHr) {
                 cardClass = "approved-mgr locked";
                 watermarkHtml = `<div class="watermark-rejected approved">معتمد ومؤرشف<br><span style="font-size: 14px;">${formatDateToAr(item.startDate || '')}</span></div>`;
             }
@@ -2024,22 +1981,26 @@
                 ${reporterHtml}
                 <p style="position:relative; z-index:1;"><strong>رأي الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
                 <p style="position:relative; z-index:1;"><strong>اعتماد المدير:</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
+                <p style="position:relative; z-index:1;"><strong>اعتماد الموارد البشرية:</strong> <span style="color:#198754; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1;"><strong>ملاحظات / الرفض:</strong> ${item.rejectionReason}</p>` : ''}
                 
                 <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
                     ${loggedInRole === 'hr_specialist' ? `
                         ${item.specialistStatus === "قيد الانتظار" ? `
-                            <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'تم الترحيل لمدير الموارد البشرية')">موافقة وترحيل</button>
+                            <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'رصيد متاح', 'تم الترحيل')">موافقة وترحيل</button>
                             <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'مرفوض')">رفض</button>
                         ` : ''}
+                        ${item.hrStatus === "مقبول ومؤرشف" ? `
+                            <button class="act-btn btn-pd" onclick="archiveLeaveRequest('${item.docId}')">أرشفة نهائية</button>
+                        ` : ''}
                     ` : `
-                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "قيد الانتظار" ? `
+                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
                             <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'موافقة المدير العام', 'موافقة', 'manager')">موافقة</button>
                             <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير', 'manager')">رفض</button>
                         ` : ''}
-                        
-                        ${item.managerStatus === "قيد الانتظار" && item.specialistStatus === "رصيد متاح" ? `
-                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', 'اعتماد', 'manager')">اعتماد</button>
+                        ${item.hrStatus === "قيد الانتظار" && item.managerStatus === "موافقة المدير العام" ? `
+                            <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'مقبول ومؤرشف', 'اعتماد', 'hr')">اعتماد</button>
+                            <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من الموارد البشرية', 'hr')">رفض</button>
                         ` : ''}
                     `}
                     <button class="act-btn btn-pd" onclick='printCardEmp(${JSON.stringify(item).replace(/"/g, '&quot;').replace(/'/g, "&#39;")})'><i class="fas fa-print"></i> طباعة / PDF</button>
@@ -2053,36 +2014,98 @@
         currentSpecActionDocId = docId;
         currentSpecActionStatus = statusType;
         document.getElementById("specActionReason").value = defaultText;
+        
+        document.getElementById("specActionConfirmBtn").onclick = function() {
+            let reason = document.getElementById("specActionReason").value;
+            document.getElementById("specialistActionModal").classList.add("hidden");
+            
+            let updateData = {
+                specialistStatus: currentSpecActionStatus,
+                rejectionReason: reason,
+                specRejectTime: new Date().toISOString()
+            };
+
+            db.collection("leaves").doc(currentSpecActionDocId).get().then((doc) => {
+                if (doc.exists) {
+                    let leaveData = doc.data();
+                    
+                    // شيك رصيد المختص عند ترحيل الإجازة
+                    if (currentSpecActionStatus === "رصيد متاح" && (leaveData.leaveType.includes("اعتيادية") || leaveData.leaveType.includes("رصيد سنوات سابقة"))) {
+                        db.collection("users").where("nationalId", "==", leaveData.nationalId).get().then(userSnap => {
+                            if (userSnap.empty) { showCustomAlert("خطأ", "الموظف غير موجود."); return; }
+                            let u = userSnap.docs[0].data();
+                            let daysToDeduct = parseFloat(leaveData.daysCount) || 0;
+                            if (leaveData.leaveType === "اعتيادية + رصيد سنوات سابقة") daysToDeduct = parseFloat(leaveData.daysAnnual) || 0;
+                            
+                            if (leaveData.leaveType.includes("اعتيادية") && (parseFloat(u.annual)||0) < daysToDeduct) {
+                                showCustomAlert("رصيد غير كافٍ", "الموظف لا يملك رصيد اعتيادي كافٍ لترحيل هذا الطلب.");
+                                return;
+                            }
+                            
+                            // ترحيل الطلب
+                            db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
+                                showCustomAlert("تم بنجاح", "تم ترحيل الطلب.");
+                                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+                            });
+                        });
+                    } else {
+                        // ترحيل الطلب بدون شيك رصيد
+                        db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
+                            showCustomAlert("تم بنجاح", "تم تسجيل الإجراء بنجاح.");
+                            loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+                        });
+                    }
+                }
+            });
+        };
+
         document.getElementById("specialistActionModal").classList.remove("hidden");
     }
 
-    document.getElementById("specActionConfirmBtn").onclick = function() {
-        let reason = document.getElementById("specActionReason").value;
-        document.getElementById("specialistActionModal").classList.add("hidden");
-        
-        let updateData = {
-            specialistStatus: currentSpecActionStatus,
-            rejectionReason: reason,
-            specRejectTime: new Date().toISOString()
-        };
-
-        db.collection("leaves").doc(currentSpecActionDocId).get().then((doc) => {
+    // *** دالة الأرشفة النهائية ***
+    function archiveLeaveRequest(docId) {
+        db.collection("leaves").doc(docId).get().then(doc => {
             if (doc.exists) {
                 let leaveData = doc.data();
-                if (leaveData.leaveType === "التبليغ عن منقطع" && currentSpecActionStatus === "رصيد متاح") {
-                    updateData.targetManager = "مدير عام الموارد البشرية";
-                }
+                let daysCount = parseFloat(leaveData.daysCount) || 0;
+                let leaveType = leaveData.leaveType;
+                let dAnnual = parseFloat(leaveData.daysAnnual) || 0;
+                let dPrev = parseFloat(leaveData.daysPrev) || 0;
+                let calcType = leaveData.absenceCalcType;
 
-                db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
-                    showCustomAlert("تم بنجاح", "تم تسجيل الإجراء بنجاح.");
-                    loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-                }).catch((error) => {
-                    console.error(error);
-                    showCustomAlert("خطأ", "تعذر تحديث البيانات.");
+                db.collection("users").where("nationalId", "==", leaveData.nationalId).get().then(userQuery => {
+                    if (!userQuery.empty) {
+                        let userDoc = userQuery.docs[0];
+                        let userData = userDoc.data();
+                        let updates = { status: userData.status };
+
+                        if (leaveType === "اعتيادية" || leaveType === "تصريح نصف يوم") {
+                            updates.annual = Math.max(0, (parseFloat(userData.annual)||0) - daysCount);
+                        } else if (leaveType === "عارضة") {
+                            updates.casual = Math.max(0, (parseFloat(userData.casual)||0) - daysCount);
+                        } else if (leaveType === "مرضية" || leaveType === "مرضية بقرار 259") {
+                            updates.sick = Math.max(0, (parseFloat(userData.sick)||0) - daysCount);
+                        } else if (leaveType === "رصيد سنوات سابقة") {
+                            updates.prevBal = Math.max(0, (parseFloat(userData.prevBal)||0) - daysCount);
+                        } else if (leaveType === "اعتيادية + رصيد سنوات سابقة") {
+                            updates.annual = Math.max(0, (parseFloat(userData.annual)||0) - dAnnual);
+                            updates.prevBal = Math.max(0, (parseFloat(userData.prevBal)||0) - dPrev);
+                        }
+
+                        userDoc.ref.update(updates).then(() => {
+                            db.collection("leaves").doc(docId).update({
+                                specialistStatus: "مؤرشف نهائي",
+                                hrStatus: "مؤرشف"
+                            }).then(() => {
+                                showCustomAlert("تم بنجاح", "تم الأرشفة النهائية وخصم الرصيد.");
+                                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+                            });
+                        });
+                    }
                 });
             }
         });
-    };
+    }
 
     function processActionFirebase(docId, status, defaultReason, role) {
         let updateData = {};
@@ -2092,49 +2115,13 @@
             updateData.rejectionReason = defaultReason;
             updateData.mgrRejectTime = new Date().toISOString();
             updateData.approvedBy = currentManagerName;
+        } else if (role === 'hr') {
+            updateData.hrStatus = status;
+            updateData.rejectionReason = defaultReason;
+            updateData.hrRejectTime = new Date().toISOString();
+            updateData.approvedBy = currentManagerName;
         } else {
             updateData.specialistStatus = status;
-        }
-
-        if (status === 'مقبول ومؤرشف' || status === 'اعتماد') {
-            db.collection("leaves").doc(docId).get().then((doc) => {
-                if (doc.exists) {
-                    let leaveData = doc.data();
-                    let nationalId = leaveData.nationalId;
-                    let leaveType = leaveData.leaveType;
-                    let daysCount = parseFloat(leaveData.daysCount) || 0;
-                    let calcType = leaveData.absenceCalcType;
-
-                    db.collection("users").where("nationalId", "==", nationalId).get().then((userQuery) => {
-                        if (!userQuery.empty) {
-                            let userDoc = userQuery.docs[0];
-                            let userData = userDoc.data();
-                            let updates = { status: userData.status };
-
-                            if (leaveType === "التبليغ عن منقطع") {
-                                updates.status = "inactive";
-                            } else if (leaveType === "طلب عودة من انقطاع") {
-                                updates.status = "active";
-                                if (calcType === "اعتيادية") updates.annual = Math.max(0, (parseFloat(userData.annual)||0) - daysCount);
-                                else if (calcType === "رصيد سنوات سابقة") updates.prevBal = Math.max(0, (parseFloat(userData.prevBal)||0) - daysCount);
-                                else if (calcType === "مرضية") updates.sick = Math.max(0, (parseFloat(userData.sick)||0) - daysCount);
-                                else if (calcType === "مرضية بقرار 259") updates.sick259 = "نعم";
-                            }
-
-                            userDoc.ref.update(updates).then(() => {
-                                db.collection("leaves").doc(docId).update({
-                                    managerStatus: "مقبول ومؤرشف",
-                                    approvedBy: currentManagerName
-                                }).then(() => {
-                                    showCustomAlert("تم بنجاح", "تم الاعتماد وتحديث حالة الموظف.");
-                                    loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-                                });
-                            });
-                        }
-                    });
-                }
-            });
-            return;
         }
 
         db.collection("leaves").doc(docId).update(updateData).then(() => {
@@ -2146,7 +2133,6 @@
         });
     }
 
-    // *** تعديل: دالة رفض احترافية ***
     function promptActionFirebase(docId, status, role) {
         document.getElementById("rejectionModal").classList.remove("hidden");
         document.getElementById("rejectReasonInput").value = "";
@@ -2162,6 +2148,10 @@
                 updateData.managerStatus = status;
                 updateData.rejectionReason = reason;
                 updateData.mgrRejectTime = new Date().toISOString();
+            } else if (role === 'hr') {
+                updateData.hrStatus = status;
+                updateData.rejectionReason = reason;
+                updateData.hrRejectTime = new Date().toISOString();
             } else {
                 updateData.specialistStatus = status;
                 updateData.rejectionReason = reason;
@@ -2185,6 +2175,7 @@
         let updateData = {
             specialistStatus: "قيد الانتظار",
             managerStatus: "قيد الانتظار",
+            hrStatus: "قيد الانتظار",
             rejectionReason: reason
         };
 
@@ -2200,14 +2191,16 @@
     function getPrintWatermarkHtml(item) {
         let isSpecRejected = item.specialistStatus === "مرفوض من المختص" || item.specialistStatus === "مرفوض نهائي";
         let isMgrRejected = item.managerStatus === "مرفوض من المدير" || item.managerStatus === "مرفوض نهائي";
-        let isApprovedByMgr = item.managerStatus === "مقبول ومؤرشف" || (item.managerStatus && item.managerStatus.includes("مقبول"));
+        let isHrRejected = item.hrStatus === "مرفوض من الموارد البشرية" || item.hrStatus === "مرفوض نهائي";
+        let isApprovedByHr = item.hrStatus === "مقبول ومؤرشف" || (item.hrStatus && item.hrStatus.includes("مقبول"));
         
         let wmText = "";
         let wmColor = "";
         
         if (isSpecRejected) { wmText = "مرفوض من المختص"; wmColor = "#d97706"; }
         else if (isMgrRejected) { wmText = "مرفوض من المدير"; wmColor = "#dc2626"; }
-        else if (isApprovedByMgr) { wmText = "معتمد ومؤرشف"; wmColor = "#198754"; }
+        else if (isHrRejected) { wmText = "مرفوض من الموارد البشرية"; wmColor = "#dc2626"; }
+        else if (isApprovedByHr) { wmText = "معتمد ومؤرشف"; wmColor = "#198754"; }
         else { wmText = "قيد الانتظار"; wmColor = "#64748b"; }
 
         return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 80px; font-weight: 900; color: ${wmColor}; opacity: 0.15; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
@@ -2227,6 +2220,7 @@
         });
     }
 
+    // *** تعديل: صيغة الطباعة الجديدة ***
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2235,6 +2229,9 @@
         
         let mgrStatusText = item.managerStatus || "قيد الانتظار";
         let mgrColor = mgrStatusText.includes("مرفوض") ? "red" : (mgrStatusText.includes("مقبول") ? "green" : "#333");
+        
+        let hrStatusText = item.hrStatus || "قيد الانتظار";
+        let hrColor = hrStatusText.includes("مرفوض") ? "red" : (hrStatusText.includes("مقبول") ? "green" : "#333");
         
         let reqDate = item.requestDate ? formatDateToAr(item.requestDate) : formatDateToAr(new Date().toISOString().split('T')[0]);
         let watermark = getPrintWatermarkHtml(item);
@@ -2252,6 +2249,10 @@
 
         let requestVerb = "بالموافقة";
         let requestPhrase = `على (<strong>${item.leaveType}</strong>)`;
+        if (item.leaveType.includes("إجازة") || item.leaveType.includes("رصيد") || item.leaveType.includes("تصريح")) {
+            requestVerb = "بمنحي";
+            requestPhrase = `إجازة (<strong>${item.leaveType}</strong>)`;
+        }
         
         if (isAbsence) {
             requestVerb = "بالعلم";
@@ -2307,7 +2308,7 @@
                     </div>
                     <div class="title">${titleText}</div>
                     <div class="content">
-                        <p><strong>${item.titlePrefix || 'السيد المدير المسؤول /'}</strong> ${item.targetManager}</p>
+                        <p><strong>${item.titlePrefix || 'السيد /'}</strong> ${item.targetManager}</p>
                         <p>تحية طيبة وبعد،،،</p>
                         <p>أرجو التكرم <strong>${requestVerb}</strong> ${requestPhrase}${durationText} اعتباراً من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${reasonText}</p>
                         ${reportedByText}
@@ -2325,7 +2326,8 @@
                     <div class="status-box">
                         <h3 style="margin-bottom: 8px; text-decoration: underline;">حالة الطلب والاعتمادات</h3>
                         <p>المختص: <span style="color: ${specColor}; font-weight: bold;">${specStatusText}</span></p>
-                        <p>المدير: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
+                        <p>المدير العام: <span style="color: ${mgrColor}; font-weight: bold;">${mgrStatusText}</span></p>
+                        <p>الموارد البشرية: <span style="color: ${hrColor}; font-weight: bold;">${hrStatusText}</span></p>
                         ${item.rejectionReason ? `<p style="color:red; margin-top: 6px;">ملاحظات / سبب الرفض: ${item.rejectionReason}</p>` : ''}
                     </div>
                 </div>
@@ -3121,6 +3123,7 @@
             reason: "طلب عودة مع احتساب المدة كـ: " + returnCalcType,
             specialistStatus: "رصيد متاح",
             managerStatus: "قيد الانتظار",
+            hrStatus: "قيد الانتظار",
             rejectionReason: "",
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             requestDate: new Date().toISOString().split('T')[0]
