@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -73,7 +74,7 @@
         .card-green { background: linear-gradient(135deg, #059669, #047857); }
         .card-red { background: linear-gradient(135deg, #dc2626, #b91c1c); }
         .card-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
-        .card-orange { background: linear-gradient(135deg, #ea580c, #c2410c); } /* لون كارت الانقطاعات */
+        .card-orange { background: linear-gradient(135deg, #ea580c, #c2410c); }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 10px; }
         .modal-content { background: #0f172a; width: 100%; max-width: 1200px; border-radius: 12px; border: 1px solid #334155; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
@@ -179,10 +180,8 @@
                 <div class="stat-card card-green" onclick="openDetailsModal('leave', 'approved')"><h3><i class="fas fa-check-circle"></i> معتمدة</h3><div class="number" id="leaveApproved">-</div></div>
                 <div class="stat-card card-red" onclick="openDetailsModal('leave', 'rejected')"><h3><i class="fas fa-times-circle"></i> مرفوضة</h3><div class="number" id="leaveRejected">-</div></div>
                 
-                <!-- كارت إجمالي الإجازات -->
                 <div class="stat-card card-blue" onclick="openDetailsModal('leave', 'total')"><h3><i class="fas fa-list"></i> الإجمالي</h3><div class="number" id="leaveTotal">-</div></div>
                 
-                <!-- كارت بلاغات الانقطاع الجديد (بنفس الحجم والشكل) -->
                 <div class="stat-card card-orange" onclick="openDetailsModal('absence', 'total')"><h3><i class="fas fa-exclamation-triangle"></i> بلاغات الانقطاع</h3><div class="number" id="absenceTotal">-</div></div>
             </div>
         </div>
@@ -443,12 +442,14 @@
             return "pending";
         }
 
+        // ✅ التعديل هنا: فحص الأرشفة النهائية والاعتماد بشكل صحيح
         function getLeaveStatus(row) {
             let spec = String(row.specialistStatus || "");
             let mgr = String(row.managerStatus || "");
+            let hr = String(row.hrStatus || "");
 
-            if (spec.includes("مرفوض") || mgr.includes("مرفوض")) return "rejected";
-            if (mgr.includes("مقبول") || mgr.includes("مؤرشف")) return "approved";
+            if (spec.includes("مرفوض") || mgr.includes("مرفوض") || hr.includes("مرفوض")) return "rejected";
+            if (hr === "أرشفة نهائية" || mgr.includes("موافق") || mgr.includes("مقبول") || spec.includes("اعتماد")) return "approved";
             return "pending";
         }
 
@@ -650,11 +651,11 @@
                     let statusClass = statusVal === 'approved' ? 'status-approved' : (statusVal === 'rejected' ? 'status-rejected' : 'status-pending');
                     
                     let finalStatusText = "";
-                    if (row.managerStatus && (row.managerStatus.includes("مقبول") || row.managerStatus.includes("مؤرشف"))) {
-                        finalStatusText = "معتمد نهائياً ✅";
-                    } else if (row.specialistStatus && row.specialistStatus.includes("مرفوض") || row.managerStatus && row.managerStatus.includes("مرفوض")) {
+                    if (row.hrStatus === "أرشفة نهائية" || (row.managerStatus && row.managerStatus.includes("موافق"))) {
+                        finalStatusText = "معتمد ومؤرشف ✅";
+                    } else if ((row.specialistStatus && row.specialistStatus.includes("مرفوض")) || (row.managerStatus && row.managerStatus.includes("مرفوض"))) {
                         finalStatusText = "مرفوض ❌";
-                    } else if (row.specialistStatus === "رصيد متاح") {
+                    } else if (row.managerStatus && row.managerStatus.includes("قيد الانتظار")) {
                         finalStatusText = "بانتظار المدير ⏳";
                     } else {
                         finalStatusText = "بانتظار المختص ⏳";
@@ -695,3 +696,4 @@
     </script>
 </body>
 </html>
+
