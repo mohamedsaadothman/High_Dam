@@ -51,7 +51,6 @@
         .wa-chat-avatar { width: 48px; height: 48px; border-radius: 50%; background: #0d9488; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; overflow: hidden; border: 2px solid #5eead4; }
         .wa-chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
         
-        /* مؤشر الاتصال الأخضر الحقيقي */
         .online-dot { position: absolute; bottom: 2px; right: 2px; width: 12px; height: 12px; background-color: #22c55e; border: 2px solid #ffffff; border-radius: 50%; display: none; }
         .online-dot.active { display: block; }
 
@@ -101,6 +100,11 @@
         .wa-input-footer button.mic-action { background: none; border: none; color: #64748b; font-size: 20px; cursor: pointer; transition: 0.2s; }
         .wa-input-footer button.mic-action:hover { color: #0d9488; }
         .wa-input-footer button.mic-action.recording { color: #ef4444; animation: pulse 1.5s infinite; }
+
+        /* قائمة المرفقات المنسدلة عند الضغط على رمز المشبك */
+        .attachment-menu { position: absolute; bottom: 75px; right: 20px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); display: none; flex-direction: column; padding: 8px 0; z-index: 100; border: 1px solid #e2e8f0; width: 160px; }
+        .attachment-menu button { background: none; border: none; padding: 10px 15px; text-align: right; font-size: 13px; color: #0f172a; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: 0.2s; }
+        .attachment-menu button:hover { background: #f1f5f9; color: #0d9488; }
 
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
@@ -294,10 +298,26 @@
                     </div>
                 </div>
 
-                <div class="wa-input-footer">
-                    <input type="file" id="fileUploader" style="display: none;" onchange="handleFileUpload(event)">
-                    <button class="icon-action" onclick="document.getElementById('fileUploader').click()" title="إرفاق صورة أو مستند"><i class="fa-solid fa-paperclip"></i></button>
+                <div class="wa-input-footer" style="position: relative;">
+                    <!-- ✅ قائمة المرفقات عند الضغط على رمز المشبك -->
+                    <div class="attachment-menu" id="attachmentMenu">
+                        <button onclick="document.getElementById('imageUploader').click()"><i class="fa-solid fa-image" style="color:#0d9488;"></i> صورة</button>
+                        <button onclick="document.getElementById('fileUploader').click()"><i class="fa-solid fa-file-arrow-down" style="color:#2563eb;"></i> مستند</button>
+                    </div>
+
+                    <!-- مخفي لرفع الصور -->
+                    <input type="file" id="imageUploader" style="display: none;" accept="image/*" onchange="handleFileUpload(event, 'image')">
+                    <!-- مخفي لرفع المستندات -->
+                    <input type="file" id="fileUploader" style="display: none;" onchange="handleFileUpload(event, 'file')">
+                    <!-- مخفي لالتقاط من الكاميرا مباشرة -->
+                    <input type="file" id="cameraUploader" style="display: none;" accept="image/*" capture="environment" onchange="handleFileUpload(event, 'image')">
+
+                    <!-- ✅ رمز المشبك للمستندات والصور -->
+                    <button class="icon-action" onclick="toggleAttachmentMenu(event)" title="إرفاق مستند أو صورة"><i class="fa-solid fa-paperclip"></i></button>
                     
+                    <!-- ✅ رمز الكاميرا بجانب البوكس للتصوير المباشر -->
+                    <button class="icon-action" onclick="document.getElementById('cameraUploader').click()" title="التقاط صورة بالكاميرا"><i class="fa-solid fa-camera"></i></button>
+
                     <input type="text" id="msgInput" placeholder="اكتب رسالة..." onkeypress="handleEnter(event)">
                     
                     <button class="mic-action" id="micBtn" onclick="toggleVoiceRecording()" title="تسجيل رسالة صوتية"><i class="fa-solid fa-microphone"></i></button>
@@ -356,13 +376,11 @@
 
             onValue(connectedRef, (snap) => {
                 if (snap.val() === true) {
-                    // عند انقطاع الاتصال فجأة، اجعله "غير متصل"
                     onDisconnect(userStatusRef).set({
                         state: "offline",
                         lastChanged: serverTimestamp()
                     });
 
-                    // حدّث حالته إلى "متصل" الآن
                     set(userStatusRef, {
                         state: "online",
                         lastChanged: serverTimestamp()
@@ -370,6 +388,17 @@
                 }
             });
         }
+
+        window.toggleAttachmentMenu = function(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('attachmentMenu');
+            menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        document.addEventListener('click', function() {
+            const menu = document.getElementById('attachmentMenu');
+            if(menu) menu.style.display = 'none';
+        });
 
         function normalizeText(text) {
             if (!text) return "";
@@ -649,7 +678,7 @@
                     currentUserName = result.empName; 
                     currentUserCode = codeInput;      
                     
-                    setupPresence(); // ✅ تفعيل حالة الاتصال الفوري
+                    setupPresence();
 
                     OneSignalDeferred.push(async function(OneSignal) { await OneSignal.login(currentUserCode); });
 
@@ -722,8 +751,6 @@
                             else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
 
                             let peerAvatar = localStorage.getItem('avatar_' + peerCode);
-                            
-                            // ✅ التحقق الفعلي من قاعدة البيانات هل هو متصل الآن أم لا
                             let isOnline = allStatuses[peerCode] && allStatuses[peerCode].state === 'online';
 
                             activePeers.push({
@@ -769,7 +796,6 @@
                         convListDiv.appendChild(item);
                     });
 
-                    // تحديث حالة الزميل المفتوح حالياً في الهيدر إن وجد
                     if (selectedUserCode) {
                         let currentPeerStatus = allStatuses[selectedUserCode];
                         let isCurrentlyOnline = currentPeerStatus && currentPeerStatus.state === 'online';
@@ -823,7 +849,6 @@
             selectedUserName = peerName;
             document.getElementById('chatHeaderTitle').innerText = peerName;
             
-            // جلب حالة الاتصال اللحظية للزميل
             const targetStatusRef = ref(db, 'status/' + peerCode);
             onValue(targetStatusRef, (snap) => {
                 const st = snap.val();
@@ -1046,7 +1071,7 @@
             document.getElementById('msgInput').value = '';
         };
 
-        window.handleFileUpload = function(event) {
+        window.handleFileUpload = function(event, fileTypeOverride) {
             if (!selectedUserCode) { 
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); 
                 event.target.value = '';
@@ -1067,7 +1092,7 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 const base64Data = e.target.result;
-                let fileType = 'file';
+                let fileType = fileTypeOverride || 'file';
                 if (file.type.startsWith('image/')) {
                     fileType = 'image';
                 }
