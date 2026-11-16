@@ -1109,7 +1109,8 @@
 
             currentSubmitEmpName = userData.name;
             currentSubmitEmpNationalId = userData.nationalId;
-            currentSubmitEmpDept = userData.department || userData.dept || "إدارة الشئون الإدارية";
+            // تصحيح 1: جلب إدارة الموظف الحقيقية من قاعدة البيانات بدلاً من القيمة الثابتة
+            currentSubmitEmpDept = userData.department || userData.dept || userData.administration || "إدارة الشئون الإدارية";
             currentSubmitEmpData = userData;
             
             let cat = String(userData.jobCategory || "التخصصية").trim();
@@ -1379,7 +1380,7 @@
                         matches.push({ 
                             name: data.name, 
                             nationalId: data.nationalId,
-                            dept: data.department || data.dept || "إدارة الشئون الإدارية"
+                            dept: data.department || data.dept || data.administration || "إدارة الشئون الإدارية"
                         });
                     }
                 }
@@ -1432,7 +1433,7 @@
         db.collection("users").where("nationalId", "==", otherNid).get().then((q) => {
             if (q.empty) { showCustomAlert("خطأ", "الموظف المبلغ عنه غير مسجل."); btn.disabled = false; return; }
             let otherData = q.docs[0].data();
-            let autoDept = otherData.department || otherData.dept || "إدارة الشئون الإدارية";
+            let autoDept = otherData.department || otherData.dept || otherData.administration || "إدارة الشئون الإدارية";
             
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
             let leaveData = {
@@ -1621,11 +1622,13 @@
             let prevBal = parseFloat(userData.prevBal) || 0;
             let computedRemaining = annual + casual + prevBal;
             
+            let userDeptDisplay = userData.department || userData.dept || userData.administration || "إدارة الشئون الإدارية";
+
             document.getElementById("inquiryDataContainer").innerHTML = `
                 <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name}</div>
                 <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${userData.nationalId}</div>
                 <div class="inquiry-data-item"><strong>الفئة:</strong> ${userData.jobCategory || '-'}</div>
-                <div class="inquiry-data-item"><strong>الإدارة:</strong> ${userData.department || userData.dept || 'إدارة الشئون الإدارية'}</div>
+                <div class="inquiry-data-item"><strong>الإدارة:</strong> ${userDeptDisplay}</div>
                 <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${annual}</span></div>
                 <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${casual}</span></div>
                 <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${userData.sick || 0}</span></div>
@@ -1888,7 +1891,6 @@
                     }
                 } 
                 else if (role === "hr_manager") {
-                    // إصلاح 3: مدير عام الموارد البشرية يرى الطلبات التي وافق عليها المدير العام التابع أو طلبات العودة الواردة له
                     let mStat = data.managerStatus || "";
                     let specStat = data.specialistStatus || "";
                     let hrmStat = data.hrManagerStatus || "";
@@ -2086,7 +2088,6 @@
             }
         } 
         else if (loggedInRole === 'hr_manager') {
-            // إصلاح 3 و 6: ظهور زر الاعتماد لمدير عام الموارد البشرية سواء للإجازات العادية أو طلبات العودة من الانقطاع
             if ((mStat === "موافق من المدير العام" || sStat === "تمت المراجعة والتحويل") && hrmStat === "قيد الاعتماد النهائي") {
                 html += `
                     <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد نهائياً', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
@@ -2144,7 +2145,6 @@
         document.getElementById("specialistActionModal").classList.remove("hidden");
     }
 
-    // إصلاح 4 و 5: خصم الأيام بدقة عند الأرشفة النهائية وتحديث حالة ورصيد الموظف ومعالجة العودة من الانقطاع
     function archiveLeaveRequest(docId) {
         db.collection("leaves").doc(docId).get().then(doc => {
             if (doc.exists) {
@@ -2266,7 +2266,7 @@
             let deptToPrint = item.dept;
             if (!qs.empty) {
                 let u = qs.docs[0].data();
-                deptToPrint = u.department || u.dept || item.dept || "إدارة الشئون الإدارية";
+                deptToPrint = u.department || u.dept || u.administration || item.dept || "إدارة الشئون الإدارية";
             }
             item.dept = deptToPrint;
             performPrint(item);
@@ -2292,7 +2292,7 @@
             absenceHtml = `<p style="color:#dc3545; font-weight:bold; margin: 10px 0;">تفاصيل بلاغ الانقطاع: ${item.absenceReason}</p>`;
         }
 
-        // إصلاح 2: ضبط صيغة طلب الإجازة لتكون بصيغة "بمنحي" بدلاً من "منح المذكور" عندما يكون الموظف هو من يطلب إجازته بنفسه
+        // تصحيح 2 و 3: جعل الصيغة للموظف بصيغة المتكلم ("بمنحي" و "أرجو الموافقة على منحي") وليست "منح المذكور"، وربط الإدارة برأسية الطباعة الصحيحة
         let requestVerb = "بالموافقة";
         let requestPhrase = `على منح المذكور (<strong>${item.leaveType}</strong>)`;
         if (!isAbsence && item.leaveType.includes("إجازة")) {
@@ -2667,7 +2667,7 @@
         document.getElementById("editingEmpDocId").value = emp.docId;
         document.getElementById("newEmpName").value = emp.name || "";
         document.getElementById("newEmpNationalId").value = emp.nationalId || "";
-        document.getElementById("newEmpDept").value = emp.department || emp.dept || "";
+        document.getElementById("newEmpDept").value = emp.department || emp.dept || emp.administration || "";
         document.getElementById("newEmpHireDate").value = emp.hireDate || "";
         document.getElementById("newEmpRetireDate").value = emp.retireDate || "";
         document.getElementById("newEmpAnnual").value = emp.annual || 0;
@@ -2825,7 +2825,7 @@
                     <td>${idx + 1}</td>
                     <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                     <td>${emp.nationalId}</td>
-                    <td>${emp.department || emp.dept || 'الإدارة'}</td>
+                    <td>${emp.department || emp.dept || emp.administration || 'الإدارة'}</td>
                     <td>${isActive ? '<span style="color:green;">نشط</span>' : '<span style="color:red;">منقطع</span>'}</td>
                     <td>${annual}</td><td>${casual}</td><td>${emp.sick || 0}</td><td>${emp.sick259 || 'لا'}</td>
                     <td>${prevBal}</td><td style="font-weight:bold; background:#f0fdf4;">${remaining}</td>
@@ -2910,7 +2910,7 @@
             requestId: randomId,
             empName: empName,
             nationalId: nid,
-            dept: "إدارة الشئون الإدارية",
+            dept: currentSubmitEmpDept || "إدارة الشئون الإدارية",
             jobCategory: "غير محدد",
             targetManager: "مدير عام الموارد البشرية",
             titlePrefix: "السيد الاستاذ /",
