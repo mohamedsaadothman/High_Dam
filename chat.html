@@ -51,6 +51,7 @@
         .wa-chat-avatar { width: 48px; height: 48px; border-radius: 50%; background: #0d9488; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; overflow: hidden; border: 2px solid #5eead4; }
         .wa-chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
         
+        /* مؤشر الاتصال الأخضر الحقيقي */
         .online-dot { position: absolute; bottom: 2px; right: 2px; width: 12px; height: 12px; background-color: #22c55e; border: 2px solid #ffffff; border-radius: 50%; display: none; }
         .online-dot.active { display: block; }
 
@@ -281,7 +282,7 @@
                         </div>
                         <div>
                             <span class="peer-name" id="chatHeaderTitle">اختر محادثة</span>
-                            <span class="peer-status-text" id="chatHeaderStatus">متصل الآن</span>
+                            <span class="peer-status-text" id="chatHeaderStatus">غير متصل</span>
                         </div>
                     </div>
                 </div>
@@ -309,7 +310,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getDatabase, ref, push, serverTimestamp, onValue, update, set, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, push, serverTimestamp, onValue, update, set, off, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCGxjWSdyrPUpPKbXieSapBx--kUvRjwLY",
@@ -345,11 +346,30 @@
         let audioChunks = [];
         let isRecording = false;
         
-        // ✅ تم تحديث الرابط الجديد للسيرفر هنا
         const scriptUrl = "https://script.google.com/macros/s/AKfycbwDnKmwl_J3VHSERYuzHwIZRmQhRTh4c48C8da7cVRyIuq9GV-cP3hkyKIUnvZrB6BeJw/exec";
-
-        // ✅ ملف صوت التنبيه الرسمي للرسائل الجديدة (مثل الواتساب)
         const incomingMsgSound = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
+
+        function setupPresence() {
+            if (!currentUserCode) return;
+            const userStatusRef = ref(db, 'status/' + currentUserCode);
+            const connectedRef = ref(db, '.info/connected');
+
+            onValue(connectedRef, (snap) => {
+                if (snap.val() === true) {
+                    // عند انقطاع الاتصال فجأة، اجعله "غير متصل"
+                    onDisconnect(userStatusRef).set({
+                        state: "offline",
+                        lastChanged: serverTimestamp()
+                    });
+
+                    // حدّث حالته إلى "متصل" الآن
+                    set(userStatusRef, {
+                        state: "online",
+                        lastChanged: serverTimestamp()
+                    });
+                }
+            });
+        }
 
         function normalizeText(text) {
             if (!text) return "";
@@ -430,7 +450,6 @@
             reader.readAsDataURL(file);
         }
 
-        // ✅ دالة حفظ وتحديث كلمة المرور مباشرة في شيت جوجل عبر الرابط الجديد
         window.saveProfileSettings = async function() {
             const newPass = document.getElementById('newPasswordInput').value.trim();
             if (!newPass) {
@@ -630,6 +649,8 @@
                     currentUserName = result.empName; 
                     currentUserCode = codeInput;      
                     
+                    setupPresence(); // ✅ تفعيل حالة الاتصال الفوري
+
                     OneSignalDeferred.push(async function(OneSignal) { await OneSignal.login(currentUserCode); });
 
                     document.getElementById('myProfileName').innerText = currentUserName;
@@ -662,84 +683,101 @@
 
         function loadConversationsSidebar() {
             const chatsRef = ref(db, 'chats');
-            onValue(chatsRef, (snapshot) => {
-                const allChats = snapshot.val();
-                const convListDiv = document.getElementById('conversationsList');
-                convListDiv.innerHTML = '';
+            const statusRef = ref(db, 'status');
 
-                if (!allChats) {
-                    convListDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b; font-size: 13px;">لا توجد محادثات نشطة.</div>`;
-                    return;
-                }
+            onValue(chatsRef, (chatSnapshot) => {
+                onValue(statusRef, (statusSnapshot) => {
+                    const allChats = chatSnapshot.val();
+                    const allStatuses = statusSnapshot.val() || {};
+                    const convListDiv = document.getElementById('conversationsList');
+                    convListDiv.innerHTML = '';
 
-                let activePeers = [];
-
-                Object.keys(allChats).forEach(roomId => {
-                    if (roomId.includes(currentUserCode)) {
-                        let parts = roomId.split('_');
-                        let peerCode = parts[0] === currentUserCode ? parts[1] : parts[0];
-                        
-                        let messagesObj = allChats[roomId];
-                        let messagesArr = Object.values(messagesObj);
-                        
-                        messagesArr = messagesArr.filter(m => !(m.deletedFor && m.deletedFor.includes(currentUserCode)));
-                        messagesArr.sort((a, b) => b.timestamp - a.timestamp);
-                        
-                        let lastMsg = messagesArr.length > 0 ? messagesArr[0] : null;
-                        if (!lastMsg) return;
-
-                        let peerObj = allUsersList.find(u => u.username === peerCode);
-                        let peerName = peerObj ? peerObj.empName : peerCode;
-
-                        let displayLastText = lastMsg.text;
-                        if (lastMsg.type === 'image') displayLastText = '📷 صورة';
-                        else if (lastMsg.type === 'file') displayLastText = '📁 ' + (lastMsg.fileName || 'ملف');
-                        else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
-
-                        let peerAvatar = localStorage.getItem('avatar_' + peerCode);
-                        let isOnline = lastMsg.timestamp && (Date.now() - lastMsg.timestamp < 15 * 60 * 1000);
-
-                        activePeers.push({
-                            roomId: roomId,
-                            peerCode: peerCode,
-                            peerName: peerName,
-                            peerAvatar: peerAvatar,
-                            lastText: displayLastText,
-                            timestamp: lastMsg.timestamp || 0,
-                            isOnline: isOnline
-                        });
+                    if (!allChats) {
+                        convListDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b; font-size: 13px;">لا توجد محادثات نشطة.</div>`;
+                        return;
                     }
-                });
 
-                activePeers.sort((a, b) => b.timestamp - a.timestamp);
+                    let activePeers = [];
 
-                if (activePeers.length === 0) {
-                    convListDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b; font-size: 13px;">لا توجد محادثات نشطة.</div>`;
-                    return;
-                }
+                    Object.keys(allChats).forEach(roomId => {
+                        if (roomId.includes(currentUserCode)) {
+                            let parts = roomId.split('_');
+                            let peerCode = parts[0] === currentUserCode ? parts[1] : parts[0];
+                            
+                            let messagesObj = allChats[roomId];
+                            let messagesArr = Object.values(messagesObj);
+                            
+                            messagesArr = messagesArr.filter(m => !(m.deletedFor && m.deletedFor.includes(currentUserCode)));
+                            messagesArr.sort((a, b) => b.timestamp - a.timestamp);
+                            
+                            let lastMsg = messagesArr.length > 0 ? messagesArr[0] : null;
+                            if (!lastMsg) return;
 
-                activePeers.forEach(peer => {
-                    let firstLetter = peer.peerName ? peer.peerName.charAt(0) : "U";
-                    const item = document.createElement('div');
-                    item.className = `wa-chat-item ${selectedUserCode === peer.peerCode ? 'active' : ''}`;
-                    
-                    let avatarHTML = peer.peerAvatar ? `<img src="${peer.peerAvatar}">` : firstLetter;
-                    let onlineClass = peer.isOnline ? 'active' : '';
+                            let peerObj = allUsersList.find(u => u.username === peerCode);
+                            let peerName = peerObj ? peerObj.empName : peerCode;
 
-                    item.innerHTML = `
-                        <div class="wa-chat-avatar-wrapper">
-                            <div class="wa-chat-avatar">${avatarHTML}</div>
-                            <div class="online-dot ${onlineClass}"></div>
-                        </div>
-                        <div class="wa-chat-info" onclick="selectPeer('${peer.peerCode}', '${peer.peerName}', ${peer.isOnline})">
-                            <div class="top-row">
-                                <span class="name">${peer.peerName}</span>
+                            let displayLastText = lastMsg.text;
+                            if (lastMsg.type === 'image') displayLastText = '📷 صورة';
+                            else if (lastMsg.type === 'file') displayLastText = '📁 ' + (lastMsg.fileName || 'ملف');
+                            else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
+
+                            let peerAvatar = localStorage.getItem('avatar_' + peerCode);
+                            
+                            // ✅ التحقق الفعلي من قاعدة البيانات هل هو متصل الآن أم لا
+                            let isOnline = allStatuses[peerCode] && allStatuses[peerCode].state === 'online';
+
+                            activePeers.push({
+                                roomId: roomId,
+                                peerCode: peerCode,
+                                peerName: peerName,
+                                peerAvatar: peerAvatar,
+                                lastText: displayLastText,
+                                timestamp: lastMsg.timestamp || 0,
+                                isOnline: isOnline
+                            });
+                        }
+                    });
+
+                    activePeers.sort((a, b) => b.timestamp - a.timestamp);
+
+                    if (activePeers.length === 0) {
+                        convListDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b; font-size: 13px;">لا توجد محادثات نشطة.</div>`;
+                        return;
+                    }
+
+                    activePeers.forEach(peer => {
+                        let firstLetter = peer.peerName ? peer.peerName.charAt(0) : "U";
+                        const item = document.createElement('div');
+                        item.className = `wa-chat-item ${selectedUserCode === peer.peerCode ? 'active' : ''}`;
+                        
+                        let avatarHTML = peer.peerAvatar ? `<img src="${peer.peerAvatar}">` : firstLetter;
+                        let onlineClass = peer.isOnline ? 'active' : '';
+
+                        item.innerHTML = `
+                            <div class="wa-chat-avatar-wrapper">
+                                <div class="wa-chat-avatar">${avatarHTML}</div>
+                                <div class="online-dot ${onlineClass}"></div>
                             </div>
-                            <div class="bottom-row">${peer.lastText}</div>
-                        </div>
-                        <button class="delete-chat-ext" onclick="hideFullConversation('${peer.roomId}', '${peer.peerName}')" title="حذف المحادثة من عندي فقط"><i class="fa-solid fa-trash"></i></button>
-                    `;
-                    convListDiv.appendChild(item);
+                            <div class="wa-chat-info" onclick="selectPeer('${peer.peerCode}', '${peer.peerName}')">
+                                <div class="top-row">
+                                    <span class="name">${peer.peerName}</span>
+                                </div>
+                                <div class="bottom-row">${peer.lastText}</div>
+                            </div>
+                            <button class="delete-chat-ext" onclick="hideFullConversation('${peer.roomId}', '${peer.peerName}')" title="حذف المحادثة من عندي فقط"><i class="fa-solid fa-trash"></i></button>
+                        `;
+                        convListDiv.appendChild(item);
+                    });
+
+                    // تحديث حالة الزميل المفتوح حالياً في الهيدر إن وجد
+                    if (selectedUserCode) {
+                        let currentPeerStatus = allStatuses[selectedUserCode];
+                        let isCurrentlyOnline = currentPeerStatus && currentPeerStatus.state === 'online';
+                        document.getElementById('chatHeaderStatus').innerText = isCurrentlyOnline ? "متصل الآن" : "غير متصل";
+                        const dot = document.getElementById('headerOnlineDot');
+                        if (isCurrentlyOnline) dot.classList.add('active');
+                        else dot.classList.remove('active');
+                    }
                 });
             });
         }
@@ -768,7 +806,7 @@
                                 if (selectedUserCode === roomId.split('_').find(c => c !== currentUserCode)) {
                                     selectedUserCode = "";
                                     document.getElementById('chatHeaderTitle').innerText = "اختر محادثة";
-                                    document.getElementById('chatHeaderStatus').innerText = "";
+                                    document.getElementById('chatHeaderStatus').innerText = "غير متصل";
                                     document.getElementById('headerOnlineDot').classList.remove('active');
                                     document.getElementById('headerAvatarIcon').innerText = "💬";
                                     messagesDiv.innerHTML = `<div style="margin: auto; color: #64748b; text-align: center; background: #ffffff; padding: 15px 25px; border-radius: 12px; font-size: 13px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">اختر زميلاً من القائمة الجانبية أو ابحث عنه للمراسلة الفورية.</div>`;
@@ -780,15 +818,21 @@
             );
         }
 
-        window.selectPeer = function(peerCode, peerName, isOnline = true) {
+        window.selectPeer = function(peerCode, peerName) {
             selectedUserCode = peerCode;
             selectedUserName = peerName;
             document.getElementById('chatHeaderTitle').innerText = peerName;
-            document.getElementById('chatHeaderStatus').innerText = isOnline ? "متصل الآن" : "غير متصل";
             
-            const dot = document.getElementById('headerOnlineDot');
-            if(isOnline) dot.classList.add('active');
-            else dot.classList.remove('active');
+            // جلب حالة الاتصال اللحظية للزميل
+            const targetStatusRef = ref(db, 'status/' + peerCode);
+            onValue(targetStatusRef, (snap) => {
+                const st = snap.val();
+                let isOnline = st && st.state === 'online';
+                document.getElementById('chatHeaderStatus').innerText = isOnline ? "متصل الآن" : "غير متصل";
+                const dot = document.getElementById('headerOnlineDot');
+                if (isOnline) dot.classList.add('active');
+                else dot.classList.remove('active');
+            }, { onlyOnce: true });
             
             let peerAvatar = localStorage.getItem('avatar_' + peerCode);
             const headerIcon = document.getElementById('headerAvatarIcon');
@@ -827,7 +871,6 @@
                     let sorted = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
                     let lastDateStr = "";
 
-                    // ✅ تشغيل صوت الواتساب إذا استقبلت رسالة جديدة من الطرف الآخر والشات مفتوح
                     if (!isFirstLoad) {
                         let latestMsg = sorted[sorted.length - 1];
                         if (latestMsg && latestMsg.userId !== myId) {
