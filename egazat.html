@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -253,12 +254,9 @@
                     </div>
                 </div>
 
-                <div class="input-group">
+                <div class="input-group hidden">
                     <label>الإدارة التابع لها الموظف:</label>
-                    <div style="position: relative;">
-                        <input type="text" id="newEmpDept" required placeholder="مثال: إدارة الشئون الإدارية" style="padding-left: 35px;">
-                        <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpDept')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
-                    </div>
+                    <input type="text" id="newEmpDept" value="إدارة الشئون الإدارية">
                 </div>
 
                 <div class="input-group" id="passwordGroup">
@@ -452,7 +450,7 @@
 
             <div id="leaveTypeSelectionSection" class="hidden">
                 <div style="background: #e0f2fe; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #7dd3fc;">
-                    <p style="color: #0369a1; font-weight: bold; margin: 0;">مرحباً، <span id="verifiedEmpNameDisplay"></span> 👋 (الإدارة: <span id="verifiedEmpDeptDisplay"></span>)</p>
+                    <p style="color: #0369a1; font-weight: bold; margin: 0;">مرحباً، <span id="verifiedEmpNameDisplay"></span> 👋</p>
                 </div>
 
                 <h3 style="color: #1e293b; font-size: 16px; margin-bottom: 15px; text-align: center;">اختر نوع الخدمة المطلوبة</h3>
@@ -773,7 +771,7 @@
                     <thead>
                         <tr>
                             <th style="width: 5%;">م</th>
-                            <th style="width: 25%;">اسم الموظف</th>
+                            <th style="width: 30%;">اسم الموظف</th>
                             <th style="width: 15%;">الرقم القومي</th>
                             <th style="width: 10%;">إجازة عارضة</th>
                             <th style="width: 10%;">إجازة اعتيادية</th>
@@ -925,7 +923,6 @@
 
     var currentSubmitEmpName = "";
     var currentSubmitEmpNationalId = "";
-    var currentSubmitEmpDept = "";
     var currentSubmitEmpCategory = "";
     var currentSubmitEmpData = null;
 
@@ -1109,8 +1106,6 @@
 
             currentSubmitEmpName = userData.name;
             currentSubmitEmpNationalId = userData.nationalId;
-            // تصحيح 1: جلب إدارة الموظف الحقيقية من قاعدة البيانات بدلاً من القيمة الثابتة
-            currentSubmitEmpDept = userData.department || userData.dept || userData.administration || "إدارة الشئون الإدارية";
             currentSubmitEmpData = userData;
             
             let cat = String(userData.jobCategory || "التخصصية").trim();
@@ -1121,7 +1116,6 @@
             currentSubmitEmpCategory = cat;
             
             document.getElementById("verifiedEmpNameDisplay").innerText = userData.name;
-            document.getElementById("verifiedEmpDeptDisplay").innerText = currentSubmitEmpDept;
             
             document.getElementById("authSection").classList.add("hidden");
             document.getElementById("leaveTypeSelectionSection").classList.remove("hidden");
@@ -1290,7 +1284,7 @@
                 requestId: randomId,
                 empName: currentSubmitEmpName,
                 nationalId: currentSubmitEmpNationalId,
-                dept: currentSubmitEmpDept,
+                dept: "الهيئة العامة للسد العالي وخزان أسوان",
                 jobCategory: currentSubmitEmpCategory, 
                 targetManager: targetManager, 
                 titlePrefix: titlePrefix,
@@ -1379,8 +1373,7 @@
                     if (data.name && data.name.toLowerCase().includes(query)) {
                         matches.push({ 
                             name: data.name, 
-                            nationalId: data.nationalId,
-                            dept: data.department || data.dept || data.administration || "إدارة الشئون الإدارية"
+                            nationalId: data.nationalId
                         });
                     }
                 }
@@ -1433,14 +1426,13 @@
         db.collection("users").where("nationalId", "==", otherNid).get().then((q) => {
             if (q.empty) { showCustomAlert("خطأ", "الموظف المبلغ عنه غير مسجل."); btn.disabled = false; return; }
             let otherData = q.docs[0].data();
-            let autoDept = otherData.department || otherData.dept || otherData.administration || "إدارة الشئون الإدارية";
             
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
             let leaveData = {
                 requestId: randomId,
                 empName: otherData.name,
                 nationalId: otherNid,
-                dept: autoDept,
+                dept: "الهيئة العامة للسد العالي وخزان أسوان",
                 jobCategory: otherData.jobCategory || "غير محدد", 
                 targetManager: absManagerDept, 
                 titlePrefix: absManagerTitle,  
@@ -1509,7 +1501,7 @@
             requestId: randomId,
             empName: currentSubmitEmpName,
             nationalId: currentSubmitEmpNationalId,
-            dept: currentSubmitEmpDept,
+            dept: "الهيئة العامة للسد العالي وخزان أسوان",
             jobCategory: currentSubmitEmpCategory, 
             targetManager: targetManager, 
             titlePrefix: titlePrefix,
@@ -1621,14 +1613,11 @@
             let casual = parseFloat(userData.casual) || 0;
             let prevBal = parseFloat(userData.prevBal) || 0;
             let computedRemaining = annual + casual + prevBal;
-            
-            let userDeptDisplay = userData.department || userData.dept || userData.administration || "إدارة الشئون الإدارية";
 
             document.getElementById("inquiryDataContainer").innerHTML = `
                 <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name}</div>
                 <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${userData.nationalId}</div>
                 <div class="inquiry-data-item"><strong>الفئة:</strong> ${userData.jobCategory || '-'}</div>
-                <div class="inquiry-data-item"><strong>الإدارة:</strong> ${userDeptDisplay}</div>
                 <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${annual}</span></div>
                 <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${casual}</span></div>
                 <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${userData.sick || 0}</span></div>
@@ -2037,7 +2026,7 @@
                     <input type="checkbox" class="print-chk" onchange="toggleLeaveSelection('${item.requestId}')" ${isChecked}>
                     الموظف: ${item.empName} (${item.requestId})
                 </h4>
-                <p style="position:relative; z-index:1;"><strong>الإدارة:</strong> ${item.dept} | <strong>الفئة:</strong> ${item.jobCategory}</p>
+                <p style="position:relative; z-index:1;"><strong>الفئة:</strong> ${item.jobCategory}</p>
                 <p style="position:relative; z-index:1;"><strong>نوع الطلب:</strong> ${item.leaveType} ${dualText} ${item.daysCount > 0 ? '('+item.daysCount+' أيام)' : ''}</p>
                 <p style="position:relative; z-index:1;"><strong>الفترة:</strong> من ${formatDateToAr(item.startDate)} ${item.endDate ? 'إلى ' + formatDateToAr(item.endDate) : ''}</p>
                 <p style="position:relative; z-index:1;"><strong>السبب / الشرح:</strong> ${item.reason}</p>
@@ -2262,17 +2251,7 @@
     }
 
     function openPrintWindow(item) {
-        db.collection("users").where("nationalId", "==", item.nationalId).get().then((qs) => {
-            let deptToPrint = item.dept;
-            if (!qs.empty) {
-                let u = qs.docs[0].data();
-                deptToPrint = u.department || u.dept || u.administration || item.dept || "إدارة الشئون الإدارية";
-            }
-            item.dept = deptToPrint;
-            performPrint(item);
-        }).catch(() => {
-            performPrint(item);
-        });
+        performPrint(item);
     }
 
     function performPrint(item) {
@@ -2292,7 +2271,6 @@
             absenceHtml = `<p style="color:#dc3545; font-weight:bold; margin: 10px 0;">تفاصيل بلاغ الانقطاع: ${item.absenceReason}</p>`;
         }
 
-        // تصحيح 2 و 3: جعل الصيغة للموظف بصيغة المتكلم ("بمنحي" و "أرجو الموافقة على منحي") وليست "منح المذكور"، وربط الإدارة برأسية الطباعة الصحيحة
         let requestVerb = "بالموافقة";
         let requestPhrase = `على منح المذكور (<strong>${item.leaveType}</strong>)`;
         if (!isAbsence && item.leaveType.includes("إجازة")) {
@@ -2333,7 +2311,7 @@
                 ${watermark}
                 <div class="page-container">
                     <div class="header">
-                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span>${item.dept || 'إدارة الشئون الإدارية'}</span></div>
+                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong></div>
                         <div style="text-align: left;">
                             <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
                             <span style="font-size: 13px; color: #333;">تاريخ التحرير: <strong>${reqDate}</strong></span>
@@ -2610,7 +2588,7 @@
             let empData = {
                 name: document.getElementById("newEmpName").value.trim(),
                 nationalId: nationalIdVal,
-                department: document.getElementById("newEmpDept").value.trim(),
+                department: "",
                 password: document.getElementById("newEmpPassword").value,
                 hireDate: document.getElementById("newEmpHireDate").value,
                 retireDate: document.getElementById("newEmpRetireDate").value,
@@ -2667,7 +2645,7 @@
         document.getElementById("editingEmpDocId").value = emp.docId;
         document.getElementById("newEmpName").value = emp.name || "";
         document.getElementById("newEmpNationalId").value = emp.nationalId || "";
-        document.getElementById("newEmpDept").value = emp.department || emp.dept || emp.administration || "";
+        document.getElementById("newEmpDept").value = "";
         document.getElementById("newEmpHireDate").value = emp.hireDate || "";
         document.getElementById("newEmpRetireDate").value = emp.retireDate || "";
         document.getElementById("newEmpAnnual").value = emp.annual || 0;
@@ -2685,7 +2663,7 @@
         document.getElementById("saveEmployeeBtn").classList.add("hidden");
         document.getElementById("editActions").classList.remove("hidden");
         document.querySelectorAll('.edit-icon').forEach(icon => icon.classList.remove("hidden"));
-        ['newEmpName', 'newEmpNationalId', 'newEmpDept', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
+        ['newEmpName', 'newEmpNationalId', 'newEmpHireDate', 'newEmpRetireDate', 'newEmpAnnual', 'newEmpCasual', 'newEmpSick', 'newEmpSick259', 'newEmpPrevBal'].forEach(id => {
             let el = document.getElementById(id);
             if (el) el.disabled = true;
         });
@@ -2704,7 +2682,7 @@
         let updatedData = {
             name: document.getElementById("newEmpName").value.trim(),
             nationalId: document.getElementById("newEmpNationalId").value.trim(),
-            department: document.getElementById("newEmpDept").value.trim(),
+            department: "",
             hireDate: document.getElementById("newEmpHireDate").value,
             retireDate: document.getElementById("newEmpRetireDate").value,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
@@ -2809,7 +2787,7 @@
                 </div>
                 <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
                 <table class="summary-report-table"><thead><tr>
-                    <th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الإدارة</th><th>الحالة</th>
+                    <th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الحالة</th>
                     <th>الاعتيادي</th><th>العارضة</th><th>المرضية</th><th>مرضية 259</th>
                     <th>سنوات سابقة</th><th>المتبقي</th>
                 </tr></thead><tbody>`;
@@ -2825,7 +2803,6 @@
                     <td>${idx + 1}</td>
                     <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                     <td>${emp.nationalId}</td>
-                    <td>${emp.department || emp.dept || emp.administration || 'الإدارة'}</td>
                     <td>${isActive ? '<span style="color:green;">نشط</span>' : '<span style="color:red;">منقطع</span>'}</td>
                     <td>${annual}</td><td>${casual}</td><td>${emp.sick || 0}</td><td>${emp.sick259 || 'لا'}</td>
                     <td>${prevBal}</td><td style="font-weight:bold; background:#f0fdf4;">${remaining}</td>
@@ -2910,7 +2887,7 @@
             requestId: randomId,
             empName: empName,
             nationalId: nid,
-            dept: currentSubmitEmpDept || "إدارة الشئون الإدارية",
+            dept: "الهيئة العامة للسد العالي وخزان أسوان",
             jobCategory: "غير محدد",
             targetManager: "مدير عام الموارد البشرية",
             titlePrefix: "السيد الاستاذ /",
@@ -2938,3 +2915,4 @@
 </script>
 </body>
 </html>
+
