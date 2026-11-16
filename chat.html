@@ -289,7 +289,6 @@
 
                 <div class="wa-messages-container" id="messagesDiv">
                     <div style="margin: auto; color: #64748b; text-align: center; background: #ffffff; padding: 25px; border-radius: 12px; font-size: 13px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 320px;">
-                        <!-- ✅ تم استبدال لوجو الواتساب بلوجو البرنامج من المستودع (logo.png) -->
                         <img src="logo.png" alt="Logo" style="width: 50px; height: 50px; object-fit: contain; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;" onerror="this.style.display='none'">
                         اختر زميلاً من القائمة الجانبية أو ابحث عنه للمراسلة الفورية.
                     </div>
@@ -441,7 +440,6 @@
 
         window.openSettingsModal = function() {
             document.getElementById('newPasswordInput').value = '';
-            // ✅ جلب الصورة الشخصية من فايربيز مباشرة لتكون متزامنة بين الموبايل واللاب توب
             const profileRef = ref(db, 'users_profile/' + currentUserCode);
             onValue(profileRef, (snap) => {
                 const data = snap.val();
@@ -471,7 +469,6 @@
             const reader = new FileReader();
             reader.onload = async function(e) {
                 const base64Img = e.target.result;
-                // ✅ حفظ الصورة في قاعدة بيانات فايربيز لتظهر على كل الأجهزة
                 const profileRef = ref(db, 'users_profile/' + currentUserCode);
                 await set(profileRef, { avatar: base64Img, name: currentUserName });
                 
@@ -696,11 +693,18 @@
                     
                     setupPresence();
 
-                    OneSignalDeferred.push(async function(OneSignal) { await OneSignal.login(currentUserCode); });
+                    // ✅ ربط تلقائي بالكامل للإشعارات في الخلفية لضمان عملها على كل الأجهزة
+                    OneSignalDeferred.push(async function(OneSignal) {
+                        try {
+                            await OneSignal.Notifications.requestPermission();
+                            await OneSignal.login(currentUserCode);
+                        } catch (err) {
+                            console.log("الإشعارات:", err);
+                        }
+                    });
 
                     document.getElementById('myProfileName').innerText = currentUserName;
                     
-                    // جلب وتحديث الصورة الشخصية الخاصة بي من السيرفر عند تسجيل الدخول
                     const profileRef = ref(db, 'users_profile/' + currentUserCode);
                     onValue(profileRef, (snap) => {
                         const data = snap.val();
