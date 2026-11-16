@@ -1142,7 +1142,6 @@
                 let hrStat = d.hrStatus || "قيد الانتظار";
                 let isRejected = (d.specialistStatus?.includes("مرفوض") || d.managerStatus?.includes("مرفوض") || d.hrManagerStatus?.includes("مرفوض") || d.hrStatus?.includes("مرفوض"));
                 
-                // إذا لم يتم رفض الطلب ولم يعتمد نهائياً أو لم يوافق عليه المدير العام بعد (يعني الطلب لسه ماشي في الدورة ولم يوافق المدير العام عليه)
                 if (!isRejected && hrStat !== "أرشفة نهائية" && hrmStat !== "معتمد نهائياً" && mStat !== "موافق من المدير العام") {
                     hasActivePending = true;
                 }
@@ -1324,7 +1323,7 @@
                     daysPrev: dPrev,
                     specialistStatus: "قيد الانتظار",
                     managerStatus: "قيد الانتظار",
-                    hrManagerStatus: "قيد الانتظار",
+                    hrManagerStatus: "قيد الاعتماد النهائي", // تم التعديل لتظهر فوراً لمدير الموارد البشرية عند الاعتماد لاحقاً
                     hrSpecialistStatus: "قيد الانتظار",
                     hrStatus: "قيد الانتظار",
                     rejectionReason: "",
@@ -1476,7 +1475,7 @@
                 daysPrev: 0,
                 specialistStatus: "قيد الانتظار",
                 managerStatus: "قيد الانتظار",
-                hrManagerStatus: "قيد الانتظار",
+                hrManagerStatus: "قيد الاعتماد النهائي",
                 hrSpecialistStatus: "قيد الانتظار",
                 hrStatus: "قيد الانتظار",
                 rejectionReason: "",
@@ -1546,7 +1545,7 @@
             daysPrev: 0,
             specialistStatus: "قيد الانتظار",
             managerStatus: "قيد الانتظار",
-            hrManagerStatus: "قيد الانتظار",
+            hrManagerStatus: "قيد الاعتماد النهائي",
             hrSpecialistStatus: "قيد الانتظار",
             hrStatus: "قيد الانتظار",
             rejectionReason: "",
@@ -1911,10 +1910,10 @@
                 } 
                 else if (role === "hr_manager") {
                     let mStat = data.managerStatus || "";
-                    let specStat = data.specialistStatus || "";
                     let hrmStat = data.hrManagerStatus || "";
                     
-                    if (mStat === "موافق من المدير العام" || specStat === "تمت المراجعة والتحويل" || hrmStat === "قيد الاعتماد النهائي") {
+                    // التعديل هنا: إظهار الطلب لمدير عام الموارد البشرية بمجرد موافقة المدير العام التابع
+                    if (mStat === "موافق من المدير العام" || hrmStat === "قيد الاعتماد النهائي" || hrmStat === "معتمد من مدير الموارد البشرية") {
                         currentLeavesData.push(data);
                     }
                 }
@@ -2107,7 +2106,7 @@
             }
         } 
         else if (loggedInRole === 'hr_manager') {
-            if ((mStat === "موافق من المدير العام" || sStat === "تمت المراجعة والتحويل") && hrmStat === "قيد الاعتماد النهائي") {
+            if (mStat === "موافق من المدير العام" && hrmStat === "قيد الاعتماد النهائي") {
                 html += `
                     <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد نهائياً', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
                     <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من مدير الموارد البشرية', 'hr_manager')">رفض</button>
@@ -2333,7 +2332,7 @@
             requestPhrase = `بشأن عودة/تغيب الموظف / <strong>${item.empName}</strong>`;
         }
 
-        // ضبط عنوان الطلب بدقة بناءً على النوع (طلب إجازة اعتيادية / طلب إجازة عارضة / إلخ)
+        // ضبط عنوان الطلب بدقة ليظهر بصيغة "طلب إجازة..." رسمياً
         let titleText = "";
         if (item.leaveType.includes("إجازة")) {
             titleText = `طلب ${item.leaveType}`;
@@ -2341,6 +2340,8 @@
             titleText = `طلب إجازة رصيد سنوات سابقة`;
         } else if (item.leaveType === "اعتيادية + رصيد سنوات سابقة") {
             titleText = `طلب إجازة اعتيادية ورصيد سنوات سابقة`;
+        } else if (item.leaveType === "اعتيادية" || item.leaveType === "عارضة" || item.leaveType === "مرضية") {
+            titleText = `طلب إجازة ${item.leaveType}`;
         } else {
             titleText = `طلب ${item.leaveType}`;
         }
@@ -2977,4 +2978,3 @@
 </script>
 </body>
 </html>
-
