@@ -861,7 +861,7 @@
                 </select>
             </div>
             <div class="modal-btn-group" style="margin-top: 15px;">
-                <button class="custom-modal-btn" style="background: #198754;" onclick="submitReturnFromAbsence()">إرسال لمدير الموارد البشرية</button>
+                <button class="custom-modal-btn" style="background: #198754;" onclick="submitReturnFromAbsence()">إرسال للمختص ثم المدير العام</button>
                 <button class="custom-modal-btn" style="background: #64748b;" onclick="document.getElementById('returnFromAbsenceModal').classList.add('hidden')">إلغاء</button>
             </div>
         </div>
@@ -1131,24 +1131,25 @@
         document.getElementById("leaveResultContainer").classList.add("hidden");
     }
 
-    // شرط عدم تقديم طلب جديد إلا بعد موافقة المدير العام على الطلب السابق
+    // شرط عدم تقديم طلب جديد إلا بعد انتهاء الطلب السابق وأرشفته نهائياً
     function checkActivePendingRequest(callback) {
         db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((snapshot) => {
             let hasActivePending = false;
             snapshot.forEach(doc => {
                 let d = doc.data();
+                let sStat = d.specialistStatus || "قيد الانتظار";
                 let mStat = d.managerStatus || "قيد الانتظار";
-                let hrmStat = d.hrManagerStatus || "قيد الانتظار";
                 let hrStat = d.hrStatus || "قيد الانتظار";
-                let isRejected = (d.specialistStatus?.includes("مرفوض") || d.managerStatus?.includes("مرفوض") || d.hrManagerStatus?.includes("مرفوض") || d.hrStatus?.includes("مرفوض"));
+                let isRejected = (sStat.includes("مرفوض") || mStat.includes("مرفوض") || hrStat.includes("مرفوض"));
                 
-                if (!isRejected && hrStat !== "أرشفة نهائية" && hrmStat !== "معتمد نهائياً" && mStat !== "موافق من المدير العام") {
+                // إذا لم يتم رفض الطلب ولم يصل لمرحلة الأرشفة النهائية، يعتبر الطلب نشطاً وقيد الدورة المستندية
+                if (!isRejected && hrStat !== "أرشفة نهائية") {
                     hasActivePending = true;
                 }
             });
 
             if (hasActivePending) {
-                showCustomAlert("تنبيه تنسقي هام", "عذراً، لديك طلب إجازة سابق قيد المراجعة ولم يتم الاعتماد أو الموافقة عليه من المدير العام التابع له بعد. لا يمكنك تقديم طلب جديد حتى يتم الانتهاء من الطلب السابق.");
+                showCustomAlert("تنبيه تنسقي هام", "عذراً، لديك طلب إجازة سابق قيد الدورة المستندية ولم يتم الانتهاء منه نهائياً وأرشفته. لا يمكنك تقديم طلب جديد حتى ينتهي الطلب السابق.");
                 return;
             }
             callback();
@@ -1283,7 +1284,10 @@
                 let hasOverlap = false;
                 snapshot.forEach(doc => {
                     let d = doc.data();
-                    if (d.hrStatus !== "مرفوض" && d.managerStatus !== "مرفوض" && d.specialistStatus !== "مرفوض") {
+                    let sStat = d.specialistStatus || "";
+                    let mStat = d.managerStatus || "";
+                    let hrStat = d.hrStatus || "";
+                    if (!sStat.includes("مرفوض") && !mStat.includes("مرفوض") && !hrStat.includes("مرفوض") && hrStat !== "أرشفة نهائية") {
                         let existingStart = d.startDate;
                         let existingEnd = d.endDate || d.startDate;
                         let newStart = start;
@@ -1304,6 +1308,8 @@
 
                 let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
                 
+                // الدورة المستندية الجديدة المطلوبة تماماً:
+                // 1. الموظف (يقدم الطلب) -> specialistStatus = "قيد الانتظار" (يظهر أولاً للموظف المختص للفئة)
                 let leaveData = {
                     requestId: randomId,
                     empName: currentSubmitEmpName,
@@ -1321,11 +1327,9 @@
                     phone: phone,
                     daysAnnual: dAnnual,
                     daysPrev: dPrev,
-                    specialistStatus: "قيد الانتظار",
-                    managerStatus: "قيد الانتظار",
-                    hrManagerStatus: "قيد الاعتماد النهائي", // تم التعديل لتظهر فوراً لمدير الموارد البشرية عند الاعتماد لاحقاً
-                    hrSpecialistStatus: "قيد الانتظار",
-                    hrStatus: "قيد الانتظار",
+                    specialistStatus: "قيد الانتظار",    // الخطوة 1: الموظف المختص للفئة
+                    managerStatus: "قيد الانتظار",        // الخطوة 2: المدير العام التابع
+                    hrStatus: "قيد الانتظار",            // الخطوة 3: عودة نهائية للمختص للأرشفة والخصم
                     rejectionReason: "",
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                     requestDate: new Date().toISOString().split('T')[0]
@@ -1475,8 +1479,6 @@
                 daysPrev: 0,
                 specialistStatus: "قيد الانتظار",
                 managerStatus: "قيد الانتظار",
-                hrManagerStatus: "قيد الاعتماد النهائي",
-                hrSpecialistStatus: "قيد الانتظار",
                 hrStatus: "قيد الانتظار",
                 rejectionReason: "",
                 reportedBy: currentSubmitEmpName,
@@ -1545,8 +1547,6 @@
             daysPrev: 0,
             specialistStatus: "قيد الانتظار",
             managerStatus: "قيد الانتظار",
-            hrManagerStatus: "قيد الاعتماد النهائي",
-            hrSpecialistStatus: "قيد الانتظار",
             hrStatus: "قيد الانتظار",
             rejectionReason: "",
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1775,7 +1775,6 @@
         db.collection("users").get().then((querySnapshot) => {
             let specialists = new Set();
             let managers = new Set();
-            let hrManagers = new Set();
 
             querySnapshot.forEach(doc => {
                 let data = doc.data();
@@ -1785,9 +1784,6 @@
                 if (role.includes("اجازات") || role.includes("إجازات") || role.includes("مختص")) {
                     specialists.add(role);
                 }
-                if (role.includes("مدير عام الموارد البشرية")) {
-                    hrManagers.add(role);
-                }
                 if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
                     managers.add(cm);
                 }
@@ -1795,21 +1791,9 @@
 
             select.innerHTML = '<option value="">-- اختر الجهة التابع لها --</option>';
             
-            if (hrManagers.size > 0) {
-                let optGroup = document.createElement("optgroup");
-                optGroup.label = "👔 مدير عام الموارد البشرية (بصفة ثابتة)";
-                Array.from(hrManagers).sort().forEach(hrm => {
-                    let opt = document.createElement("option");
-                    opt.value = hrm + "|hr_manager|";
-                    opt.textContent = "   " + hrm;
-                    optGroup.appendChild(opt);
-                });
-                select.appendChild(optGroup);
-            }
-
             if (specialists.size > 0) {
                 let optGroup = document.createElement("optgroup");
-                optGroup.label = "👤 الموظف المختص (حسب الفئة أو الأرشفة)";
+                optGroup.label = "👤 الموظف المختص (للفئة والمرحلة النهائية والأرشفة)";
                 Array.from(specialists).sort().forEach(role => {
                     let opt = document.createElement("option");
                     opt.value = role + "|hr_specialist|" + role.replace("موظف اجازات ", "").replace("مختص ", "").trim();
@@ -1879,9 +1863,6 @@
             if (roleType === "hr_specialist") {
                 document.getElementById("dashboardTitle").innerText = "طلبات الإجازات - المختص (" + (category || targetRole) + ")";
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بالمختص: " + loggedName;
-            } else if (roleType === "hr_manager") {
-                document.getElementById("dashboardTitle").innerText = "طلبات الإجازات - مدير عام الموارد البشرية";
-                document.getElementById("welcomeManagerText").innerText = "أهلاً بالسيد: " + loggedName;
             } else {
                 document.getElementById("dashboardTitle").innerText = "طلبات الإجازات - " + targetRole;
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بالسيد المدير: " + loggedName;
@@ -1904,20 +1885,22 @@
                 if (role === "hr_specialist") {
                     let reqCat = String(data.jobCategory || "").trim();
                     let searchCat = String(category || "").trim();
-                    if (searchCat.includes("أرشفة") || searchCat.includes("عام") || reqCat.includes(searchCat) || reqCat.includes(searchCat.replace("ال", ""))) {
-                        currentLeavesData.push(data);
+                    if (reqCat.includes(searchCat) || reqCat.includes(searchCat.replace("ال", ""))) {
+                        let sStat = data.specialistStatus || "";
+                        let mStat = data.managerStatus || "";
+                        let hrStat = data.hrStatus || "";
+                        
+                        // يظهر للمختص إذا كان الطلب قيد الانتظار عنده (أول مرحلة) أو إذا وافق المدير العام وعاد الطلب للمختص للاعتماد النهائي والأرشفة
+                        if (sStat === "قيد الانتظار" || (mStat === "موافق من المدير العام" && hrStat === "قيد الانتظار")) {
+                            currentLeavesData.push(data);
+                        } else if (hrStat === "أرشفة نهائية" || sStat.includes("مرفوض") || mStat.includes("مرفوض")) {
+                            // إظهار الطلبات المؤرشفة أو المرفوضة للمتابعة
+                            currentLeavesData.push(data);
+                        }
                     }
                 } 
-                else if (role === "hr_manager") {
-                    let mStat = data.managerStatus || "";
-                    let hrmStat = data.hrManagerStatus || "";
-                    
-                    // التعديل هنا: إظهار الطلب لمدير عام الموارد البشرية بمجرد موافقة المدير العام التابع
-                    if (mStat === "موافق من المدير العام" || hrmStat === "قيد الاعتماد النهائي" || hrmStat === "معتمد من مدير الموارد البشرية") {
-                        currentLeavesData.push(data);
-                    }
-                }
                 else {
+                    // للمدير العام التابع
                     if (data.targetManager === deptName) {
                         currentLeavesData.push(data);
                     }
@@ -2036,8 +2019,8 @@
 
         let html = "";
         dataList.forEach((item, index) => {
-            let isRejected = (item.specialistStatus?.includes("مرفوض") || item.managerStatus?.includes("مرفوض") || item.hrManagerStatus?.includes("مرفوض") || item.hrStatus?.includes("مرفوض"));
-            let isArchived = (item.hrStatus === "مؤرشف نهائي" || item.hrStatus === "أرشفة نهائية");
+            let isRejected = (item.specialistStatus?.includes("مرفوض") || item.managerStatus?.includes("مرفوض") || item.hrStatus?.includes("مرفوض"));
+            let isArchived = (item.hrStatus === "أرشفة نهائية");
             
             let cardClass = isRejected ? "rejected-mgr locked" : (isArchived ? "approved-mgr locked" : "");
             let watermarkHtml = isRejected ? `<div class="watermark-rejected mgr">مرفوض</div>` : (isArchived ? `<div class="watermark-rejected approved">معتمد ومؤرشف</div>` : `<div class="watermark-rejected spec">قيد الانتظار</div>`);
@@ -2062,10 +2045,9 @@
                 ${absenceReasonHtml}
                 ${reporterHtml}
                 <hr style="margin: 8px 0; border-color: #cbd5e1;">
-                <p style="position:relative; z-index:1; font-size:12px;"><strong>1. المختص للفئة (${item.jobCategory}):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
+                <p style="position:relative; z-index:1; font-size:12px;"><strong>1. الموظف المختص للفئة:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
                 <p style="position:relative; z-index:1; font-size:12px;"><strong>2. المدير العام التابع (${item.targetManager || 'غير محدد'}):</strong> <span style="color:#198754; font-weight:bold;">${item.managerStatus}</span></p>
-                <p style="position:relative; z-index:1; font-size:12px;"><strong>3. مدير عام الموارد البشرية (ثابت):</strong> <span style="color:#198754; font-weight:bold;">${item.hrManagerStatus || 'قيد الانتظار'}</span></p>
-                <p style="position:relative; z-index:1; font-size:12px;"><strong>4. المختص (أرشفة نهائية):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
+                <p style="position:relative; z-index:1; font-size:12px;"><strong>3. الموظف المختص (الاعتماد النهائي والأرشفة):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 ${item.rejectionReason ? `<p style="color:#dc3545; position:relative; z-index:1; margin-top:5px;"><strong>سبب الرفض:</strong> ${item.rejectionReason}</p>` : ''}
                 
                 <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; position:relative; z-index:1;">
@@ -2081,35 +2063,30 @@
         let html = "";
         let sStat = item.specialistStatus || "قيد الانتظار";
         let mStat = item.managerStatus || "قيد الانتظار";
-        let hrmStat = item.hrManagerStatus || "قيد الانتظار";
         let hrStat = item.hrStatus || "قيد الانتظار";
 
         if (loggedInRole === 'hr_specialist') {
+            // المرحلة الأولى: الموظف المختص يراجع ويحول للمدير العام أو يرفض (فيتأرشف فورا)
             if (sStat === "قيد الانتظار") {
                 html += `
                     <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'مراجعة وموافق من المختص', 'تم التحقق من الرصيد والبيانات')">مراجعة وتحويل للمدير العام</button>
-                    <button class="act-btn btn-danger" onclick="openSpecialistActionModal('${item.docId}', 'مرفوض من المختص', 'مرفوض لعدم استيفاء الشروط')">رفض</button>
+                    <button class="act-btn btn-danger" onclick="openSpecialistRejectModal('${item.docId}', 'مرفوض من المختص')">رفض وأرشفة فورية</button>
                 `;
             }
-            if ((hrmStat === "معتمد من مدير الموارد البشرية" || hrmStat === "معتمد نهائياً") && hrStat === "قيد الانتظار") {
+            // المرحلة الأخيرة: بعد موافقة المدير العام، يعود للمختص للاعتماد النهائي والأرشفة وخصم الرصيد
+            if (mStat === "موافق من المدير العام" && hrStat === "قيد الانتظار") {
                 html += `
-                    <button class="act-btn btn-ex" onclick="archiveLeaveRequest('${item.docId}')">أرشفة نهائية وخصم الرصيد</button>
+                    <button class="act-btn btn-ex" onclick="archiveAndDeductLeave('${item.docId}')">اعتماد نهائي، خصم الرصيد وأرشفة</button>
+                    <button class="act-btn btn-danger" onclick="openSpecialistRejectModal('${item.docId}', 'مرفوض نهائياً من المختص')">رفض نهائي</button>
                 `;
             }
         } 
         else if (loggedInRole === 'manager') {
+            // المرحلة الثانية: المدير العام التابع يوافق أو يرفض (فيتأرشف فوراً عند الرفض)
             if (sStat === "مراجعة وموافق من المختص" && mStat === "قيد الانتظار") {
                 html += `
-                    <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'موافق من المدير العام', 'موافق', 'manager')">موافق</button>
-                    <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من المدير العام', 'manager')">رفض</button>
-                `;
-            }
-        } 
-        else if (loggedInRole === 'hr_manager') {
-            if (mStat === "موافق من المدير العام" && hrmStat === "قيد الاعتماد النهائي") {
-                html += `
-                    <button class="act-btn btn-ex" onclick="processActionFirebase('${item.docId}', 'معتمد نهائياً', 'معتمد نهائياً', 'hr_manager')">اعتماد نهائي وتحويل للأرشفة</button>
-                    <button class="act-btn btn-danger" onclick="promptActionFirebase('${item.docId}', 'مرفوض من مدير الموارد البشرية', 'hr_manager')">رفض</button>
+                    <button class="act-btn btn-ex" onclick="processManagerAction('${item.docId}', 'موافق من المدير العام', 'موافق')">موافقة وتحويل للمختص</button>
+                    <button class="act-btn btn-danger" onclick="promptManagerReject('${item.docId}', 'مرفوض من المدير العام')">رفض وأرشفة فورية</button>
                 `;
             }
         }
@@ -2152,7 +2129,7 @@
                         });
                     } else {
                         db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
-                            showCustomAlert("تم بنجاح", "تم تسجيل الإجراء.");
+                            showCustomAlert("تم بنجاح", "تم تحويل الطلب للمدير العام التابع.");
                             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
                         }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
                     }
@@ -2163,7 +2140,66 @@
         document.getElementById("specialistActionModal").classList.remove("hidden");
     }
 
-    function archiveLeaveRequest(docId) {
+    function openSpecialistRejectModal(docId, statusType) {
+        document.getElementById("rejectionModal").classList.remove("hidden");
+        document.getElementById("rejectReasonInput").value = "";
+        
+        document.getElementById("confirmRejectBtn").onclick = function() {
+            let reason = document.getElementById("rejectReasonInput").value.trim();
+            if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
+
+            document.getElementById("rejectionModal").classList.add("hidden");
+
+            let updateData = {
+                specialistStatus: statusType,
+                hrStatus: "أرشفة نهائية", // يتأرشف فوراً عند الرفض في هذه المرحلة
+                rejectionReason: reason
+            };
+
+            db.collection("leaves").doc(docId).update(updateData).then(() => {
+                showCustomAlert("تم بنجاح", "تم رفض الطلب وأرشفته فوراً.");
+                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        };
+    }
+
+    function processManagerAction(docId, status, defaultReason) {
+        let updateData = {
+            managerStatus: status,
+            rejectionReason: defaultReason
+        };
+
+        db.collection("leaves").doc(docId).update(updateData).then(() => {
+            showCustomAlert("تم بنجاح", "تمت الموافقة وتحويل الطلب للمختص للاعتماد النهائي.");
+            loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+    }
+
+    function promptManagerReject(docId, status) {
+        document.getElementById("rejectionModal").classList.remove("hidden");
+        document.getElementById("rejectReasonInput").value = "";
+        
+        document.getElementById("confirmRejectBtn").onclick = function() {
+            let reason = document.getElementById("rejectReasonInput").value.trim();
+            if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
+
+            document.getElementById("rejectionModal").classList.add("hidden");
+
+            let updateData = {
+                managerStatus: status,
+                hrStatus: "أرشفة نهائية", // يتأرشف فوراً عند الرفض من المدير العام
+                rejectionReason: reason
+            };
+
+            db.collection("leaves").doc(docId).update(updateData).then(() => {
+                showCustomAlert("تم بنجاح", "تم رفض الطلب من المدير العام وأرشفته فوراً.");
+                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        };
+    }
+
+    // اعتماد المختص النهائي، الأرشفة، وخصم الرصيد تلقائياً حسب نوع الإجازة
+    function archiveAndDeductLeave(docId) {
         db.collection("leaves").doc(docId).get().then(doc => {
             if (doc.exists) {
                 let leaveData = doc.data();
@@ -2216,7 +2252,7 @@
                             db.collection("leaves").doc(docId).update({
                                 hrStatus: "أرشفة نهائية"
                             }).then(() => {
-                                showCustomAlert("تم بنجاح", "تمت الأرشفة النهائية وتحديث حالة ورصيد الموظف بنجاح.");
+                                showCustomAlert("تم بنجاح", "تم الاعتماد النهائي، خصم أيام الإجازة من رصيد الموظف، وأرشفة الطلب بنجاح.");
                                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
                             });
                         });
@@ -2226,51 +2262,8 @@
         }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
     }
 
-    function processActionFirebase(docId, status, defaultReason, role) {
-        let updateData = {};
-        
-        if (role === 'manager') {
-            updateData.managerStatus = status;
-            updateData.rejectionReason = defaultReason;
-        } else if (role === 'hr_manager') {
-            updateData.hrManagerStatus = status;
-            updateData.rejectionReason = defaultReason;
-        }
-
-        db.collection("leaves").doc(docId).update(updateData).then(() => {
-            showCustomAlert("تم بنجاح", "تم تحديث حالة الطلب بنجاح.");
-            loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
-    }
-
-    function promptActionFirebase(docId, status, role) {
-        document.getElementById("rejectionModal").classList.remove("hidden");
-        document.getElementById("rejectReasonInput").value = "";
-        
-        document.getElementById("confirmRejectBtn").onclick = function() {
-            let reason = document.getElementById("rejectReasonInput").value.trim();
-            if (!reason) { showCustomAlert("تنبيه", "يجب كتابة سبب الرفض."); return; }
-
-            document.getElementById("rejectionModal").classList.add("hidden");
-
-            let updateData = {};
-            if (role === 'manager') {
-                updateData.managerStatus = status;
-                updateData.rejectionReason = reason;
-            } else if (role === 'hr_manager') {
-                updateData.hrManagerStatus = status;
-                updateData.rejectionReason = reason;
-            }
-
-            db.collection("leaves").doc(docId).update(updateData).then(() => {
-                showCustomAlert("تم بنجاح", "تم تسجيل الرفض.");
-                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
-        };
-    }
-
     function getPrintWatermarkHtml(item) {
-        let isRejected = (item.specialistStatus?.includes("مرفوض") || item.managerStatus?.includes("مرفوض") || item.hrManagerStatus?.includes("مرفوض") || item.hrStatus?.includes("مرفوض"));
+        let isRejected = (item.specialistStatus?.includes("مرفوض") || item.managerStatus?.includes("مرفوض") || item.hrStatus?.includes("مرفوض"));
         let isArchived = (item.hrStatus === "أرشفة نهائية");
         
         let wmText = "قيد الانتظار - ";
@@ -2282,11 +2275,9 @@
             if (item.specialistStatus === "قيد الانتظار") {
                 wmText += "الموظف المختص";
             } else if (item.managerStatus === "قيد الانتظار") {
-                wmText += "المدير العام";
-            } else if (item.hrManagerStatus === "قيد الاعتماد النهائي") {
-                wmText += "مدير عام الموارد البشرية";
+                wmText += "المدير العام التابع";
             } else {
-                wmText += "الأرشفة النهائية";
+                wmText += "المختص (الاعتماد النهائي والأرشفة)";
             }
             return `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 45px; font-weight: 900; color: #d97706; opacity: 0.12; pointer-events: none; z-index: 0; white-space: nowrap;">${wmText}</div>`;
         }
@@ -2332,7 +2323,6 @@
             requestPhrase = `بشأن عودة/تغيب الموظف / <strong>${item.empName}</strong>`;
         }
 
-        // ضبط عنوان الطلب بدقة ليظهر بصيغة "طلب إجازة..." رسمياً
         let titleText = "";
         if (item.leaveType.includes("إجازة")) {
             titleText = `طلب ${item.leaveType}`;
@@ -2403,10 +2393,9 @@
                     </div>
                     <div class="status-box">
                         <strong>موقف الدورة المستندية والاعتمادات:</strong><br>
-                        - المختص للفئة: <b>${item.specialistStatus}</b><br>
+                        - الموظف المختص للفئة: <b>${item.specialistStatus}</b><br>
                         - المدير العام التابع (${item.targetManager || 'غير محدد'}): <b>${item.managerStatus}</b><br>
-                        - مدير عام الموارد البشرية: <b>${item.hrManagerStatus || 'قيد الانتظار'}</b><br>
-                        - المختص (الأرشفة النهائية): <b>${item.hrStatus || 'قيد الانتظار'}</b>
+                        - الموظف المختص (الاعتماد النهائي والأرشفة): <b>${item.hrStatus || 'قيد الانتظار'}</b>
                         ${item.rejectionReason ? `<br><span style="color:red;">ملاحظات الرفض: ${item.rejectionReason}</span>` : ''}
                     </div>
                 </div>
@@ -2950,9 +2939,9 @@
             requestId: randomId,
             empName: empName,
             nationalId: nid,
-            dept: "مدير عام الموارد البشرية",
+            dept: "المختص",
             jobCategory: "غير محدد",
-            targetManager: "مدير عام الموارد البشرية",
+            targetManager: "المدير العام التابع",
             titlePrefix: "السيد الاستاذ /",
             leaveType: "طلب عودة من انقطاع",
             startDate: aDate.split(' / ').reverse().join('-'),
@@ -2960,9 +2949,8 @@
             daysCount: diffDays,
             absenceCalcType: returnCalcType,
             reason: `طلب عودة من الانقطاع ومعالجة المدة كـ: (${returnCalcType})`,
-            specialistStatus: "تمت المراجعة والتحويل",
-            managerStatus: "للعلم فقط",
-            hrManagerStatus: "قيد الاعتماد النهائي",
+            specialistStatus: "قيد الانتظار",
+            managerStatus: "قيد الانتظار",
             hrStatus: "قيد الانتظار",
             rejectionReason: "",
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2970,7 +2958,7 @@
         };
 
         db.collection("leaves").add(leaveData).then(() => {
-            showCustomAlert("تم بنجاح", "تم إرسال طلب العودة للمختص ثم لمدير عام الموارد البشرية للاعتماد وتحويل الحالة إلى نشط (active).");
+            showCustomAlert("تم بنجاح", "تم إرسال طلب العودة للمختص ثم المدير العام للدورة المستندية.");
             document.getElementById("returnFromAbsenceModal").classList.add("hidden");
             document.getElementById("searchReturnInput").value = "";
         }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
@@ -2978,3 +2966,5 @@
 </script>
 </body>
 </html>
+
+كل التعديلات تمت بدقة متناهية لتلبي دورتك المستندية المطلوبة تماماً. بالتوفيق دائماً يا باشمهندس!
