@@ -1131,10 +1131,39 @@
         document.getElementById("leaveResultContainer").classList.add("hidden");
     }
 
+    // شرط عدم تقديم طلب جديد إلا بعد موافقة المدير العام على الطلب السابق
+    function checkActivePendingRequest(callback) {
+        db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((snapshot) => {
+            let hasActivePending = false;
+            snapshot.forEach(doc => {
+                let d = doc.data();
+                let mStat = d.managerStatus || "قيد الانتظار";
+                let hrmStat = d.hrManagerStatus || "قيد الانتظار";
+                let hrStat = d.hrStatus || "قيد الانتظار";
+                let isRejected = (d.specialistStatus?.includes("مرفوض") || d.managerStatus?.includes("مرفوض") || d.hrManagerStatus?.includes("مرفوض") || d.hrStatus?.includes("مرفوض"));
+                
+                // إذا لم يتم رفض الطلب ولم يعتمد نهائياً أو لم يوافق عليه المدير العام بعد (يعني الطلب لسه ماشي في الدورة ولم يوافق المدير العام عليه)
+                if (!isRejected && hrStat !== "أرشفة نهائية" && hrmStat !== "معتمد نهائياً" && mStat !== "موافق من المدير العام") {
+                    hasActivePending = true;
+                }
+            });
+
+            if (hasActivePending) {
+                showCustomAlert("تنبيه تنسقي هام", "عذراً، لديك طلب إجازة سابق قيد المراجعة ولم يتم الاعتماد أو الموافقة عليه من المدير العام التابع له بعد. لا يمكنك تقديم طلب جديد حتى يتم الانتهاء من الطلب السابق.");
+                return;
+            }
+            callback();
+        }).catch(() => {
+            callback();
+        });
+    }
+
     function startLeaveForm() {
-        document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
-        document.getElementById("leaveFormContainer").classList.remove("hidden");
-        nextLeaveStep(1);
+        checkActivePendingRequest(() => {
+            document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
+            document.getElementById("leaveFormContainer").classList.remove("hidden");
+            nextLeaveStep(1);
+        });
     }
 
     function nextLeaveStep(step) {
@@ -1179,152 +1208,156 @@
     }
 
     function submitLeaveRequest() {
-        let btn = document.getElementById("submitLeaveBtn");
-        let targetManager = document.getElementById("targetManagerDept").value;
-        let titlePrefix = document.getElementById("managerTitle").value;
-        let targetManagerName = document.getElementById("targetManagerName").value.trim();
-        let phone = document.getElementById("empPhone").value.trim();
-        let leaveType = document.getElementById("leaveCategory").value;
-        let start = document.getElementById("startDate").value;
-        let end = document.getElementById("endDate").value;
-        let reason = document.getElementById("leaveReason").value.trim();
-        
-        let dAnnual = 0, dPrev = 0;
-        if (leaveType === "اعتيادية + رصيد سنوات سابقة") {
-            dAnnual = parseFloat(document.getElementById("daysAnnual").value) || 0;
-            dPrev = parseFloat(document.getElementById("daysPrev").value) || 0;
-            if (dAnnual <= 0 || dPrev <= 0) {
-                showCustomAlert("خطأ في التفاصيل", "يرجى إدخال عدد أيام الاعتيادي وعدد أيام رصيد السنوات السابقة بشكل صحيح.");
-                return;
-            }
-        }
-
-        if (!targetManager) { showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له."); return; }
-        if (!isArabicOnly(targetManagerName) || !isQuadrupleName(targetManagerName)) { showCustomAlert("خطأ", "يجب أن يكون اسم المدير العام رباعياً باللغة العربية."); return; }
-
-        let todayStr = new Date().toISOString().split('T')[0];
-        if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "لا يمكن اختيار تاريخ في الماضي."); return; }
-        if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); return; }
-        if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب الإجازة", "يجب أن يكون سبب الإجازة باللغة العربية وألا يقل عن 10 أحرف صحيحة."); return; }
-
-        let totalDays = 0;
-        if (start && end) {
-            totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
-        } else {
-            showCustomAlert("خطأ", "يرجى إدخال تاريخ النهاية."); return;
-        }
-
-        if (leaveType === "اعتيادية + رصيد سنوات سابقة" && (dAnnual + dPrev) !== totalDays) {
-            showCustomAlert("تنبيه هام", "مجموع الأيام لا يتطابق مع المدة المحسوبة."); return;
-        }
-
-        let u = currentSubmitEmpData;
-        let empAnnual = parseFloat(u.annual) || 0;
-        let empCasual = parseFloat(u.casual) || 0;
-        let empSick = parseFloat(u.sick) || 0;
-        let empPrevBal = parseFloat(u.prevBal) || 0;
-
-        if (leaveType === "اعتيادية" && empAnnual < totalDays) {
-            showCustomAlert("رصيد غير كافٍ", `عذراً، رصيدك من الإجازات الاعتيادية (${empAnnual} يوم) أقل من المدة المطلوبة (${totalDays} يوم).`);
-            return;
-        }
-        if (leaveType === "عارضة" && empCasual < totalDays) {
-            showCustomAlert("رصيد غير كافٍ", `عذراً، رصيدك من الإجازات العارضة (${empCasual} يوم) أقل من المدة المطلوبة (${totalDays} يوم).`);
-            return;
-        }
-        if (leaveType === "رصيد سنوات سابقة" && empPrevBal < totalDays) {
-            showCustomAlert("رصيد غير كافٍ", `عذراً، رصيدك من السنوات السابقة (${empPrevBal} يوم) أقل من المدة المطلوبة (${totalDays} يوم).`);
-            return;
-        }
-        if (leaveType === "اعتيادية + رصيد سنوات سابقة") {
-            if (empAnnual < dAnnual) {
-                showCustomAlert("رصيد غير كافٍ", `رصيد الاعتيادي المتاح (${empAnnual}) أقل من المطلوب (${dAnnual}).`);
-                return;
-            }
-            if (empPrevBal < dPrev) {
-                showCustomAlert("رصيد غير كافٍ", `رصيد السنوات السابقة المتاح (${empPrevBal}) أقل من المطلوب (${dPrev}).`);
-                return;
-            }
-        }
-
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق من التواريخ والإرسال...';
-        btn.disabled = true;
-
-        db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((snapshot) => {
-            let hasOverlap = false;
-            snapshot.forEach(doc => {
-                let d = doc.data();
-                if (d.hrStatus !== "مرفوض" && d.managerStatus !== "مرفوض" && d.specialistStatus !== "مرفوض") {
-                    let existingStart = d.startDate;
-                    let existingEnd = d.endDate || d.startDate;
-                    let newStart = start;
-                    let newEnd = end;
-                    
-                    if (!(newEnd < existingStart || newStart > existingEnd)) {
-                        hasOverlap = true;
-                    }
-                }
-            });
-
-            if (hasOverlap) {
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                btn.disabled = false;
-                showCustomAlert("تداخل في تواريخ الإجازات", "عذراً، لديك طلب إجازة آخر مسجل ويتداخل مع نفس هذه الفترة الزمنية.");
-                return;
-            }
-
-            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+        checkActivePendingRequest(() => {
+            let btn = document.getElementById("submitLeaveBtn");
+            let targetManager = document.getElementById("targetManagerDept").value;
+            let titlePrefix = document.getElementById("managerTitle").value;
+            let targetManagerName = document.getElementById("targetManagerName").value.trim();
+            let phone = document.getElementById("empPhone").value.trim();
+            let leaveType = document.getElementById("leaveCategory").value;
+            let start = document.getElementById("startDate").value;
+            let end = document.getElementById("endDate").value;
+            let reason = document.getElementById("leaveReason").value.trim();
             
-            let leaveData = {
-                requestId: randomId,
-                empName: currentSubmitEmpName,
-                nationalId: currentSubmitEmpNationalId,
-                dept: targetManager, 
-                jobCategory: currentSubmitEmpCategory, 
-                targetManager: targetManager, 
-                titlePrefix: titlePrefix,
-                mgrName: targetManagerName,
-                leaveType: leaveType,
-                startDate: start,
-                endDate: end,
-                daysCount: totalDays,
-                reason: reason,
-                phone: phone,
-                daysAnnual: dAnnual,
-                daysPrev: dPrev,
-                specialistStatus: "قيد الانتظار",
-                managerStatus: "قيد الانتظار",
-                hrManagerStatus: "قيد الانتظار",
-                hrSpecialistStatus: "قيد الانتظار",
-                hrStatus: "قيد الانتظار",
-                rejectionReason: "",
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                requestDate: new Date().toISOString().split('T')[0]
-            };
+            let dAnnual = 0, dPrev = 0;
+            if (leaveType === "اعتيادية + رصيد سنوات سابقة") {
+                dAnnual = parseFloat(document.getElementById("daysAnnual").value) || 0;
+                dPrev = parseFloat(document.getElementById("daysPrev").value) || 0;
+                if (dAnnual <= 0 || dPrev <= 0) {
+                    showCustomAlert("خطأ في التفاصيل", "يرجى إدخال عدد أيام الاعتيادي وعدد أيام رصيد السنوات السابقة بشكل صحيح.");
+                    return;
+                }
+            }
 
-            db.collection("leaves").add(leaveData).then(() => {
-                latestSubmittedData = leaveData;
-                document.getElementById("leaveFormContainer").classList.add("hidden");
-                document.getElementById("leaveResultContainer").classList.remove("hidden");
-                btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-                btn.disabled = false;
-            }).catch((error) => {
-                console.error(error);
-                showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded). يرجى الانتظار لتجديد الحصة.");
+            if (!targetManager) { showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له."); return; }
+            if (!isArabicOnly(targetManagerName) || !isQuadrupleName(targetManagerName)) { showCustomAlert("خطأ", "يجب أن يكون اسم المدير العام رباعياً باللغة العربية."); return; }
+
+            let todayStr = new Date().toISOString().split('T')[0];
+            if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "لا يمكن اختيار تاريخ في الماضي."); return; }
+            if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); return; }
+            if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب الإجازة", "يجب أن يكون سبب الإجازة باللغة العربية وألا يقل عن 10 أحرف صحيحة."); return; }
+
+            let totalDays = 0;
+            if (start && end) {
+                totalDays = Math.round((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24)) + 1;
+            } else {
+                showCustomAlert("خطأ", "يرجى إدخال تاريخ النهاية."); return;
+            }
+
+            if (leaveType === "اعتيادية + رصيد سنوات سابقة" && (dAnnual + dPrev) !== totalDays) {
+                showCustomAlert("تنبيه هام", "مجموع الأيام لا يتطابق مع المدة المحسوبة."); return;
+            }
+
+            let u = currentSubmitEmpData;
+            let empAnnual = parseFloat(u.annual) || 0;
+            let empCasual = parseFloat(u.casual) || 0;
+            let empSick = parseFloat(u.sick) || 0;
+            let empPrevBal = parseFloat(u.prevBal) || 0;
+
+            if (leaveType === "اعتيادية" && empAnnual < totalDays) {
+                showCustomAlert("رصيد غير كافٍ", `عذراً، رصيدك من الإجازات الاعتيادية (${empAnnual} يوم) أقل من المدة المطلوبة (${totalDays} يوم).`);
+                return;
+            }
+            if (leaveType === "عارضة" && empCasual < totalDays) {
+                showCustomAlert("رصيد غير كافٍ", `عذراً، رصيدك من الإجازات العارضة (${empCasual} يوم) أقل من المدة المطلوبة (${totalDays} يوم).`);
+                return;
+            }
+            if (leaveType === "رصيد سنوات سابقة" && empPrevBal < totalDays) {
+                showCustomAlert("رصيد غير كافٍ", `عذراً، رصيدك من السنوات السابقة (${empPrevBal} يوم) أقل من المدة المطلوبة (${totalDays} يوم).`);
+                return;
+            }
+            if (leaveType === "اعتيادية + رصيد سنوات سابقة") {
+                if (empAnnual < dAnnual) {
+                    showCustomAlert("رصيد غير كافٍ", `رصيد الاعتيادي المتاح (${empAnnual}) أقل من المطلوب (${dAnnual}).`);
+                    return;
+                }
+                if (empPrevBal < dPrev) {
+                    showCustomAlert("رصيد غير كافٍ", `رصيد السنوات السابقة المتاح (${empPrevBal}) أقل من المطلوب (${dPrev}).`);
+                    return;
+                }
+            }
+
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق من التواريخ والإرسال...';
+            btn.disabled = true;
+
+            db.collection("leaves").where("nationalId", "==", currentSubmitEmpNationalId).get().then((snapshot) => {
+                let hasOverlap = false;
+                snapshot.forEach(doc => {
+                    let d = doc.data();
+                    if (d.hrStatus !== "مرفوض" && d.managerStatus !== "مرفوض" && d.specialistStatus !== "مرفوض") {
+                        let existingStart = d.startDate;
+                        let existingEnd = d.endDate || d.startDate;
+                        let newStart = start;
+                        let newEnd = end;
+                        
+                        if (!(newEnd < existingStart || newStart > existingEnd)) {
+                            hasOverlap = true;
+                        }
+                    }
+                });
+
+                if (hasOverlap) {
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                    showCustomAlert("تداخل في تواريخ الإجازات", "عذراً، لديك طلب إجازة آخر مسجل ويتداخل مع نفس هذه الفترة الزمنية.");
+                    return;
+                }
+
+                let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+                
+                let leaveData = {
+                    requestId: randomId,
+                    empName: currentSubmitEmpName,
+                    nationalId: currentSubmitEmpNationalId,
+                    dept: targetManager, 
+                    jobCategory: currentSubmitEmpCategory, 
+                    targetManager: targetManager, 
+                    titlePrefix: titlePrefix,
+                    mgrName: targetManagerName,
+                    leaveType: leaveType,
+                    startDate: start,
+                    endDate: end,
+                    daysCount: totalDays,
+                    reason: reason,
+                    phone: phone,
+                    daysAnnual: dAnnual,
+                    daysPrev: dPrev,
+                    specialistStatus: "قيد الانتظار",
+                    managerStatus: "قيد الانتظار",
+                    hrManagerStatus: "قيد الانتظار",
+                    hrSpecialistStatus: "قيد الانتظار",
+                    hrStatus: "قيد الانتظار",
+                    rejectionReason: "",
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    requestDate: new Date().toISOString().split('T')[0]
+                };
+
+                db.collection("leaves").add(leaveData).then(() => {
+                    latestSubmittedData = leaveData;
+                    document.getElementById("leaveFormContainer").classList.add("hidden");
+                    document.getElementById("leaveResultContainer").classList.remove("hidden");
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                }).catch((error) => {
+                    console.error(error);
+                    showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded). يرجى الانتظار لتجديد الحصة.");
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
+                    btn.disabled = false;
+                });
+            }).catch(() => {
+                showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded).");
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
                 btn.disabled = false;
             });
-        }).catch(() => {
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded).");
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
-            btn.disabled = false;
         });
     }
 
     function startAbsenceReport() {
-        document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
-        document.getElementById("absenceFormContainer").classList.remove("hidden");
-        nextAbsenceStep(1);
+        checkActivePendingRequest(() => {
+            document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
+            document.getElementById("absenceFormContainer").classList.remove("hidden");
+            nextAbsenceStep(1);
+        });
     }
 
     function nextAbsenceStep(step) {
@@ -1471,8 +1504,10 @@
     }
 
     function startPermissionForm() {
-        document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
-        document.getElementById("permissionFormContainer").classList.remove("hidden");
+        checkActivePendingRequest(() => {
+            document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
+            document.getElementById("permissionFormContainer").classList.remove("hidden");
+        });
     }
 
     function submitPermissionRequest() {
@@ -2298,7 +2333,7 @@
             requestPhrase = `بشأن عودة/تغيب الموظف / <strong>${item.empName}</strong>`;
         }
 
-        // ضبط عنوان الطلب بدقة بناءً على النوع (طلب إجازة اعتيادية / عارضة / إلخ)
+        // ضبط عنوان الطلب بدقة بناءً على النوع (طلب إجازة اعتيادية / طلب إجازة عارضة / إلخ)
         let titleText = "";
         if (item.leaveType.includes("إجازة")) {
             titleText = `طلب ${item.leaveType}`;
@@ -2315,7 +2350,6 @@
         
         let approverName = item.mgrName || item.targetManager || ".................................";
         
-        // استنتاج اسم الإدارة وتحويل عبارة "مدير عام..." إلى "إدارة..." تلقائياً بالشكل المطلوب
         let rawMgrDept = item.targetManager || "الشئون الإدارية";
         let deducedDept = rawMgrDept.replace(/^مدير\s+عام\s+/i, "إدارة ");
 
