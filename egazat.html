@@ -1,4 +1,4 @@
-
+تفضل يا باشمهندس الكود كاملاً ومصححاً بالكامل (بما في ذلك تحديث دالة جلب المديرين العموم loadTargetManagers وضمان عدم تعليق حقل القائمة المنسدلة، بالإضافة إلى ربطها تلقائياً عند فتح نافذة تسجيل العودة من الانقطاع):
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -999,6 +999,8 @@
             absStartDateInput.max = todayStr;
             absStartDateInput.value = todayStr;
         }
+        // تحميل المديرين العموم تلقائياً عند بدء التشغيل لمنع أي تعليق
+        loadTargetManagers();
     });
 
     function showCustomAlert(title, message) {
@@ -1143,7 +1145,7 @@
             btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
             btn.disabled = false;
             console.error(error);
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به لطلبات قاعدة البيانات (Quota Exceeded). يرجى المحاولة لاحقاً.");
+            showCustomAlert("تنبيه فايربيس", "حدث خطأ أثناء الاتصال بقاعدة البيانات. يرجى المحاولة لاحقاً.");
         });
     }
 
@@ -1363,12 +1365,12 @@
                     btn.disabled = false;
                 }).catch((error) => {
                     console.error(error);
-                    showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded). يرجى الانتظار لتجديد الحصة.");
+                    showCustomAlert("خطأ في الحفظ", "تعذر حفظ الطلب في قاعدة البيانات. يرجى المحاولة لاحقاً.");
                     btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
                     btn.disabled = false;
                 });
             }).catch(() => {
-                showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به في قاعدة البيانات (Quota Exceeded).");
+                showCustomAlert("خطأ", "حدث خطأ أثناء التحقق من الطلبات السابقة.");
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال الطلب';
                 btn.disabled = false;
             });
@@ -1515,12 +1517,12 @@
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال البلاغ';
                 btn.disabled = false;
             }).catch(() => {
-                showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+                showCustomAlert("خطأ", "حدث خطأ أثناء إرسال البلاغ.");
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> إرسال البلاغ';
                 btn.disabled = false;
             });
         }).catch(() => {
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            showCustomAlert("خطأ", "حدث خطأ في الاتصال.");
             btn.disabled = false;
         });
     }
@@ -1579,7 +1581,7 @@
             document.getElementById("permissionFormContainer").classList.add("hidden");
             document.getElementById("leaveResultContainer").classList.remove("hidden");
         }).catch(() => {
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            showCustomAlert("خطأ", "تعذر حفظ طلب التصريح.");
         });
     }
 
@@ -1589,10 +1591,11 @@
         let select3 = document.getElementById("absManagerDept"); 
         let select4 = document.getElementById("returnTargetManager");
         
-        select.innerHTML = '<option value="">-- جاري التحميل --</option>';
-        if (select2) select2.innerHTML = '<option value="">-- جاري التحميل --</option>';
-        if (select3) select3.innerHTML = '<option value="">-- جاري التحميل --</option>';
-        if (select4) select4.innerHTML = '<option value="">-- جاري التحميل --</option>';
+        let loadingHtml = '<option value="">-- اختر المدير العام --</option>';
+        if (select) select.innerHTML = loadingHtml;
+        if (select2) select2.innerHTML = loadingHtml;
+        if (select3) select3.innerHTML = loadingHtml;
+        if (select4) select4.innerHTML = loadingHtml;
 
         db.collection("users").get().then((querySnapshot) => {
             let managersSet = new Set();
@@ -1612,15 +1615,17 @@
                 options = '<option value="">لا يوجد مديرين عموم</option>';
             }
 
-            select.innerHTML = options;
+            if (select) select.innerHTML = options;
             if (select2) select2.innerHTML = options;
             if (select3) select3.innerHTML = options;
             if (select4) select4.innerHTML = options;
-        }).catch(() => {
-            select.innerHTML = '<option value="">تعذر التحميل</option>';
-            if (select2) select2.innerHTML = '<option value="">تعذر التحميل</option>';
-            if (select3) select3.innerHTML = '<option value="">تعذر التحميل</option>';
-            if (select4) select4.innerHTML = '<option value="">تعذر التحميل</option>';
+        }).catch((error) => {
+            console.error("خطأ في جلب المديرين:", error);
+            let errorHtml = '<option value="">تعذر التحميل</option>';
+            if (select) select.innerHTML = errorHtml;
+            if (select2) select2.innerHTML = errorHtml;
+            if (select3) select3.innerHTML = errorHtml;
+            if (select4) select4.innerHTML = errorHtml;
         });
     }
 
@@ -1688,7 +1693,7 @@
         }).catch(() => {
             btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
             btn.disabled = false;
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            showCustomAlert("خطأ", "حدث خطأ أثناء تسجيل الدخول.");
         });
     }
 
@@ -1840,7 +1845,7 @@
                 select.appendChild(optGroup);
             }
         }).catch(() => {
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            showCustomAlert("خطأ", "تعذر تحميل الجهات.");
         });
     }
 
@@ -1895,7 +1900,7 @@
             
             loadDepartmentLeavesFirebase(targetRole, roleType, category);
         }).catch(() => {
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            showCustomAlert("خطأ", "حدث خطأ أثناء تسجيل الدخول.");
         });
     }
 
@@ -1922,7 +1927,6 @@
                                 currentLeavesData.push(data);
                             }
                         } else if (data.leaveType === "طلب عودة من انقطاع") {
-                            // دورة عودة الموظف: المختص يقدمه، ثم مدير الموارد البشرية للاعتماد، ثم المدير العام التابع للعلم وتسليمه العمل
                             let hrReturnStat = data.hrReturnStatus || "قيد الانتظار";
                             let mgrReturnStat = data.managerReturnStatus || "قيد الانتظار";
                             if (hrReturnStat === "قيد الانتظار" || mgrReturnStat === "قيد الانتظار" || hrStat === "أرشفة نهائية") {
@@ -1944,7 +1948,6 @@
                                 currentLeavesData.push(data);
                             }
                         } else if (data.leaveType === "طلب عودة من انقطاع") {
-                            // يظهر للـ المدير العام التابع للعلم وتسليمه العمل بعد اعتماد مدير عام الموارد البشرية
                             let hrReturnStat = data.hrReturnStatus || "قيد الانتظار";
                             let mgrReturnStat = data.managerReturnStatus || "قيد الانتظار";
                             if (hrReturnStat === "معتمد من مدير الموارد البشرية" && mgrReturnStat === "قيد الانتظار") {
@@ -1966,7 +1969,7 @@
             renderLeavesCards(filteredLeavesData);
             applyDashboardDateFilter(); 
         }).catch(() => {
-            showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي المسموح به (Quota Exceeded).");
+            showCustomAlert("خطأ", "تعذر تحميل الطلبات.");
         });
     }
 
@@ -2091,11 +2094,10 @@
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>3. الموظف المختص (الاعتماد النهائي والأرشفة):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 `;
             } else if (item.leaveType === "طلب عودة من انقطاع") {
-                // دورة طلب عودة من انقطاع: المختص ثم مدير عام الموارد البشرية للاعتماد ثم المدير العام التابع للعلم وتسليمه العمل
                 stepsDisplay = `
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>1. الموظف المختص:</strong> <span style="color:#0d6efd; font-weight:bold;">مقدم الطلب</span></p>
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>2. مدير عام الموارد البشرية (لاعتماد العودة):</strong> <span style="color:#198754; font-weight:bold;">${item.hrReturnStatus || 'قيد الانتظار'}</span></p>
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>3. المدير العام التابع (${item.targetManager || 'غير محدد'} - للعلم وتسليمه العمل):</strong> <span style="color:#166534; font-weight:bold;">${item.managerReturnStatus || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>3. المدير العام التابع (${item.targetManager || 'غير محدد'} - للعلم وتسليم العمل):</strong> <span style="color:#166534; font-weight:bold;">${item.managerReturnStatus || 'قيد الانتظار'}</span></p>
                 `;
             } else {
                 stepsDisplay = `
@@ -2177,7 +2179,6 @@
                     `;
                 }
             } else if (item.leaveType === "طلب عودة من انقطاع") {
-                // المدير العام التابع للعلم وتسليمه العمل
                 let hrReturnStat = item.hrReturnStatus || "قيد الانتظار";
                 let mgrReturnStat = item.managerReturnStatus || "قيد الانتظار";
                 if (hrReturnStat === "معتمد من مدير الموارد البشرية" && mgrReturnStat === "قيد الانتظار") {
@@ -2203,11 +2204,10 @@
         }).then(() => {
             showCustomAlert("تم بنجاح", "تم اعتماد العودة من مدير الموارد البشرية، وتحويل الطلب إلى المدير العام التابع (للعلم وتسليمه العمل).");
             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر إتمام العملية."); });
     }
 
     function processManagerReturnAcknowledge(docId) {
-        // عند اطلاع المدير العام التابع وتسليمه العمل يتم خصم أو معالجة الرصيد وتنشيط الموظف وأرشفة الطلب نهائياً
         db.collection("leaves").doc(docId).get().then(doc => {
             if (doc.exists) {
                 let leaveData = doc.data();
@@ -2250,7 +2250,7 @@
                     }
                 });
             }
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "حدث خطأ أثناء معالجة الطلب."); });
     }
 
     function openSpecialistActionModal(docId, statusType, defaultText) {
@@ -2285,13 +2285,13 @@
                             db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
                                 showCustomAlert("تم بنجاح", "تم تحويل الطلب للمدير العام التابع.");
                                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-                            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+                            }).catch(() => { showCustomAlert("خطأ", "تعذر التحديث."); });
                         });
                     } else {
                         db.collection("leaves").doc(currentSpecActionDocId).update(updateData).then(() => {
                             showCustomAlert("تم بنجاح", "تم تحويل الطلب للمدير العام التابع.");
                             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-                        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+                        }).catch(() => { showCustomAlert("خطأ", "تعذر التحديث."); });
                     }
                 }
             }).catch(() => {});
@@ -2319,7 +2319,7 @@
             db.collection("leaves").doc(docId).update(updateData).then(() => {
                 showCustomAlert("تم بنجاح", "تم رفض الطلب وأرشفته فوراً.");
                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+            }).catch(() => { showCustomAlert("خطأ", "تعذر الرفض."); });
         };
     }
 
@@ -2332,7 +2332,7 @@
         db.collection("leaves").doc(docId).update(updateData).then(() => {
             showCustomAlert("تم بنجاح", "تمت الموافقة وتحويل الطلب للمختص للاعتماد النهائي.");
             loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر الاعتماد."); });
     }
 
     function promptManagerReject(docId, status) {
@@ -2354,7 +2354,7 @@
             db.collection("leaves").doc(docId).update(updateData).then(() => {
                 showCustomAlert("تم بنجاح", "تم رفض الطلب من المدير العام وأرشفته فوراً.");
                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
-            }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+            }).catch(() => { showCustomAlert("خطأ", "تعذر الرفض."); });
         };
     }
 
@@ -2399,7 +2399,7 @@
                     }
                 });
             }
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر إتمام الأرشفة."); });
     }
 
     function getPrintWatermarkHtml(item) {
@@ -2750,7 +2750,7 @@
             });
             
             if (!hasSpecialists) select.innerHTML = '<option value="">لا توجد إدارات مختصة</option>';
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر التحميل."); });
         
         document.getElementById('specialistAuthModal').classList.remove('hidden');
     }
@@ -2777,7 +2777,7 @@
             } else {
                 showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
             }
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "حدث خطأ أثناء التحقق."); });
     }
 
     function calcAutoBal() {
@@ -2826,7 +2826,7 @@
                 calcAutoBal();
                 loadSpecialistData();
             });
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر إضافة الموظف."); });
     }
 
     function searchEmployeeForEdit(query) {
@@ -2912,7 +2912,7 @@
             showCustomAlert("تم بنجاح", "تم تحديث بيانات الموظف بنجاح.");
             loadSpecialistData();
             cancelEditMode();
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر التعديل."); });
     }
 
     function cancelEditMode() {
@@ -2976,7 +2976,7 @@
                     loadSpecialistData(); 
                 });
             }
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر التجديد."); });
     }
 
     function loadSpecialistData() {
@@ -3025,7 +3025,7 @@
             });
             html += `</tbody></table></div>`;
             document.getElementById("specialistDataContainer").innerHTML = html;
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر تحميل البيانات."); });
     }
 
     function exportSpecialistExcel(cat) {
@@ -3068,6 +3068,9 @@
                     document.getElementById("returnEmpNationalId").value = emp.nationalId;
                     document.getElementById("returnEmpNameDisplay").innerText = emp.name;
                     
+                    // استدعاء دالة تحميل المديرين فوراً لمنع التعليق
+                    loadTargetNames();
+
                     db.collection("leaves").where("nationalId", "==", emp.nationalId).get().then(q => {
                         let aDate = "غير مسجل";
                         q.forEach(d => { if(d.data().leaveType === "التبليغ عن منقطع") aDate = d.data().startDate; });
@@ -3081,6 +3084,13 @@
             });
             suggestBox.style.display = "block";
         }
+    }
+
+    // دالة مساعدة لتحديث قائمة المديرين بالتحديد عند فتح مودال العودة
+    function loadTargetNames() {
+        let select4 = document.getElementById("returnTargetManager");
+        if (select4) select4.innerHTML = '<option value="">-- جاري التحميل --</option>';
+        loadTargetManagers();
     }
 
     function submitReturnFromAbsence() {
@@ -3115,8 +3125,8 @@
             daysCount: diffDays,
             absenceCalcType: returnCalcType,
             reason: `طلب عودة من الانقطاع ومعالجة المدة كـ: (${returnCalcType})`,
-            hrReturnStatus: "قيد الانتظار",          // الخطوة 1: مدير عام الموارد البشرية للاعتماد
-            managerReturnStatus: "قيد الانتظار",      // الخطوة 2: المدير العام التابع للعلم وتسليمه العمل
+            hrReturnStatus: "قيد الانتظار",          
+            managerReturnStatus: "قيد الانتظار",      
             hrStatus: "قيد الانتظار",
             rejectionReason: "",
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -3127,8 +3137,9 @@
             showCustomAlert("تم بنجاح", "تم إرسال طلب العودة إلى مدير عام الموارد البشرية للاعتماد، ثم المدير العام التابع.");
             document.getElementById("returnFromAbsenceModal").classList.add("hidden");
             document.getElementById("searchReturnInput").value = "";
-        }).catch(() => { showCustomAlert("تنبيه فايربيس", "تم تجاوز الحد اليومي (Quota Exceeded)."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر إرسال الطلب."); });
     }
 </script>
 </body>
 </html>
+
