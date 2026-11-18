@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -88,7 +87,6 @@
         .wa-message a { color: #00a884; text-decoration: underline; display: block; margin-top: 4px; font-weight: 600; }
         .wa-message audio { max-width: 220px; height: 35px; margin-top: 4px; }
 
-        /* التفاعلات (Reactions) */
         .reaction-picker { position: absolute; background: #ffffff; border-radius: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: none; gap: 8px; padding: 6px 14px; z-index: 1000; border: 1px solid #e2e8f0; transform: translateY(-55px); }
         .reaction-picker span { font-size: 20px; cursor: pointer; transition: transform 0.2s; }
         .reaction-picker span:hover { transform: scale(1.3); }
@@ -96,7 +94,6 @@
         .message-reactions { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
         .reaction-badge { background: #f0f2f5; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2px 6px; font-size: 11px; display: flex; align-items: center; gap: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 
-        /* صندوق طلبات التواصل */
         .request-box { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 25px; text-align: center; max-width: 350px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .request-box h4 { color: #111b21; font-size: 16px; margin-bottom: 10px; font-weight: 800; }
         .request-box p { color: #667781; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
@@ -326,7 +323,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getDatabase, ref, push, serverTimestamp, onValue, update, set, off, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, push, serverTimestamp, onValue, update, set, off, onDisconnect, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCGxjWSdyrPUpPKbXieSapBx--kUvRjwLY",
@@ -351,6 +348,7 @@
         let selectedUserName = localStorage.getItem('selected_peer_name') || "";
         let allUsersList = [];
         let currentChatRef = null; 
+        let currentReqRef = null;
 
         let activeMsgId = null;
         let activeRoomId = null;
@@ -862,6 +860,10 @@
             loadUserAvatarForChat(peerCode, 'headerAvatarIcon');
             document.getElementById('waContainer').classList.add('chat-active');
 
+            // إلغاء الاستماع السابق قبل تحميل المحادثة الجديدة
+            if (currentChatRef) { off(currentChatRef); currentChatRef = null; }
+            if (currentReqRef) { off(currentReqRef); currentReqRef = null; }
+
             loadChatRoom();
             loadConversationsSidebar(); 
         }
@@ -870,18 +872,61 @@
             document.getElementById('waContainer').classList.remove('chat-active');
         }
 
+        // ✅ الدالة المعدلة: تستمع لتغييرات الطلب وتحمّل الرسائل فور القبول
         window.loadChatRoom = function() {
             if (!selectedUserCode) return;
 
             let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-            let reqRef = ref(db, 'chat_requests/' + roomId);
+            
+            // إلغاء أي استماع سابق
+            if (currentReqRef) { off(currentReqRef); currentReqRef = null; }
+            if (currentChatRef) { off(currentChatRef); currentChatRef = null; }
 
-            onValue(reqRef, (snapshot) => {
+            currentReqRef = ref(db, 'chat_requests/' + roomId);
+
+            onValue(currentReqRef, (snapshot) => {
                 let reqData = snapshot.val();
                 
-                // إذا لم يتم قبول الطلب بعد
-                if (!reqData || reqData.status !== 'accepted') {
-                    if (reqData && reqData.sender === currentUserCode) {
+                // لا يوجد طلب بعد — اعرض واجهة إرسال طلب
+                if (!reqData) {
+                    messagesDiv.innerHTML = `
+                        <div class="request-box">
+                            <h4>ابدأ المحادثة</h4>
+                            <p>أرسل طلب تواصل إلى <strong>${selectedUserName}</strong> لبدء المراسلة.</p>
+                            <div class="request-actions">
+                                <button class="btn-accept-chat" onclick="sendChatRequest('${roomId}')">إرسال طلب تواصل</button>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // الطلب مرفوض
+                if (reqData.status === 'rejected') {
+                    if (reqData.sender === currentUserCode) {
+                        messagesDiv.innerHTML = `
+                            <div class="request-box">
+                                <h4>تم رفض الطلب</h4>
+                                <p>رفض <strong>${selectedUserName}</strong> طلب المحادثة.</p>
+                                <div class="request-actions">
+                                    <button class="btn-accept-chat" onclick="sendChatRequest('${roomId}')">إعادة إرسال الطلب</button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        messagesDiv.innerHTML = `
+                            <div class="request-box">
+                                <h4>تم رفض الطلب</h4>
+                                <p>لقد رفضت طلب المحادثة من <strong>${selectedUserName}</strong>.</p>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                // الطلب قيد الانتظار — المرسل يرى "قيد الانتظار" والمستقبل يرى أزرار القبول/الرفض
+                if (reqData.status === 'pending') {
+                    if (reqData.sender === currentUserCode) {
                         messagesDiv.innerHTML = `
                             <div class="request-box">
                                 <h4>قيد الانتظار</h4>
@@ -903,26 +948,50 @@
                     return;
                 }
 
-                loadActualMessages(roomId);
+                // الطلب مقبول — حمّل الرسائل
+                if (reqData.status === 'accepted') {
+                    loadActualMessages(roomId);
+                }
             });
+        };
+
+        // ✅ دالة جديدة: إرسال طلب تواصل
+        window.sendChatRequest = async function(roomId) {
+            const reqRef = ref(db, 'chat_requests/' + roomId);
+            await set(reqRef, {
+                status: 'pending',
+                sender: currentUserCode,
+                receiver: selectedUserCode,
+                createdAt: serverTimestamp()
+            });
+            showToast("تم إرسال طلب التواصل. بانتظار الموافقة.", "success");
+            sendNotificationToUser(selectedUserCode, "طلب تواصل جديد من " + currentUserName);
         };
 
         window.respondToChatRequest = async function(roomId, status) {
             const reqRef = ref(db, 'chat_requests/' + roomId);
             await update(reqRef, {
                 status: status,
-                respondedBy: currentUserCode
+                respondedBy: currentUserCode,
+                respondedAt: serverTimestamp()
             });
             if (status === 'accepted') {
                 showToast("تم قبول المحادثة بنجاح", "success");
+                // سيتم تحميل الرسائل تلقائياً عبر onValue في loadChatRoom
             } else {
                 showToast("تم رفض المحادثة", "error");
             }
         };
 
         function loadActualMessages(roomId) {
+            // منع التكرار: إذا كان الاستماع الحالي على نفس الغرفة، لا تعيد التحميل
+            if (currentChatRef && currentChatRef._path && currentChatRef._path.pieces_.join('/') === 'chats/' + roomId) {
+                return;
+            }
+
             if (currentChatRef) {
                 off(currentChatRef); 
+                currentChatRef = null;
             }
 
             currentChatRef = ref(db, 'chats/' + roomId);
@@ -1113,20 +1182,40 @@
         window.executeForwardMessage = function(targetCode, targetName) {
             document.getElementById('forwardModalOverlay').style.display = 'none';
             let roomId = getChatRoomId(currentUserCode, targetCode);
-            const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-            set(newMsgRef, { 
-                id: newMsgRef.key,
-                name: currentUserName, 
-                text: activeMsgText, 
-                type: activeMsgType,
-                fileName: activeMsgFileName || '',
-                userId: myId, 
-                timestamp: serverTimestamp() 
+            
+            // التحقق من وجود طلب مقبول قبل الإرسال
+            const reqRef = ref(db, 'chat_requests/' + roomId);
+            get(reqRef).then((snap) => {
+                const reqData = snap.val();
+                if (!reqData || reqData.status !== 'accepted') {
+                    showToast("لا يمكن إعادة التوجيه. لا توجد محادثة مقبولة مع " + targetName, "error");
+                    return;
+                }
+                const newMsgRef = push(ref(db, 'chats/' + roomId));
+                set(newMsgRef, { 
+                    id: newMsgRef.key,
+                    name: currentUserName, 
+                    text: activeMsgText, 
+                    type: activeMsgType,
+                    fileName: activeMsgFileName || '',
+                    userId: myId, 
+                    timestamp: serverTimestamp() 
+                });
+                sendNotificationToUser(targetCode, "رسالة مُعاد توجيهها من " + currentUserName);
+                showToast("تم إرسال إعادة التوجيه إلى " + targetName, "success");
             });
+        }
 
-            sendNotificationToUser(targetCode, "رسالة مُعاد توجيهها من " + currentUserName);
-            showToast("تم إرسال إعادة التوجيه إلى " + targetName, "success");
+        // ✅ دالة مساعدة: التأكد من وجود طلب مقبول قبل إرسال أي رسالة
+        async function ensureChatAccepted(roomId) {
+            const reqRef = ref(db, 'chat_requests/' + roomId);
+            const snap = await get(reqRef);
+            const reqData = snap.val();
+            if (!reqData || reqData.status !== 'accepted') {
+                showToast("لا يمكن إرسال الرسالة. يجب قبول طلب المحادثة أولاً.", "error");
+                return false;
+            }
+            return true;
         }
 
         window.sendMessage = async function() {
@@ -1136,12 +1225,8 @@
 
             let roomId = getChatRoomId(currentUserCode, selectedUserCode);
             
-            const reqRef = ref(db, 'chat_requests/' + roomId);
-            onValue(reqRef, async (snapshot) => {
-                if (!snapshot.exists()) {
-                    await set(reqRef, { status: 'pending', sender: currentUserCode });
-                }
-            }, { onlyOnce: true });
+            const accepted = await ensureChatAccepted(roomId);
+            if (!accepted) return;
 
             const newMsgRef = push(ref(db, 'chats/' + roomId));
 
@@ -1158,7 +1243,7 @@
             document.getElementById('msgInput').value = '';
         };
 
-        window.handleFileUpload = function(event, fileTypeOverride) {
+        window.handleFileUpload = async function(event, fileTypeOverride) {
             if (!selectedUserCode) { 
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); 
                 event.target.value = '';
@@ -1167,6 +1252,13 @@
 
             const file = event.target.files[0];
             if (!file) return;
+
+            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
+            const accepted = await ensureChatAccepted(roomId);
+            if (!accepted) {
+                event.target.value = '';
+                return;
+            }
 
             showToast("جاري تجهيز وإرسال الملف...", "success");
 
@@ -1177,15 +1269,6 @@
                 if (file.type.startsWith('image/')) {
                     fileType = 'image';
                 }
-
-                let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-                
-                const reqRef = ref(db, 'chat_requests/' + roomId);
-                onValue(reqRef, async (snapshot) => {
-                    if (!snapshot.exists()) {
-                        await set(reqRef, { status: 'pending', sender: currentUserCode });
-                    }
-                }, { onlyOnce: true });
 
                 const newMsgRef = push(ref(db, 'chats/' + roomId));
 
@@ -1210,6 +1293,10 @@
             const micBtn = document.getElementById('micBtn');
 
             if (!isRecording) {
+                let roomId = getChatRoomId(currentUserCode, selectedUserCode);
+                const accepted = await ensureChatAccepted(roomId);
+                if (!accepted) return;
+
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     mediaRecorder = new MediaRecorder(stream);
@@ -1225,15 +1312,7 @@
                         reader.readAsDataURL(audioBlob);
                         reader.onloadend = function() {
                             const base64Audio = reader.result;
-                            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
                             
-                            const reqRef = ref(db, 'chat_requests/' + roomId);
-                            onValue(reqRef, async (snapshot) => {
-                                if (!snapshot.exists()) {
-                                    await set(reqRef, { status: 'pending', sender: currentUserCode });
-                                }
-                            }, { onlyOnce: true });
-
                             const newMsgRef = push(ref(db, 'chats/' + roomId));
 
                             set(newMsgRef, { 
@@ -1268,4 +1347,3 @@
     </script>
 </body>
 </html>
-
