@@ -87,12 +87,18 @@
         .wa-message a { color: #02529d; text-decoration: underline; display: block; margin-top: 4px; font-weight: 600; }
         .wa-message audio { max-width: 220px; height: 35px; margin-top: 4px; }
 
-        /* صندوق طلب الموافقة للتواصل */
-        .approval-banner { background: #fff; border: 1px solid #d1d7db; border-radius: 12px; padding: 20px; text-align: center; margin: auto; max-width: 350px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .approval-banner h4 { color: #111b21; margin-bottom: 8px; font-size: 16px; font-weight: 700; }
-        .approval-banner p { color: #667781; font-size: 13px; margin-bottom: 15px; line-height: 1.5; }
-        .approval-banner button { background: #00a884; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
-        .approval-banner button:hover { background: #008f72; }
+        /* بانر طلب الصداقة/الموافقة مثل الفيسبوك */
+        .approval-banner { background: #fff; border: 1px solid #d1d7db; border-radius: 12px; padding: 25px 20px; text-align: center; margin: auto; max-width: 380px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+        .approval-banner h4 { color: #111b21; margin-bottom: 10px; font-size: 17px; font-weight: 800; }
+        .approval-banner p { color: #667781; font-size: 13.5px; margin-bottom: 20px; line-height: 1.5; }
+        .approval-actions { display: flex; gap: 10px; justify-content: center; }
+        .approval-actions button { flex: 1; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; border: none; transition: 0.2s; }
+        .btn-accept { background: #00a884; color: #fff; }
+        .btn-accept:hover { background: #008f72; }
+        .btn-reject { background: #f0f2f5; color: #ea0038; }
+        .btn-reject:hover { background: #e4e6eb; }
+        .btn-send-req { background: #00a884; color: #fff; width: 100%; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; font-size: 14px; }
+        .btn-send-req:hover { background: #008f72; }
 
         .wa-input-footer { height: 62px; background: #f0f2f5; padding: 10px 16px; display: flex; align-items: center; gap: 10px; z-index: 10; border-top: 1px solid #d1d7db; }
         .wa-input-footer button.icon-action { background: none; border: none; color: #54656f; font-size: 20px; cursor: pointer; transition: 0.2s; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
@@ -431,7 +437,6 @@
             }
         }
 
-        // تحميل أى حجم للصورة الشخصية ومعالجتها عبر FileReader وتحديث السيرفر
         window.updateProfileAvatar = function(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -677,7 +682,8 @@
                             if (lastMsg.type === 'image') displayLastText = '📷 صورة';
                             else if (lastMsg.type === 'file') displayLastText = '📁 ' + (lastMsg.fileName || 'ملف');
                             else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
-                            else if (lastMsg.type === 'system_approval') displayLastText = '🤝 طلب موافقة التواصل';
+                            else if (lastMsg.type === 'friend_request') displayLastText = '⏳ طلب مراسلة معلق';
+                            else if (lastMsg.type === 'request_rejected') displayLastText = '❌ تم رفض طلب المراسلة';
 
                             let isOnline = allStatuses[peerCode] && allStatuses[peerCode].state === 'online';
 
@@ -798,7 +804,7 @@
             document.getElementById('waContainer').classList.remove('chat-active');
         }
 
-        // فحص حالة المحادثة وموافقة الطرفين قبل فتح إمكانية المراسلة
+        // نظام التحقق من طلبات الصداقة والموافقة قبل إتاحة الشات
         window.loadChatRoom = function() {
             if (!selectedUserCode) return;
 
@@ -816,29 +822,56 @@
                 const msgs = snapshot.val();
                 
                 if (!msgs) {
-                    // عرض رسالة الموافقة على تلقي الرسائل إذا لم تكن هناك رسائل سابقة
-                    renderApprovalBanner(roomId);
+                    // لا توجد رسايل نهائياً -> إظهار زر إرسال طلب الصداقة/المراسلة
+                    renderInitialRequestState(roomId, 'none');
                     return;
                 }
 
                 let sorted = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
                 
-                // تحقق هل تم إرسال رسالة موافقة من قبل
-                let hasApproved = sorted.some(m => m.type === 'system_approval' || m.type === 'text' || m.type === 'image' || m.type === 'file' || m.type === 'voice');
-                
-                if (!hasApproved) {
-                    renderApprovalBanner(roomId);
+                // البحث عن آخر حالة طلب (معلق، مقبول، مرفوض)
+                let lastRequestMsg = sorted.slice().reverse().find(m => m.type === 'friend_request' || m.type === 'request_accepted' || m.type === 'request_rejected');
+
+                if (!lastRequestMsg || lastRequestMsg.type === 'request_rejected') {
+                    renderInitialRequestState(roomId, lastRequestMsg ? lastRequestMsg.type : 'none');
                     return;
                 }
 
-                // إظهار حقل الكتابة وإخفاء بانر الموافقة إذا كانت المحادثة مفتوحة
+                if (lastRequestMsg.type === 'friend_request') {
+                    if (lastRequestMsg.userId === myId) {
+                        // أنا من أرسلت الطلب وهو معلق بانتظار الطرف الآخر
+                        document.getElementById('inputFooterContainer').style.display = 'none';
+                        messagesDiv.innerHTML = `
+                            <div class="approval-banner">
+                                <h4>طلب المراسلة معلق</h4>
+                                <p>لقد أرسلت طلباً لمراسلة <strong>${selectedUserName}</strong>. في انتظار قبول الزميل للطلب لبدء المحادثة.</p>
+                            </div>
+                        `;
+                    } else {
+                        // الطرف الآخر هو من أرسل الطلب لي، وأنا الآن مطالب بالقبول أو الرفض
+                        document.getElementById('inputFooterContainer').style.display = 'none';
+                        messagesDiv.innerHTML = `
+                            <div class="approval-banner">
+                                <h4>طلب مراسلة جديد</h4>
+                                <p>يرغب الزميل <strong>${selectedUserName}</strong> في بدء محادثة معك.</p>
+                                <div class="approval-actions">
+                                    <button class="btn-accept" onclick="respondToRequest('${roomId}', 'accept')"><i class="fa-solid fa-check"></i> قبول الطلب</button>
+                                    <button class="btn-reject" onclick="respondToRequest('${roomId}', 'reject')"><i class="fa-solid fa-xmark"></i> رفض</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                // إذا تم قبول الطلب (request_accepted أو وجود رسائل عادية سابقة)
                 document.getElementById('inputFooterContainer').style.display = 'flex';
 
                 let lastDateStr = "";
 
                 if (!isFirstLoad) {
                     let latestMsg = sorted[sorted.length - 1];
-                    if (latestMsg && latestMsg.userId !== myId) {
+                    if (latestMsg && latestMsg.userId !== myId && latestMsg.type !== 'request_accepted') {
                         incomingMsgSound.play().catch(e => {});
                     }
                 }
@@ -846,6 +879,7 @@
 
                 sorted.forEach(msg => {
                     if (msg.deletedFor && msg.deletedFor.includes(currentUserCode)) return;
+                    if (msg.type === 'friend_request' || msg.type === 'request_rejected') return; // لا نعرض كروت الطلبات القديمة كرسائل نصية
 
                     let date = msg.timestamp ? new Date(msg.timestamp) : new Date();
                     let dateStr = date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -861,8 +895,8 @@
                     const isMine = msg.userId === myId;
                     const msgDiv = document.createElement('div');
                     
-                    if (msg.type === 'system_approval') {
-                        msgDiv.style.cssText = "align-self: center; background: #e3eeef; padding: 8px 16px; border-radius: 8px; font-size: 13px; color: #54656f; margin: 10px 0; text-align: center; box-shadow: 0 1px 1px rgba(0,0,0,0.05); width: 85%;";
+                    if (msg.type === 'request_accepted') {
+                        msgDiv.style.cssText = "align-self: center; background: #e3eeef; padding: 6px 14px; border-radius: 8px; font-size: 12px; color: #54656f; margin: 10px 0; text-align: center; width: 80%;";
                         msgDiv.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#00a884;"></i> ${msg.text}`;
                         messagesDiv.appendChild(msgDiv);
                         return;
@@ -904,29 +938,61 @@
             });
         };
 
-        function renderApprovalBanner(roomId) {
+        function renderInitialRequestState(roomId, statusType) {
             document.getElementById('inputFooterContainer').style.display = 'none';
+            let descText = statusType === 'request_rejected' ? 
+                `تم رفض طلب المراسلة السابق. هل تريد إرسال طلب جديد إلى <strong>${selectedUserName}</strong>؟` :
+                `لبدء التواصل مع <strong>${selectedUserName}</strong>، يجب إرسال طلب مراسلة أولاً والانتظار حتى يتم قبوله.`;
+
             messagesDiv.innerHTML = `
                 <div class="approval-banner">
-                    <h4>طلب موافقة لبدء المحادثة</h4>
-                    <p>لكي تبدأ المراسلة مع <strong>${selectedUserName}</strong>، يرجى إرسال طلب الموافقة على تلقي الرسائل بينكم.</p>
-                    <button onclick="sendApprovalRequest('${roomId}')"><i class="fa-solid fa-paper-plane"></i> إرسال موافقة وبدء المحادثة</button>
+                    <h4>إرسال طلب مراسلة</h4>
+                    <p>${descText}</p>
+                    <button class="btn-send-req" onclick="sendFriendRequest('${roomId}')"><i class="fa-solid fa-user-plus"></i> إرسال طلب المراسلة</button>
                 </div>
             `;
         }
 
-        window.sendApprovalRequest = function(roomId) {
+        window.sendFriendRequest = function(roomId) {
             const newMsgRef = push(ref(db, 'chats/' + roomId));
             set(newMsgRef, {
                 id: newMsgRef.key,
                 name: currentUserName,
-                text: `${currentUserName} وافق على بدء محادثة تلقي الرسائل مع ${selectedUserName}.`,
-                type: 'system_approval',
+                text: `${currentUserName} أرسل لك طلب مراسلة.`,
+                type: 'friend_request',
                 userId: myId,
                 timestamp: serverTimestamp()
             });
-            sendNotificationToUser(selectedUserCode, `${currentUserName} أرسل طلب لبدء محادثة جديدة معك.`);
-            showToast("تم فتح المحادثة وبدء التواصل بنجاح", "success");
+            sendNotificationToUser(selectedUserCode, `أرسل لك ${currentUserName} طلب مراسلة جديد.`);
+            showToast("تم إرسال طلب المراسلة بنجاح! في انتظار قبول الزميل", "success");
+        }
+
+        window.respondToRequest = function(roomId, action) {
+            const newMsgRef = push(ref(db, 'chats/' + roomId));
+            if (action === 'accept') {
+                set(newMsgRef, {
+                    id: newMsgRef.key,
+                    name: currentUserName,
+                    text: `تم قبول طلب المراسلة وبدء التواصل بين ${currentUserName} و ${selectedUserName}.`,
+                    type: 'request_accepted',
+                    userId: myId,
+                    timestamp: serverTimestamp()
+                });
+                sendNotificationId = selectedUserCode;
+                sendNotificationToUser(selectedUserCode, `${currentUserName} وافق على طلب المراسلة الخاص بك.`);
+                showToast("تم قبول الطلب، يمكنك الآن البدء بالمراسلة الفورية!", "success");
+            } else {
+                set(newMsgRef, {
+                    id: newMsgRef.key,
+                    name: currentUserName,
+                    text: `تم رفض الطلب.`,
+                    type: 'request_rejected',
+                    userId: myId,
+                    timestamp: serverTimestamp()
+                });
+                sendNotificationToUser(selectedUserCode, `قام ${currentUserName} برفض طلب المراسلة.`);
+                showToast("تم رفض الطلب", "error");
+            }
         }
 
         window.triggerMsgOptions = function(roomId, msgId, text, type, fileName) {
