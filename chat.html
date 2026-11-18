@@ -347,8 +347,8 @@
         
         let currentUserName = ""; 
         let currentUserCode = ""; 
-        let selectedUserCode = ""; 
-        let selectedUserName = "";
+        let selectedUserCode = localStorage.getItem('selected_peer_code') || ""; 
+        let selectedUserName = localStorage.getItem('selected_peer_name') || "";
         let allUsersList = [];
         let currentChatRef = null; 
 
@@ -474,7 +474,6 @@
             }
         }
 
-        // دالة ضغط الصور تلقائياً لدعم أي حجم صورة بدون قيود السيرفر
         window.updateProfileAvatar = function(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -630,7 +629,6 @@
             } catch (error) { console.error("خطأ في الإشعار:", error); }
         }
 
-        // تفعيل الإشعارات تلقائياً فوراً بدون زرار
         async function autoEnablePushNotifications() {
             OneSignalDeferred.push(async function(OneSignal) {
                 try {
@@ -685,6 +683,14 @@
                     
                     showToast("تم تسجيل الدخول بنجاح وتفعيل الإشعارات", "success");
                     loadConversationsSidebar();
+
+                    // إذا كانت هناك محادثة محفوظة مسبقاً، يتم فتحها تلقائياً
+                    if (selectedUserCode) {
+                        let peerObj = allUsersList.find(u => u.username === selectedUserCode);
+                        if (peerObj) {
+                            selectPeer(selectedUserCode, peerObj.empName);
+                        }
+                    }
 
                 } else {
                     showToast(result.message || "بيانات الدخول غير صحيحة", "error");
@@ -821,6 +827,8 @@
                                 showToast("تم حذف المحادثة من عندك بنجاح", "success");
                                 if (selectedUserCode === roomId.split('_').find(c => c !== currentUserCode)) {
                                     selectedUserCode = "";
+                                    localStorage.removeItem('selected_peer_code');
+                                    localStorage.removeItem('selected_peer_name');
                                     document.getElementById('chatHeaderTitle').innerText = "اختر محادثة";
                                     document.getElementById('chatHeaderStatus').innerText = "غير متصل";
                                     document.getElementById('headerOnlineDot').classList.remove('active');
@@ -837,6 +845,9 @@
         window.selectPeer = function(peerCode, peerName) {
             selectedUserCode = peerCode;
             selectedUserName = peerName;
+            localStorage.setItem('selected_peer_code', peerCode);
+            localStorage.setItem('selected_peer_name', peerName);
+
             document.getElementById('chatHeaderTitle').innerText = peerName;
             
             const targetStatusRef = ref(db, 'status/' + peerCode);
@@ -860,7 +871,6 @@
             document.getElementById('waContainer').classList.remove('chat-active');
         }
 
-        // فحص وإنشاء حالة قبول طلب التواصل
         window.loadChatRoom = function() {
             if (!selectedUserCode) return;
 
