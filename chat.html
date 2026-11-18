@@ -97,9 +97,9 @@
         .reaction-badge { background: #f0f2f5; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2px 6px; font-size: 11px; display: flex; align-items: center; gap: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 
         /* صندوق طلبات التواصل */
-        .request-box { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; text-align: center; max-width: 350px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .request-box { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 25px; text-align: center; max-width: 350px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .request-box h4 { color: #111b21; font-size: 16px; margin-bottom: 10px; font-weight: 800; }
-        .request-box p { color: #667781; font-size: 13px; margin-bottom: 15px; line-height: 1.5; }
+        .request-box p { color: #667781; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
         .request-actions { display: flex; gap: 10px; justify-content: center; }
         .request-actions button { padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 13px; cursor: pointer; border: none; transition: 0.2s; }
         .btn-accept-chat { background: #00a884; color: #fff; }
@@ -879,6 +879,7 @@
             onValue(reqRef, (snapshot) => {
                 let reqData = snapshot.val();
                 
+                // إذا لم يتم قبول الطلب بعد
                 if (!reqData || reqData.status !== 'accepted') {
                     if (reqData && reqData.sender === currentUserCode) {
                         messagesDiv.innerHTML = `
@@ -908,9 +909,8 @@
 
         window.respondToChatRequest = async function(roomId, status) {
             const reqRef = ref(db, 'chat_requests/' + roomId);
-            await set(reqRef, {
+            await update(reqRef, {
                 status: status,
-                sender: selectedUserCode,
                 respondedBy: currentUserCode
             });
             if (status === 'accepted') {
@@ -1137,7 +1137,11 @@
             let roomId = getChatRoomId(currentUserCode, selectedUserCode);
             
             const reqRef = ref(db, 'chat_requests/' + roomId);
-            set(reqRef, { status: 'pending', sender: currentUserCode }).catch(err => console.log(err));
+            onValue(reqRef, async (snapshot) => {
+                if (!snapshot.exists()) {
+                    await set(reqRef, { status: 'pending', sender: currentUserCode });
+                }
+            }, { onlyOnce: true });
 
             const newMsgRef = push(ref(db, 'chats/' + roomId));
 
@@ -1177,7 +1181,11 @@
                 let roomId = getChatRoomId(currentUserCode, selectedUserCode);
                 
                 const reqRef = ref(db, 'chat_requests/' + roomId);
-                set(reqRef, { status: 'pending', sender: currentUserCode }).catch(err => console.log(err));
+                onValue(reqRef, async (snapshot) => {
+                    if (!snapshot.exists()) {
+                        await set(reqRef, { status: 'pending', sender: currentUserCode });
+                    }
+                }, { onlyOnce: true });
 
                 const newMsgRef = push(ref(db, 'chats/' + roomId));
 
@@ -1220,7 +1228,11 @@
                             let roomId = getChatRoomId(currentUserCode, selectedUserCode);
                             
                             const reqRef = ref(db, 'chat_requests/' + roomId);
-                            set(reqRef, { status: 'pending', sender: currentUserCode }).catch(err => console.log(err));
+                            onValue(reqRef, async (snapshot) => {
+                                if (!snapshot.exists()) {
+                                    await set(reqRef, { status: 'pending', sender: currentUserCode });
+                                }
+                            }, { onlyOnce: true });
 
                             const newMsgRef = push(ref(db, 'chats/' + roomId));
 
