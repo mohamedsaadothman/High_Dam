@@ -87,7 +87,6 @@
         .wa-message a { color: #02529d; text-decoration: underline; display: block; margin-top: 4px; font-weight: 600; }
         .wa-message audio { max-width: 220px; height: 35px; margin-top: 4px; }
 
-        /* بانر طلب الصداقة/الموافقة مثل الفيسبوك */
         .approval-banner { background: #fff; border: 1px solid #d1d7db; border-radius: 12px; padding: 25px 20px; text-align: center; margin: auto; max-width: 380px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
         .approval-banner h4 { color: #111b21; margin-bottom: 10px; font-size: 17px; font-weight: 800; }
         .approval-banner p { color: #667781; font-size: 13.5px; margin-bottom: 20px; line-height: 1.5; }
@@ -684,6 +683,7 @@
                             else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
                             else if (lastMsg.type === 'friend_request') displayLastText = '⏳ طلب مراسلة معلق';
                             else if (lastMsg.type === 'request_rejected') displayLastText = '❌ تم رفض طلب المراسلة';
+                            else if (lastMsg.type === 'request_accepted') displayLastText = '🤝 تم قبول الطلب';
 
                             let isOnline = allStatuses[peerCode] && allStatuses[peerCode].state === 'online';
 
@@ -804,7 +804,6 @@
             document.getElementById('waContainer').classList.remove('chat-active');
         }
 
-        // نظام التحقق من طلبات الصداقة والموافقة قبل إتاحة الشات
         window.loadChatRoom = function() {
             if (!selectedUserCode) return;
 
@@ -822,14 +821,11 @@
                 const msgs = snapshot.val();
                 
                 if (!msgs) {
-                    // لا توجد رسايل نهائياً -> إظهار زر إرسال طلب الصداقة/المراسلة
                     renderInitialRequestState(roomId, 'none');
                     return;
                 }
 
                 let sorted = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
-                
-                // البحث عن آخر حالة طلب (معلق، مقبول، مرفوض)
                 let lastRequestMsg = sorted.slice().reverse().find(m => m.type === 'friend_request' || m.type === 'request_accepted' || m.type === 'request_rejected');
 
                 if (!lastRequestMsg || lastRequestMsg.type === 'request_rejected') {
@@ -839,7 +835,6 @@
 
                 if (lastRequestMsg.type === 'friend_request') {
                     if (lastRequestMsg.userId === myId) {
-                        // أنا من أرسلت الطلب وهو معلق بانتظار الطرف الآخر
                         document.getElementById('inputFooterContainer').style.display = 'none';
                         messagesDiv.innerHTML = `
                             <div class="approval-banner">
@@ -848,7 +843,6 @@
                             </div>
                         `;
                     } else {
-                        // الطرف الآخر هو من أرسل الطلب لي، وأنا الآن مطالب بالقبول أو الرفض
                         document.getElementById('inputFooterContainer').style.display = 'none';
                         messagesDiv.innerHTML = `
                             <div class="approval-banner">
@@ -864,9 +858,7 @@
                     return;
                 }
 
-                // إذا تم قبول الطلب (request_accepted أو وجود رسائل عادية سابقة)
                 document.getElementById('inputFooterContainer').style.display = 'flex';
-
                 let lastDateStr = "";
 
                 if (!isFirstLoad) {
@@ -879,7 +871,7 @@
 
                 sorted.forEach(msg => {
                     if (msg.deletedFor && msg.deletedFor.includes(currentUserCode)) return;
-                    if (msg.type === 'friend_request' || msg.type === 'request_rejected') return; // لا نعرض كروت الطلبات القديمة كرسائل نصية
+                    if (msg.type === 'friend_request' || msg.type === 'request_rejected') return;
 
                     let date = msg.timestamp ? new Date(msg.timestamp) : new Date();
                     let dateStr = date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -964,7 +956,7 @@
                 timestamp: serverTimestamp()
             });
             sendNotificationToUser(selectedUserCode, `أرسل لك ${currentUserName} طلب مراسلة جديد.`);
-            showToast("تم إرسال طلب المراسلة بنجاح! في انتظار قبول الزميل", "success");
+            showToast("تم إرسال طلب المراسلة بنجاح!", "success");
         }
 
         window.respondToRequest = function(roomId, action) {
@@ -978,9 +970,8 @@
                     userId: myId,
                     timestamp: serverTimestamp()
                 });
-                sendNotificationId = selectedUserCode;
                 sendNotificationToUser(selectedUserCode, `${currentUserName} وافق على طلب المراسلة الخاص بك.`);
-                showToast("تم قبول الطلب، يمكنك الآن البدء بالمراسلة الفورية!", "success");
+                showToast("تم قبول الطلب، يمكنك الآن المراسلة الفورية!", "success");
             } else {
                 set(newMsgRef, {
                     id: newMsgRef.key,
@@ -1190,6 +1181,8 @@
                     showToast("جاري تسجيل الصوت... اضغط مرة أخرى للإيقاف والإرسال", "success");
                 } catch (err) {
                     showToast("تعذر الوصول للميكروفون (تأكد من الأذونات).", "error");
+                    isRecording = false;
+                    micBtn.classList.remove('recording');
                 }
             } else {
                 mediaRecorder.stop();
