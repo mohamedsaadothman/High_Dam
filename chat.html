@@ -418,59 +418,44 @@
         function registerMedia(dataUrl, fileName, isImage = false) {
             const key = "item_" + mediaStore.size;
             const label = getCleanLabel(fileName, isImage);
-            mediaStore.set(key, { dataUrl, label, rawFileName: fileName || '', isImage });
+            mediaStore.set(key, { dataUrl, label, isImage });
             return key;
         }
 
-        window.triggerMediaDownload = async function(e, mediaKey) {
+        function base64ToBlobUrl(dataUrl) {
+            if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+            const parts = dataUrl.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+            const byteString = atob(parts[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], { type: mime });
+            return URL.createObjectURL(blob);
+        }
+
+        window.triggerMediaDownload = function(e, mediaKey) {
             if (e) e.stopPropagation();
             const item = mediaStore.get(mediaKey);
             if (!item || !item.dataUrl) return;
 
-            if (item.dataUrl.startsWith('http')) {
-                window.location.href = item.dataUrl;
-                return;
-            }
+            const objectUrl = base64ToBlobUrl(item.dataUrl);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.setAttribute('download', item.isImage ? 'photo.jpg' : 'document');
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
 
-            const parts = item.dataUrl.split(',');
-            if (parts.length < 2) return;
-            const mimeMatch = parts[0].match(/:(.*?);/);
-            const mimeType = mimeMatch ? mimeMatch[1] : (item.isImage ? 'image/jpeg' : 'application/pdf');
-            const base64Body = parts[1];
-
-            let ext = 'jpg';
-            if (mimeType.includes('png')) ext = 'png';
-            else if (mimeType.includes('pdf')) ext = 'pdf';
-            else if (mimeType.includes('word') || mimeType.includes('document')) ext = 'docx';
-            else if (mimeType.includes('sheet') || mimeType.includes('excel')) ext = 'xlsx';
-
-            const safeDownloadName = item.isImage ? `صورة_المحادثة.${ext}` : `مستند_المحادثة.${ext}`;
-
-            showToast("جاري تجهيز الملف للحفظ على الهاتف...", "success");
-
-            try {
-                const response = await fetch(scriptUrl, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        action: 'prepareDownload',
-                        base64: base64Body,
-                        mimeType: mimeType,
-                        fileName: safeDownloadName
-                    }),
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-                });
-                const res = await response.json();
-
-                if (res && res.status === 'success' && res.url) {
-                    window.location.href = res.url;
-                    showToast("بدأ تنزيل الملف على هاتفك", "success");
-                    return;
-                }
-            } catch (err) {
-                console.error("Download prep error:", err);
-            }
-
-            showToast("تعذر تجهيز الملف، تحقق من صلاحيات Apps Script", "error");
+            // فتح الرابط في نافذة جديدة إذا لم يبدأ التنزيل داخل WebView
+            setTimeout(() => {
+                window.open(objectUrl, '_blank');
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+            }, 250);
         };
 
         let lbScale = 1, lbX = 0, lbY = 0;
