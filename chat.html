@@ -415,90 +415,37 @@
             return key;
         }
 
-        function dataUrlToFile(dataUrl, fallbackName = 'photo', fallbackMime = 'image/jpeg') {
-            try {
-                const arr = dataUrl.split(',');
-                const mimeMatch = arr[0].match(/:(.*?);/);
-                const mime = mimeMatch ? mimeMatch[1] : fallbackMime;
-                const bstr = atob(arr[1]);
-                let n = bstr.length;
-                const u8arr = new Uint8Array(n);
-                while (n--) {
-                    u8arr[n] = bstr.charCodeAt(n);
-                }
-
-                let ext = 'bin';
-                if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
-                else if (mime.includes('png')) ext = 'png';
-                else if (mime.includes('webp')) ext = 'webp';
-                else if (mime.includes('gif')) ext = 'gif';
-                else if (mime.includes('pdf')) ext = 'pdf';
-
-                const finalName = fallbackName && fallbackName.includes('.')
-                    ? fallbackName
-                    : `${fallbackName || (mime.startsWith('image/') ? 'photo' : 'document')}_${Date.now()}.${ext}`;
-
-                return new File([u8arr], finalName, { type: mime });
-            } catch (err) {
-                return null;
-            }
-        }
-
-        window.triggerMediaDownload = async function(e, mediaKey) {
+        window.triggerMediaDownload = function(e, mediaKey) {
             if (e) e.stopPropagation();
             const item = mediaStore.get(mediaKey);
             if (!item || !item.dataUrl) {
-                showToast("تعذر الوصول للملف", "error");
+                showToast("تعذر الوصول للصورة", "error");
                 return;
             }
 
-            const fileObj = dataUrlToFile(
-                item.dataUrl,
-                item.fileName || (item.isImage ? 'photo' : 'document'),
-                item.isImage ? 'image/jpeg' : 'application/octet-stream'
-            );
+            const isWebView = /wv|WebView/i.test(navigator.userAgent);
 
-            // 1) مشاركة / حفظ مباشر عبر نظام الهاتف إن أمكن
-            if (fileObj && navigator.canShare && navigator.canShare({ files: [fileObj] })) {
-                try {
-                    await navigator.share({
-                        files: [fileObj],
-                        title: item.isImage ? 'حفظ الصورة' : 'حفظ المستند'
-                    });
-                    return;
-                } catch (shareErr) {
-                    if (shareErr && shareErr.name === 'AbortError') return;
-                }
-            }
-
-            // 2) تنزيل مباشر عبر dataURL لتجنب فشل blob: في مدير تحميل أندرويد
-            if (item.dataUrl.startsWith('data:')) {
-                const ext = item.dataUrl.includes('image/png') ? 'png' : (item.isImage ? 'jpg' : 'bin');
-                const a = document.createElement('a');
-                a.href = item.dataUrl;
-                a.download = `photo_${Date.now()}.${ext}`;
-                a.rel = 'noopener';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-
-                if (item.isImage) {
-                    openWaLightbox(null, mediaKey);
-                    showToast("إذا لم يبدأ التحميل، اضغط مطولاً على الصورة واختر حفظ الصورة", "success");
-                }
+            if (isWebView) {
+                openWaLightbox(null, mediaKey);
+                showToast("اضغط مطولاً على الصورة واختر حفظ الصورة", "success");
                 return;
             }
 
-            window.open(item.dataUrl, '_blank');
+            const a = document.createElement('a');
+            a.href = item.dataUrl;
+            a.download = `photo_${Date.now()}.jpg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         };
 
-        /* فتح كاميرا الهاتف مباشرة في نفس لحظة اللمس */
         window.handleCameraButtonClick = function() {
             if (!selectedUserCode) {
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
                 return;
             }
             const camInput = document.getElementById('cameraUploader');
+            if (!camInput) return;
             camInput.value = '';
             camInput.click();
         };
@@ -1565,3 +1512,4 @@
     </script>
 </body>
 </html>
+
