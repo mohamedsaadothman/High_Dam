@@ -415,28 +415,61 @@
             return key;
         }
 
-        window.triggerMediaDownload = function(e, mediaKey) {
+        function dataUrlToFile(dataUrl, fileName = 'file.bin') {
+            const arr = dataUrl.split(',');
+            const mimeMatch = arr[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new File([u8arr], fileName, { type: mime });
+        }
+
+        window.triggerMediaDownload = async function(e, mediaKey) {
             if (e) e.stopPropagation();
             const item = mediaStore.get(mediaKey);
             if (!item || !item.dataUrl) {
-                showToast("تعذر الوصول للصورة", "error");
+                showToast("تعذر الوصول للملف", "error");
                 return;
             }
 
-            const fileName = `photo_${Date.now()}.jpg`;
+            const ext = item.isImage ? 'jpg' : 'dat';
+            const safeName = item.fileName ? item.fileName.replace(/[^\w.\-\u0600-\u06FF]/g, '_') : `download_${Date.now()}.${ext}`;
 
             try {
-                const a = document.createElement('a');
-                a.href = item.dataUrl;
-                a.download = fileName;
-                a.target = '_blank';
-                a.rel = 'noopener noreferrer';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                showToast("جاري حفظ الصورة في ملفات الهاتف...", "success");
+                const fileObj = dataUrlToFile(item.dataUrl, safeName);
+
+                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+                    await navigator.share({
+                        files: [fileObj],
+                        title: item.isImage ? 'حفظ الصورة' : 'حفظ المستند'
+                    });
+                    return;
+                }
             } catch (err) {
-                window.open(item.dataUrl, '_blank');
+                if (err && err.name === 'AbortError') return;
+            }
+
+            if (item.isImage) {
+                openWaLightbox(null, mediaKey);
+                showToast("اضغط مطولاً على الصورة واختر حفظ الصورة", "success");
+            } else {
+                const blob = dataUrlToFile(item.dataUrl, safeName);
+                const blobUrl = URL.createObjectURL(blob);
+                const win = window.open(blobUrl, '_blank');
+                if (!win) {
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = safeName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                }
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+                showToast("جاري فتح المستند للحفظ...", "success");
             }
         };
 
@@ -447,6 +480,8 @@
             }
             const camInput = document.getElementById('cameraUploader');
             if (!camInput) return;
+            camInput.setAttribute('accept', 'image/*');
+            camInput.setAttribute('capture', 'environment');
             camInput.value = '';
             camInput.click();
         };
@@ -1513,4 +1548,3 @@
     </script>
 </body>
 </html>
-
