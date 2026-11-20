@@ -80,8 +80,6 @@
         .wa-chat-avatar-wrapper { position: relative; flex-shrink: 0; }
         .wa-chat-avatar { width: 48px; height: 48px; border-radius: 50%; background: #00a884; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; overflow: hidden; }
         .wa-chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
-        
-        .online-dot { display: none !important; }
 
         .wa-chat-info { flex: 1; min-width: 0; }
         .wa-chat-info .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
@@ -95,7 +93,8 @@
         .wa-chat-header { height: 65px; background: #f0f2f5; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-left: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; z-index: 10; }
         .wa-chat-header-info { display: flex; align-items: center; gap: 12px; min-width: 0; }
         .wa-chat-header-info .peer-name { color: #111b21; font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-        .wa-chat-header-info .peer-status-text { display: none !important; }
+        .wa-chat-header-info .peer-status-text { font-size: 12px; color: #667781; font-weight: 600; display: block; }
+        .wa-chat-header-info .peer-status-text.hidden-during-block { display: none !important; }
         .wa-back-to-list { display: none; background: none; border: none; color: #00a884; font-size: 20px; cursor: pointer; margin-left: 6px; }
 
         .btn-block-chat { background: #fef2f2; color: #ea0038; border: 1px solid #fecaca; border-radius: 8px; padding: 5px 10px; font-size: 11.5px; font-weight: 800; cursor: pointer; display: none; align-items: center; gap: 5px; transition: 0.2s; flex-shrink: 0; }
@@ -364,7 +363,6 @@
                         <button class="wa-back-to-list" onclick="backToChatsList()"><i class="fa-solid fa-arrow-right"></i></button>
                         <div class="wa-chat-avatar-wrapper">
                             <div class="wa-chat-avatar" id="headerAvatarIcon" style="width: 40px; height: 40px; font-size: 15px;"><i class="fa-solid fa-envelope"></i></div>
-                            <div class="online-dot" id="headerOnlineDot"></div>
                         </div>
                         <div style="min-width: 0;">
                             <span class="peer-name" id="chatHeaderTitle">التبليغات</span>
@@ -461,7 +459,54 @@
         ensureAnonymousAuth().catch((err) => {
             console.error("Anonymous Auth Error:", err);
         });
-        
+
+        let softAudioCtx = null;
+
+        function unlockSoftAudioContext() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                if (!softAudioCtx) {
+                    softAudioCtx = new AudioCtx();
+                }
+                if (softAudioCtx.state === 'suspended') {
+                    softAudioCtx.resume();
+                }
+            } catch (e) {
+                console.log("Audio unlock error:", e);
+            }
+        }
+
+        document.addEventListener('pointerdown', unlockSoftAudioContext, { once: true });
+        document.addEventListener('keydown', unlockSoftAudioContext, { once: true });
+
+        function playSoftNotificationTone() {
+            try {
+                unlockSoftAudioContext();
+                if (!softAudioCtx) return;
+
+                const now = softAudioCtx.currentTime;
+                const osc = softAudioCtx.createOscillator();
+                const gain = softAudioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, now);
+                osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.18);
+
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+
+                osc.connect(gain);
+                gain.connect(softAudioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.44);
+            } catch (e) {
+                console.log("Soft alert tone error:", e);
+            }
+        }
+
         let myId = localStorage.getItem('chat_user_id') || "user_" + Math.floor(Math.random() * 100000);
         localStorage.setItem('chat_user_id', myId);
 
@@ -498,7 +543,6 @@
         let isRecording = false;
         
         const scriptUrl = "https://script.google.com/macros/s/AKfycbxQd74HmDbyMHJgUavrCchYNeMt8kaSQkoq48MOsMqQk6PSrlrGoAcZCQ2fzua5toyXpw/exec";
-        const incomingMsgSound = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
 
         const mediaStore = new Map();
 
@@ -537,12 +581,43 @@
             return Boolean(latestBlocksData && latestBlocksData[peerCode] && latestBlocksData[peerCode][currentUserCode]);
         }
 
+        function isEitherBlocked(peerCode) {
+            if (!peerCode) return false;
+            return isBlockedByMe(peerCode) || isBlockedByPeer(peerCode);
+        }
+
+        function updatePresenceVisibilityDuringBlock() {
+            const statusEl = document.getElementById('chatHeaderStatus');
+            if (!statusEl) return;
+
+            if (!selectedUserCode) {
+                statusEl.textContent = '';
+                statusEl.classList.add('hidden-during-block');
+                return;
+            }
+
+            if (isEitherBlocked(selectedUserCode)) {
+                statusEl.textContent = '';
+                statusEl.classList.add('hidden-during-block');
+                return;
+            }
+
+            statusEl.classList.remove('hidden-during-block');
+            const peerStatus = latestStatusesData ? latestStatusesData[selectedUserCode] : null;
+            if (peerStatus && peerStatus.state === 'online') {
+                statusEl.textContent = 'متصل الآن';
+            } else {
+                statusEl.textContent = '';
+            }
+        }
+
         function updateBlockButtonUI() {
             const btn = document.getElementById('blockChatBtn');
             if (!btn) return;
 
             if (!selectedUserCode) {
                 btn.style.display = 'none';
+                updatePresenceVisibilityDuringBlock();
                 return;
             }
 
@@ -556,6 +631,8 @@
                 btn.title = "حظر الدردشة مع هذا الزميل";
                 btn.innerHTML = `<i class="fa-solid fa-ban"></i> <span id="blockChatBtnText">حظر الدردشة</span>`;
             }
+
+            updatePresenceVisibilityDuringBlock();
         }
 
         window.toggleBlockPeer = async function() {
@@ -614,7 +691,7 @@
             const incoming = [];
             Object.values(latestRequestsData || {}).forEach(req => {
                 if (req && req.to === currentUserCode && req.status === 'pending') {
-                    if (isBlockedByMe(req.from) || isBlockedByPeer(req.from)) return;
+                    if (isEitherBlocked(req.from)) return;
                     const senderObj = allUsersList.find(u => u.username === req.from);
                     const senderName = (senderObj && senderObj.empName) || req.fromName || req.from;
                     incoming.push({
@@ -744,7 +821,7 @@
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
                 return;
             }
-            if (isBlockedByPeer(selectedUserCode) || isBlockedByMe(selectedUserCode)) {
+            if (isEitherBlocked(selectedUserCode)) {
                 showToast("محظور", "error");
                 return;
             }
@@ -919,7 +996,7 @@
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
                 return;
             }
-            if (isBlockedByPeer(selectedUserCode) || isBlockedByMe(selectedUserCode)) {
+            if (isEitherBlocked(selectedUserCode)) {
                 showToast("محظور", "error");
                 return;
             }
@@ -1267,7 +1344,7 @@
                     let peerName = peerObj ? peerObj.empName : peerCode;
 
                     let displayLastText = lastMsg.text;
-                    if (isBlockedByMe(peerCode) || isBlockedByPeer(peerCode)) {
+                    if (isEitherBlocked(peerCode)) {
                         displayLastText = '🚫 محظور';
                     } else if (approvalStatus !== 'accepted') {
                         displayLastText = '📩 رسالة واردة - بانتظار موافقتك';
@@ -1336,7 +1413,7 @@
             onValue(sidebarChatsRef, (chatSnapshot) => {
                 latestChatsData = chatSnapshot.val();
                 renderConversationsSidebar();
-                if (selectedUserCode && !isBlockedByMe(selectedUserCode) && !isBlockedByPeer(selectedUserCode) && getPeerApprovalStatus(selectedUserCode) === 'accepted') {
+                if (selectedUserCode && !isEitherBlocked(selectedUserCode) && getPeerApprovalStatus(selectedUserCode) === 'accepted') {
                     loadChatRoom();
                 }
             }, (error) => {
@@ -1345,6 +1422,7 @@
 
             onValue(sidebarStatusRef, (statusSnapshot) => {
                 latestStatusesData = statusSnapshot.val() || {};
+                updatePresenceVisibilityDuringBlock();
             }, (error) => {
                 console.error("Status read error:", error);
             });
@@ -1483,7 +1561,7 @@
             let isFirstLoad = true;
 
             onValue(currentChatRef, (snapshot) => {
-                if (!selectedUserCode || isBlockedByMe(selectedUserCode) || isBlockedByPeer(selectedUserCode) || getPeerApprovalStatus(selectedUserCode) !== 'accepted') {
+                if (!selectedUserCode || isEitherBlocked(selectedUserCode) || getPeerApprovalStatus(selectedUserCode) !== 'accepted') {
                     return;
                 }
                 messagesDiv.innerHTML = '';
@@ -1500,7 +1578,7 @@
                 if (!isFirstLoad && sorted.length > 0) {
                     let latestMsg = sorted[sorted.length - 1];
                     if (latestMsg && latestMsg.userId !== myId) {
-                        incomingMsgSound.play().catch(e => console.log("Audio play blocked by browser"));
+                        playSoftNotificationTone();
                     }
                 }
                 isFirstLoad = false;
@@ -1788,7 +1866,7 @@
 
         window.executeForwardMessage = async function(targetCode, targetName) {
             document.getElementById('forwardModalOverlay').style.display = 'none';
-            if (isBlockedByPeer(targetCode) || isBlockedByMe(targetCode)) {
+            if (isEitherBlocked(targetCode)) {
                 showToast("محظور", "error");
                 return;
             }
@@ -1815,7 +1893,7 @@
             const text = document.getElementById('msgInput').value.trim();
             if (!text) return;
             if (!selectedUserCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
-            if (isBlockedByPeer(selectedUserCode) || isBlockedByMe(selectedUserCode)) {
+            if (isEitherBlocked(selectedUserCode)) {
                 showToast("محظور", "error");
                 return;
             }
@@ -1844,7 +1922,7 @@
                 event.target.value = '';
                 return; 
             }
-            if (isBlockedByPeer(selectedUserCode) || isBlockedByMe(selectedUserCode)) {
+            if (isEitherBlocked(selectedUserCode)) {
                 showToast("محظور", "error");
                 event.target.value = '';
                 return;
@@ -1886,7 +1964,7 @@
 
         window.toggleVoiceRecording = async function() {
             if (!selectedUserCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
-            if (isBlockedByPeer(selectedUserCode) || isBlockedByMe(selectedUserCode)) {
+            if (isEitherBlocked(selectedUserCode)) {
                 showToast("محظور", "error");
                 return;
             }
