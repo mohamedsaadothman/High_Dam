@@ -121,16 +121,6 @@
         .wa-lightbox-stage img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; will-change: transform; user-select: none; -webkit-user-drag: none; }
         .wa-lightbox-hint { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.65); color: #d1d7db; font-size: 11.5px; padding: 5px 14px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
 
-        /* نافذة الكاميرا المباشرة */
-        .wa-camera-modal { position: fixed; inset: 0; background: #0b141a; display: none; flex-direction: column; justify-content: space-between; z-index: 10070; }
-        .wa-camera-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; color: #fff; background: rgba(0,0,0,0.5); }
-        .wa-camera-preview-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
-        .wa-camera-preview-wrap video, .wa-camera-preview-wrap img { width: 100%; height: 100%; object-fit: contain; }
-        .wa-camera-bottom { padding: 18px 24px; background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: space-around; }
-        .wa-shutter-btn { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #ffffff; background: #00a884; color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
-        .wa-cam-action-btn { background: rgba(255,255,255,0.16); color: #fff; border: none; padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
-        .wa-cam-action-btn.send { background: #00a884; }
-
         .wa-input-footer { height: 70px; background: #f0f2f5; padding: 10px 20px; display: flex; align-items: center; gap: 14px; z-index: 10; border-top: 1px solid #e2e8f0; }
         .wa-input-footer button.icon-action { background: none; border: none; color: #54656f; font-size: 22px; cursor: pointer; transition: 0.2s; }
         .wa-input-footer button.icon-action:hover { color: #00a884; }
@@ -236,28 +226,6 @@
         <div class="wa-lightbox-stage" id="lightboxStage">
             <img id="lightboxImg" src="" alt="صورة">
             <div class="wa-lightbox-hint">قرّب بإصبعين أو انقر مرتين للتكبير • اسحب لتحريك الصورة</div>
-        </div>
-    </div>
-
-    <!-- واجهة الكاميرا المباشرة -->
-    <div class="wa-camera-modal" id="waCameraModal">
-        <div class="wa-camera-top">
-            <button class="wa-lightbox-btn" onclick="closeCameraModal()" title="إغلاق"><i class="fa-solid fa-xmark"></i></button>
-            <span style="font-weight:700; font-size:15px;">التقاط صورة</span>
-            <button class="wa-lightbox-btn" id="switchCameraBtn" onclick="switchCameraFacing()" title="تبديل الكاميرا"><i class="fa-solid fa-camera-rotate"></i></button>
-        </div>
-        <div class="wa-camera-preview-wrap">
-            <video id="cameraVideo" autoplay playsinline muted></video>
-            <img id="cameraCapturedImg" src="" alt="الصورة الملتقطة" style="display:none;">
-            <canvas id="cameraCanvas" style="display:none;"></canvas>
-        </div>
-        <div class="wa-camera-bottom" id="cameraLiveControls">
-            <button class="wa-shutter-btn" onclick="capturePhotoFromStream()" title="التقاط"><i class="fa-solid fa-camera"></i></button>
-        </div>
-        <div class="wa-camera-bottom" id="cameraReviewControls" style="display:none;">
-            <button class="wa-cam-action-btn" onclick="retakePhoto()"><i class="fa-solid fa-rotate-left"></i> إعادة التقاط</button>
-            <button class="wa-cam-action-btn" onclick="saveCapturedPhotoToDevice()"><i class="fa-solid fa-download"></i> حفظ</button>
-            <button class="wa-cam-action-btn send" onclick="sendCapturedPhoto()"><i class="fa-solid fa-paper-plane"></i> إرسال</button>
         </div>
     </div>
 
@@ -378,7 +346,7 @@
                     <input type="file" id="cameraUploader" style="display: none;" accept="image/*" capture="environment" onchange="handleFileUpload(event, 'image')">
 
                     <button class="icon-action" onclick="toggleAttachmentMenu(event)" title="إرفاق مستند أو صورة"><i class="fa-solid fa-paperclip"></i></button>
-                    <button class="icon-action" onclick="openCameraModal()" title="التقاط صورة بالكاميرا"><i class="fa-solid fa-camera"></i></button>
+                    <button class="icon-action" onclick="handleCameraButtonClick()" title="التقاط صورة بالكاميرا"><i class="fa-solid fa-camera"></i></button>
 
                     <input type="text" id="msgInput" placeholder="اكتب رسالة..." onkeypress="handleEnter(event)">
                     
@@ -447,7 +415,7 @@
             return key;
         }
 
-        function dataUrlToBlobAndFile(dataUrl, fallbackName = 'photo.jpg', fallbackMime = 'image/jpeg') {
+        function dataUrlToFile(dataUrl, fallbackName = 'photo', fallbackMime = 'image/jpeg') {
             try {
                 const arr = dataUrl.split(',');
                 const mimeMatch = arr[0].match(/:(.*?);/);
@@ -470,9 +438,7 @@
                     ? fallbackName
                     : `${fallbackName || (mime.startsWith('image/') ? 'photo' : 'document')}_${Date.now()}.${ext}`;
 
-                const blob = new Blob([u8arr], { type: mime });
-                const file = new File([blob], finalName, { type: mime });
-                return { blob, file, finalName, mime };
+                return new File([u8arr], finalName, { type: mime });
             } catch (err) {
                 return null;
             }
@@ -486,184 +452,55 @@
                 return;
             }
 
-            const parsed = dataUrlToBlobAndFile(
+            const fileObj = dataUrlToFile(
                 item.dataUrl,
                 item.fileName || (item.isImage ? 'photo' : 'document'),
                 item.isImage ? 'image/jpeg' : 'application/octet-stream'
             );
 
-            // محاولة الحفظ أو المشاركة المباشرة على الهواتف الداعمة
-            if (parsed && navigator.canShare && navigator.canShare({ files: [parsed.file] })) {
+            // 1) مشاركة / حفظ مباشر عبر نظام الهاتف إن أمكن
+            if (fileObj && navigator.canShare && navigator.canShare({ files: [fileObj] })) {
                 try {
                     await navigator.share({
-                        files: [parsed.file],
+                        files: [fileObj],
                         title: item.isImage ? 'حفظ الصورة' : 'حفظ المستند'
                     });
-                    showToast("تم تجهيز الملف للحفظ", "success");
                     return;
                 } catch (shareErr) {
                     if (shareErr && shareErr.name === 'AbortError') return;
                 }
             }
 
-            // تنزيل مباشر عبر Blob URL مع اسم وامتداد واضح
-            if (parsed) {
-                const blobUrl = URL.createObjectURL(parsed.blob);
+            // 2) تنزيل مباشر عبر dataURL لتجنب فشل blob: في مدير تحميل أندرويد
+            if (item.dataUrl.startsWith('data:')) {
+                const ext = item.dataUrl.includes('image/png') ? 'png' : (item.isImage ? 'jpg' : 'bin');
                 const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = parsed.finalName;
+                a.href = item.dataUrl;
+                a.download = `photo_${Date.now()}.${ext}`;
                 a.rel = 'noopener';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
-                showToast("تم بدء حفظ الملف على الجهاز", "success");
+
+                if (item.isImage) {
+                    openWaLightbox(null, mediaKey);
+                    showToast("إذا لم يبدأ التحميل، اضغط مطولاً على الصورة واختر حفظ الصورة", "success");
+                }
                 return;
             }
 
-            // fallback أخير لـ iOS أو المتصفحات المحدودة
-            if (item.isImage) {
-                openWaLightbox(null, mediaKey);
-                showToast("اضغط مطولاً على الصورة واختر حفظ في الصور", "success");
-            } else {
-                window.open(item.dataUrl, '_blank');
-            }
+            window.open(item.dataUrl, '_blank');
         };
 
-        /* ===== نظام الكاميرا المباشرة مع Fallback ===== */
-        let cameraStream = null;
-        let currentFacingMode = 'environment';
-        let capturedPhotoDataUrl = '';
-
-        window.openCameraModal = async function() {
+        /* فتح كاميرا الهاتف مباشرة في نفس لحظة اللمس */
+        window.handleCameraButtonClick = function() {
             if (!selectedUserCode) {
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
                 return;
             }
-
-            const modal = document.getElementById('waCameraModal');
-            const video = document.getElementById('cameraVideo');
-            const capturedImg = document.getElementById('cameraCapturedImg');
-
-            capturedPhotoDataUrl = '';
-            capturedImg.style.display = 'none';
-            capturedImg.src = '';
-            video.style.display = 'block';
-            document.getElementById('cameraLiveControls').style.display = 'flex';
-            document.getElementById('cameraReviewControls').style.display = 'none';
-
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                document.getElementById('cameraUploader').click();
-                return;
-            }
-
-            modal.style.display = 'flex';
-            await startCameraStream();
-        };
-
-        async function startCameraStream() {
-            stopCameraStream();
-            const video = document.getElementById('cameraVideo');
-            try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { ideal: currentFacingMode } },
-                    audio: false
-                });
-                video.srcObject = cameraStream;
-                await video.play();
-            } catch (err) {
-                // محاولة بأي كاميرا متاحة
-                try {
-                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    video.srcObject = cameraStream;
-                    await video.play();
-                } catch (fallbackErr) {
-                    closeCameraModal();
-                    showToast("تعذر فتح الكاميرا المباشرة، جاري فتح كاميرا الهاتف...", "error");
-                    document.getElementById('cameraUploader').click();
-                }
-            }
-        }
-
-        function stopCameraStream() {
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
-                cameraStream = null;
-            }
-            const video = document.getElementById('cameraVideo');
-            if (video) video.srcObject = null;
-        }
-
-        window.closeCameraModal = function() {
-            stopCameraStream();
-            document.getElementById('waCameraModal').style.display = 'none';
-            capturedPhotoDataUrl = '';
-        };
-
-        window.switchCameraFacing = async function() {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            await startCameraStream();
-        };
-
-        window.capturePhotoFromStream = function() {
-            const video = document.getElementById('cameraVideo');
-            const canvas = document.getElementById('cameraCanvas');
-            const capturedImg = document.getElementById('cameraCapturedImg');
-
-            if (!video.videoWidth || !video.videoHeight) return;
-
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            capturedPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-            capturedImg.src = capturedPhotoDataUrl;
-            capturedImg.style.display = 'block';
-            video.style.display = 'none';
-            stopCameraStream();
-
-            document.getElementById('cameraLiveControls').style.display = 'none';
-            document.getElementById('cameraReviewControls').style.display = 'flex';
-        };
-
-        window.retakePhoto = async function() {
-            const video = document.getElementById('cameraVideo');
-            const capturedImg = document.getElementById('cameraCapturedImg');
-            capturedPhotoDataUrl = '';
-            capturedImg.style.display = 'none';
-            video.style.display = 'block';
-            document.getElementById('cameraReviewControls').style.display = 'none';
-            document.getElementById('cameraLiveControls').style.display = 'flex';
-            await startCameraStream();
-        };
-
-        window.saveCapturedPhotoToDevice = function() {
-            if (!capturedPhotoDataUrl) return;
-            const key = registerMedia(capturedPhotoDataUrl, true, `camera_${Date.now()}.jpg`);
-            window.triggerMediaDownload(null, key);
-        };
-
-        window.sendCapturedPhoto = async function() {
-            if (!capturedPhotoDataUrl || !selectedUserCode) return;
-            const dataToSend = capturedPhotoDataUrl;
-            closeCameraModal();
-
-            showToast("جاري إرسال الصورة...", "success");
-            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-            const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-            await set(newMsgRef, {
-                id: newMsgRef.key,
-                name: currentUserName,
-                text: dataToSend,
-                type: 'image',
-                fileName: 'صورة',
-                userId: myId,
-                timestamp: serverTimestamp()
-            });
-
-            sendNotificationToUser(selectedUserCode, "أرسل لك صورة من " + currentUserName);
+            const camInput = document.getElementById('cameraUploader');
+            camInput.value = '';
+            camInput.click();
         };
 
         let lbScale = 1, lbX = 0, lbY = 0;
