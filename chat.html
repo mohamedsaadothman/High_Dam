@@ -89,16 +89,10 @@
 
         .wa-photo-card { position: relative; border-radius: 8px; overflow: hidden; background: #e2e8f0; cursor: pointer; }
         .wa-photo-card img.chat-img { display: block; width: 100%; max-width: 270px; max-height: 310px; object-fit: cover; }
-        .wa-photo-actions { position: absolute; bottom: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
-        .wa-floating-save-btn { pointer-events: auto; background: rgba(17, 27, 33, 0.75); backdrop-filter: blur(4px); color: #ffffff; border: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
-        .wa-floating-save-btn:hover { background: #00a884; transform: scale(1.06); }
 
-        .wa-doc-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(255, 255, 255, 0.7); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.08); min-width: 210px; }
-        .wa-doc-left { display: flex; align-items: center; gap: 10px; overflow: hidden; }
+        .wa-doc-card { display: flex; align-items: center; gap: 10px; background: rgba(255, 255, 255, 0.75); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.08); min-width: 190px; }
         .wa-doc-icon { width: 38px; height: 38px; border-radius: 8px; background: #00a884; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-        .wa-doc-name { font-size: 13px; font-weight: 700; color: #111b21; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 145px; }
-        .wa-doc-save-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: #00a884; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; flex-shrink: 0; transition: 0.2s; }
-        .wa-doc-save-btn:hover { background: #008f72; }
+        .wa-doc-name { font-size: 13px; font-weight: 700; color: #111b21; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 165px; }
 
         .wa-message audio { max-width: 225px; height: 36px; display: block; }
 
@@ -220,7 +214,6 @@
             <div class="wa-lightbox-actions">
                 <button class="wa-lightbox-btn" onclick="stepZoom(-0.5)" title="تصغير"><i class="fa-solid fa-minus"></i></button>
                 <button class="wa-lightbox-btn" onclick="stepZoom(0.5)" title="تكبير"><i class="fa-solid fa-plus"></i></button>
-                <button class="wa-lightbox-btn" id="lightboxDownloadBtn" onclick="saveCurrentLightboxMedia()" title="حفظ على الهاتف"><i class="fa-solid fa-download"></i></button>
             </div>
         </div>
         <div class="wa-lightbox-stage" id="lightboxStage">
@@ -232,7 +225,6 @@
     <div class="msg-options-overlay" id="msgOptionsOverlay" onclick="closeMsgOptions(event)">
         <div class="msg-options-box" onclick="event.stopPropagation()">
             <h3 style="font-size: 15px; margin-bottom: 12px; color: #334155; font-weight: 800;">خيارات الرسالة</h3>
-            <button id="optSaveMediaBtn" style="display:none;" onclick="saveActiveMessageMedia()"><i class="fa-solid fa-download" style="color:#00a884;"></i> حفظ على الهاتف</button>
             <button onclick="forwardCurrentMessage()"><i class="fa-solid fa-share" style="color:#00a884;"></i> إعادة توجيه</button>
             <button class="delete-opt" onclick="deleteCurrentMessage()"><i class="fa-solid fa-trash"></i> حذف من عندي</button>
             <button onclick="closeMsgOptions()" style="background:#f0f2f5;">إلغاء</button>
@@ -378,11 +370,14 @@
         
         let myId = localStorage.getItem('chat_user_id') || "user_" + Math.floor(Math.random() * 100000);
         localStorage.setItem('chat_user_id', myId);
+
+        localStorage.removeItem('selected_peer_code');
+        localStorage.removeItem('selected_peer_name');
         
         let currentUserName = ""; 
         let currentUserCode = ""; 
-        let selectedUserCode = localStorage.getItem('selected_peer_code') || ""; 
-        let selectedUserName = localStorage.getItem('selected_peer_name') || "";
+        let selectedUserCode = ""; 
+        let selectedUserName = "";
         let allUsersList = [];
         let currentChatRef = null; 
 
@@ -390,7 +385,6 @@
         let activeRoomId = null;
         let activeMsgText = "";
         let activeMsgType = "text";
-        let activeMsgFileName = "";
 
         let activeReactionMsgId = null;
         let activeReactionRoomId = null;
@@ -405,73 +399,11 @@
 
         const mediaStore = new Map();
 
-        function getCleanLabel(isImage = false) {
-            return isImage ? 'صورة' : 'مستند';
-        }
-
-        function registerMedia(dataUrl, isImage = false, fileName = '') {
+        function registerMedia(dataUrl, isImage = false) {
             const key = "item_" + mediaStore.size;
-            mediaStore.set(key, { dataUrl, label: getCleanLabel(isImage), isImage, fileName });
+            mediaStore.set(key, { dataUrl, isImage });
             return key;
         }
-
-        function dataUrlToFile(dataUrl, fileName = 'file.bin') {
-            const arr = dataUrl.split(',');
-            const mimeMatch = arr[0].match(/:(.*?);/);
-            const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-            const bstr = atob(arr[1]);
-            let n = bstr.length;
-            const u8arr = new Uint8Array(n);
-            while (n--) {
-                u8arr[n] = bstr.charCodeAt(n);
-            }
-            return new File([u8arr], fileName, { type: mime });
-        }
-
-        window.triggerMediaDownload = async function(e, mediaKey) {
-            if (e) e.stopPropagation();
-            const item = mediaStore.get(mediaKey);
-            if (!item || !item.dataUrl) {
-                showToast("تعذر الوصول للملف", "error");
-                return;
-            }
-
-            const ext = item.isImage ? 'jpg' : 'dat';
-            const safeName = item.fileName ? item.fileName.replace(/[^\w.\-\u0600-\u06FF]/g, '_') : `download_${Date.now()}.${ext}`;
-
-            try {
-                const fileObj = dataUrlToFile(item.dataUrl, safeName);
-
-                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
-                    await navigator.share({
-                        files: [fileObj],
-                        title: item.isImage ? 'حفظ الصورة' : 'حفظ المستند'
-                    });
-                    return;
-                }
-            } catch (err) {
-                if (err && err.name === 'AbortError') return;
-            }
-
-            if (item.isImage) {
-                openWaLightbox(null, mediaKey);
-                showToast("اضغط مطولاً على الصورة واختر حفظ الصورة", "success");
-            } else {
-                const blob = dataUrlToFile(item.dataUrl, safeName);
-                const blobUrl = URL.createObjectURL(blob);
-                const win = window.open(blobUrl, '_blank');
-                if (!win) {
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = safeName;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                }
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-                showToast("جاري فتح المستند للحفظ...", "success");
-            }
-        };
 
         window.handleCameraButtonClick = function() {
             if (!selectedUserCode) {
@@ -487,7 +419,6 @@
         };
 
         let lbScale = 1, lbX = 0, lbY = 0;
-        let lbCurrentKey = null;
         let isPanning = false, panStartX = 0, panStartY = 0;
         let pinchStartDist = 0, pinchStartScale = 1;
         let lastTapTime = 0;
@@ -515,7 +446,6 @@
             const item = mediaStore.get(mediaKey);
             if (!item) return;
 
-            lbCurrentKey = mediaKey;
             lightboxImg.src = item.dataUrl;
             lightboxTitle.textContent = 'صورة';
             resetLightboxView(false);
@@ -525,7 +455,6 @@
         window.closeWaLightbox = function() {
             lightboxEl.style.display = 'none';
             lightboxImg.src = '';
-            lbCurrentKey = null;
         };
 
         window.handleLightboxBackdropClick = function(e) {
@@ -538,12 +467,6 @@
             lbScale = Math.min(4, Math.max(1, Number((lbScale + delta).toFixed(2))));
             if (lbScale === 1) { lbX = 0; lbY = 0; }
             applyLightboxTransform(true);
-        };
-
-        window.saveCurrentLightboxMedia = function() {
-            if (lbCurrentKey) {
-                window.triggerMediaDownload(null, lbCurrentKey);
-            }
         };
 
         function getTouchDistance(t1, t2) {
@@ -913,7 +836,12 @@
 
                 if (result.status === 'success') {
                     currentUserName = result.empName; 
-                    currentUserCode = codeInput;      
+                    currentUserCode = codeInput;
+                    selectedUserCode = "";
+                    selectedUserName = "";
+                    localStorage.removeItem('selected_peer_code');
+                    localStorage.removeItem('selected_peer_name');
+                    document.getElementById('waContainer').classList.remove('chat-active');
                     
                     setupPresence();
                     autoEnablePushNotifications();
@@ -938,14 +866,6 @@
                     
                     showToast("تم تسجيل الدخول بنجاح وتفعيل الإشعارات", "success");
                     loadConversationsSidebar();
-
-                    if (selectedUserCode) {
-                        let peerObj = allUsersList.find(u => u.username === selectedUserCode);
-                        if (peerObj) {
-                            selectPeer(selectedUserCode, peerObj.empName);
-                        }
-                    }
-
                 } else {
                     showToast(result.message || "بيانات الدخول غير صحيحة", "error");
                     document.querySelector('#loginScreen button').innerText = "دخول للدردشة";
@@ -1081,8 +1001,6 @@
                                 showToast("تم حذف المحادثة من عندك بنجاح", "success");
                                 if (selectedUserCode === roomId.split('_').find(c => c !== currentUserCode)) {
                                     selectedUserCode = "";
-                                    localStorage.removeItem('selected_peer_code');
-                                    localStorage.removeItem('selected_peer_name');
                                     document.getElementById('chatHeaderTitle').innerText = "اختر محادثة";
                                     document.getElementById('chatHeaderStatus').innerText = "غير متصل";
                                     document.getElementById('headerOnlineDot').classList.remove('active');
@@ -1099,8 +1017,6 @@
         window.selectPeer = function(peerCode, peerName) {
             selectedUserCode = peerCode;
             selectedUserName = peerName;
-            localStorage.setItem('selected_peer_code', peerCode);
-            localStorage.setItem('selected_peer_name', peerName);
 
             document.getElementById('chatHeaderTitle').innerText = peerName;
             
@@ -1181,28 +1097,17 @@
 
                     let bodyHtml = '';
                     if (msg.type === 'image') {
-                        const mediaKey = registerMedia(msg.text, true, msg.fileName || '');
+                        const mediaKey = registerMedia(msg.text, true);
                         bodyHtml = `
                             <div class="wa-photo-card" onclick="openWaLightbox(event, '${mediaKey}')">
                                 <img class="chat-img" src="${msg.text}" alt="صورة">
-                                <div class="wa-photo-actions">
-                                    <button class="wa-floating-save-btn" onclick="triggerMediaDownload(event, '${mediaKey}')" title="حفظ">
-                                        <i class="fa-solid fa-download"></i>
-                                    </button>
-                                </div>
                             </div>
                         `;
                     } else if (msg.type === 'file') {
-                        const mediaKey = registerMedia(msg.text, false, msg.fileName || '');
                         bodyHtml = `
-                            <div class="wa-doc-card" onclick="event.stopPropagation()">
-                                <div class="wa-doc-left">
-                                    <div class="wa-doc-icon"><i class="fa-solid fa-file-lines"></i></div>
-                                    <span class="wa-doc-name">مستند</span>
-                                </div>
-                                <button class="wa-doc-save-btn" onclick="triggerMediaDownload(event, '${mediaKey}')" title="حفظ">
-                                    <i class="fa-solid fa-download"></i>
-                                </button>
+                            <div class="wa-doc-card">
+                                <div class="wa-doc-icon"><i class="fa-solid fa-file-lines"></i></div>
+                                <span class="wa-doc-name">${msg.fileName || 'مستند'}</span>
                             </div>
                         `;
                     } else if (msg.type === 'voice') {
@@ -1297,7 +1202,6 @@
             activeMsgId = msg.id;
             activeMsgText = msg.text;
             activeMsgType = msg.type;
-            activeMsgFileName = msg.fileName || '';
 
             msgDiv.classList.add('highlighted');
             activeHighlightedEl = msgDiv;
@@ -1324,16 +1228,7 @@
 
         window.openOptionsFromPicker = function() {
             hideReactionPicker();
-            const saveBtn = document.getElementById('optSaveMediaBtn');
-            saveBtn.style.display = (activeMsgType === 'image' || activeMsgType === 'file') ? 'flex' : 'none';
             document.getElementById('msgOptionsOverlay').style.display = 'flex';
-        };
-
-        window.saveActiveMessageMedia = function() {
-            document.getElementById('msgOptionsOverlay').style.display = 'none';
-            if (!activeMsgText) return;
-            const key = registerMedia(activeMsgText, activeMsgType === 'image', activeMsgFileName || '');
-            window.triggerMediaDownload(null, key);
         };
 
         window.addReaction = async function(emoji) {
@@ -1424,7 +1319,6 @@
                 name: currentUserName, 
                 text: activeMsgText, 
                 type: activeMsgType,
-                fileName: activeMsgFileName || '',
                 userId: myId, 
                 timestamp: serverTimestamp() 
             });
@@ -1482,7 +1376,7 @@
                     name: currentUserName, 
                     text: base64Data, 
                     type: fileType,
-                    fileName: file.name || (fileType === 'image' ? 'صورة' : 'مستند'),
+                    fileName: file.name || 'مستند',
                     userId: myId, 
                     timestamp: serverTimestamp() 
                 });
@@ -1548,3 +1442,4 @@
     </script>
 </body>
 </html>
+
