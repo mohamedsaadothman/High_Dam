@@ -405,36 +405,14 @@
 
         const mediaStore = new Map();
 
-        function getCleanLabel(rawName, isImage = false) {
-            if (isImage) return 'صورة';
-            if (!rawName || typeof rawName !== 'string') return 'مستند مرفق';
-            const nameWithoutExt = rawName.replace(/\.[^/.]+$/, '').trim();
-            if (!nameWithoutExt || /\d{5,}/.test(nameWithoutExt) || /^[0-9a-fA-F\-_]+$/.test(nameWithoutExt)) {
-                return 'مستند مرفق';
-            }
-            return rawName.trim();
+        function getCleanLabel(isImage = false) {
+            return isImage ? 'صورة' : 'مستند';
         }
 
-        function registerMedia(dataUrl, fileName, isImage = false) {
+        function registerMedia(dataUrl, isImage = false) {
             const key = "item_" + mediaStore.size;
-            const label = getCleanLabel(fileName, isImage);
-            mediaStore.set(key, { dataUrl, label, isImage });
+            mediaStore.set(key, { dataUrl, label: getCleanLabel(isImage), isImage });
             return key;
-        }
-
-        function base64ToBlobUrl(dataUrl) {
-            if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
-            const parts = dataUrl.split(',');
-            const mimeMatch = parts[0].match(/:(.*?);/);
-            const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-            const byteString = atob(parts[1]);
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
-            const blob = new Blob([ab], { type: mime });
-            return URL.createObjectURL(blob);
         }
 
         window.triggerMediaDownload = function(e, mediaKey) {
@@ -442,20 +420,12 @@
             const item = mediaStore.get(mediaKey);
             if (!item || !item.dataUrl) return;
 
-            const objectUrl = base64ToBlobUrl(item.dataUrl);
-            const link = document.createElement('a');
-            link.href = objectUrl;
-            link.setAttribute('download', item.isImage ? 'photo.jpg' : 'document');
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            // فتح الرابط في نافذة جديدة إذا لم يبدأ التنزيل داخل WebView
-            setTimeout(() => {
-                window.open(objectUrl, '_blank');
-                setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
-            }, 250);
+            const a = document.createElement('a');
+            a.href = item.dataUrl;
+            a.download = item.isImage ? 'photo' : 'file';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         };
 
         let lbScale = 1, lbX = 0, lbY = 0;
@@ -970,7 +940,7 @@
 
                             let displayLastText = lastMsg.text;
                             if (lastMsg.type === 'image') displayLastText = '📷 صورة';
-                            else if (lastMsg.type === 'file') displayLastText = '📁 ' + getCleanLabel(lastMsg.fileName, false);
+                            else if (lastMsg.type === 'file') displayLastText = '📁 مستند';
                             else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
 
                             let isOnline = allStatuses[peerCode] && allStatuses[peerCode].state === 'online';
@@ -1153,27 +1123,26 @@
 
                     let bodyHtml = '';
                     if (msg.type === 'image') {
-                        const mediaKey = registerMedia(msg.text, msg.fileName, true);
+                        const mediaKey = registerMedia(msg.text, true);
                         bodyHtml = `
                             <div class="wa-photo-card" onclick="openWaLightbox(event, '${mediaKey}')">
                                 <img class="chat-img" src="${msg.text}" alt="صورة">
                                 <div class="wa-photo-actions">
-                                    <button class="wa-floating-save-btn" onclick="triggerMediaDownload(event, '${mediaKey}')" title="حفظ على الهاتف">
+                                    <button class="wa-floating-save-btn" onclick="triggerMediaDownload(event, '${mediaKey}')" title="حفظ">
                                         <i class="fa-solid fa-download"></i>
                                     </button>
                                 </div>
                             </div>
                         `;
                     } else if (msg.type === 'file') {
-                        const mediaKey = registerMedia(msg.text, msg.fileName, false);
-                        const displayDocName = getCleanLabel(msg.fileName, false);
+                        const mediaKey = registerMedia(msg.text, false);
                         bodyHtml = `
                             <div class="wa-doc-card" onclick="event.stopPropagation()">
                                 <div class="wa-doc-left">
                                     <div class="wa-doc-icon"><i class="fa-solid fa-file-lines"></i></div>
-                                    <span class="wa-doc-name">${displayDocName}</span>
+                                    <span class="wa-doc-name">مستند</span>
                                 </div>
-                                <button class="wa-doc-save-btn" onclick="triggerMediaDownload(event, '${mediaKey}')" title="حفظ المستند">
+                                <button class="wa-doc-save-btn" onclick="triggerMediaDownload(event, '${mediaKey}')" title="حفظ">
                                     <i class="fa-solid fa-download"></i>
                                 </button>
                             </div>
@@ -1305,7 +1274,7 @@
         window.saveActiveMessageMedia = function() {
             document.getElementById('msgOptionsOverlay').style.display = 'none';
             if (!activeMsgText) return;
-            const key = registerMedia(activeMsgText, activeMsgFileName, activeMsgType === 'image');
+            const key = registerMedia(activeMsgText, activeMsgType === 'image');
             window.triggerMediaDownload(null, key);
         };
 
@@ -1455,7 +1424,7 @@
                     name: currentUserName, 
                     text: base64Data, 
                     type: fileType,
-                    fileName: fileType === 'image' ? 'صورة' : getCleanLabel(file.name, false),
+                    fileName: fileType === 'image' ? 'صورة' : 'مستند',
                     userId: myId, 
                     timestamp: serverTimestamp() 
                 });
@@ -1521,3 +1490,4 @@
     </script>
 </body>
 </html>
+
