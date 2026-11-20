@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8"
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>واتساب ملتقى العاملين بالهيئة</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -113,7 +113,7 @@
 
         .wa-lightbox { position: fixed; inset: 0; background: #0b141a; display: none; flex-direction: column; z-index: 10050; }
         .wa-lightbox-top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(11, 20, 26, 0.85); color: #e9edef; z-index: 10060; }
-        .wa-lightbox-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+        .wa-lightbox-title { font-size: 15px; font-weight: 700; color: #e9edef; }
         .wa-lightbox-actions { display: flex; align-items: center; gap: 8px; }
         .wa-lightbox-btn { background: rgba(255, 255, 255, 0.12); color: #e9edef; border: none; width: 38px; height: 38px; border-radius: 50%; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
         .wa-lightbox-btn:hover { background: rgba(255, 255, 255, 0.24); }
@@ -220,11 +220,11 @@
             <div class="wa-lightbox-actions">
                 <button class="wa-lightbox-btn" onclick="stepZoom(-0.5)" title="تصغير"><i class="fa-solid fa-minus"></i></button>
                 <button class="wa-lightbox-btn" onclick="stepZoom(0.5)" title="تكبير"><i class="fa-solid fa-plus"></i></button>
-                <button class="wa-lightbox-btn" onclick="saveCurrentLightboxMedia()" title="حفظ على الهاتف"><i class="fa-solid fa-download"></i></button>
+                <button class="wa-lightbox-btn" id="lightboxDownloadBtn" onclick="saveCurrentLightboxMedia()" title="حفظ على الهاتف"><i class="fa-solid fa-download"></i></button>
             </div>
         </div>
         <div class="wa-lightbox-stage" id="lightboxStage">
-            <img id="lightboxImg" src="" alt="صورة مكبرة">
+            <img id="lightboxImg" src="" alt="صورة">
             <div class="wa-lightbox-hint">قرّب بإصبعين أو انقر مرتين للتكبير • اسحب لتحريك الصورة</div>
         </div>
     </div>
@@ -405,83 +405,77 @@
 
         const mediaStore = new Map();
 
-        function sanitizeDisplayName(rawName, isImage = false) {
-            if (!rawName || typeof rawName !== 'string') {
-                return isImage ? 'صورة' : 'مستند';
+        // إزالة أي أرقام عشوائية أو أسماء ملفات رقمية تماماً
+        function getCleanLabel(rawName, isImage = false) {
+            if (isImage) return 'صورة';
+            if (!rawName || typeof rawName !== 'string') return 'مستند مرفق';
+            const nameWithoutExt = rawName.replace(/\.[^/.]+$/, '').trim();
+            // إذا كان الاسم أرقاماً أو رموزاً أو يحتوي على أرقام طويلة، استبدله بوصف عربي نظيف
+            if (!nameWithoutExt || /\d{5,}/.test(nameWithoutExt) || /^[0-9a-fA-F\-_]+$/.test(nameWithoutExt)) {
+                return 'مستند مرفق';
             }
-            const trimmed = rawName.trim();
-            // إذا كان الاسم عبارة عن أرقام أو رموز عشوائية فقط بدون حروف واضحة
-            if (/^[0-9a-fA-F\-_]{10,}$/.test(trimmed) || /^\d{7,}$/.test(trimmed)) {
-                return isImage ? 'صورة' : 'مستند';
-            }
-            return trimmed;
+            return rawName.trim();
         }
 
         function registerMedia(dataUrl, fileName, isImage = false) {
-            const key = "m_" + Math.random().toString(36).slice(2, 10);
-            const cleanName = sanitizeDisplayName(fileName, isImage);
-            mediaStore.set(key, { dataUrl, cleanName, isImage });
+            const key = "item_" + mediaStore.size;
+            const label = getCleanLabel(fileName, isImage);
+            mediaStore.set(key, { dataUrl, label, rawFileName: fileName || '', isImage });
             return key;
         }
 
-        function dataUrlToBlob(dataUrl) {
-            if (!dataUrl || !dataUrl.startsWith('data:')) return null;
-            const parts = dataUrl.split(',');
-            const mimeMatch = parts[0].match(/:(.*?);/);
-            const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-            const byteString = atob(parts[1]);
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
-            return new Blob([ab], { type: mime });
-        }
-
+        // دالة الحفظ المتوافقة مع WebView أندرويد (تحوّل الملف إلى رابط تنزيل HTTP حقيقي عبر Apps Script)
         window.triggerMediaDownload = async function(e, mediaKey) {
             if (e) e.stopPropagation();
             const item = mediaStore.get(mediaKey);
-            if (!item) return;
+            if (!item || !item.dataUrl) return;
 
-            let fileName = item.cleanName || (item.isImage ? 'صورة' : 'مستند');
-            if (item.isImage && !/\.(png|jpg|jpeg|webp|gif)$/i.test(fileName)) {
-                fileName += '.jpg';
-            }
-
-            const blob = dataUrlToBlob(item.dataUrl);
-            if (!blob) {
-                showToast("تعذر تجهيز الملف للحفظ", "error");
+            // إذا كان الرابط أصلاً HTTP/HTTPS جاهز
+            if (item.dataUrl.startsWith('http')) {
+                window.location.href = item.dataUrl;
                 return;
             }
 
-            // استخدام Web Share API للملفات عند توفره (مثالي لحفظ الصور في المعرض داخل WebView والموبايل)
+            const parts = item.dataUrl.split(',');
+            if (parts.length < 2) return;
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : (item.isImage ? 'image/jpeg' : 'application/pdf');
+            const base64Body = parts[1];
+
+            let ext = 'jpg';
+            if (mimeType.includes('png')) ext = 'png';
+            else if (mimeType.includes('pdf')) ext = 'pdf';
+            else if (mimeType.includes('word') || mimeType.includes('document')) ext = 'docx';
+            else if (mimeType.includes('sheet') || mimeType.includes('excel')) ext = 'xlsx';
+
+            const safeDownloadName = item.isImage ? `صورة_المحادثة.${ext}` : `مستند_المحادثة.${ext}`;
+
+            showToast("جاري تجهيز الملف للحفظ على الهاتف...", "success");
+
             try {
-                const fileObj = new File([blob], fileName, { type: blob.type });
-                if (navigator.canShare && navigator.canShare({ files: [fileObj] })) {
-                    await navigator.share({
-                        files: [fileObj],
-                        title: fileName
-                    });
-                    showToast("تم فتح قائمة الحفظ والمشاركة", "success");
+                const response = await fetch(scriptUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'prepareDownload',
+                        base64: base64Body,
+                        mimeType: mimeType,
+                        fileName: safeDownloadName
+                    }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                });
+                const res = await response.json();
+
+                if (res && res.status === 'success' && res.url) {
+                    // رابط HTTPS حقيقي يقبله DownloadManager في تطبيق الأندرويد بدون أخطاء
+                    window.location.href = res.url;
+                    showToast("بدأ تنزيل الملف على هاتفك", "success");
                     return;
                 }
-            } catch (shareErr) {
-                if (shareErr && shareErr.name === 'AbortError') {
-                    return;
-                }
+            } catch (err) {
+                console.error("Download prep error:", err);
             }
 
-            // fallback للتحميل المباشر عبر Blob URL بدون إظهار أرقام عشوائية
-            const blobUrl = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = blobUrl;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-            showToast("جاري حفظ الملف على الهاتف...", "success");
+            showToast("تأكد من تحديث كود Apps Script لتفعيل الحفظ المباشر", "error");
         };
 
         let lbScale = 1, lbX = 0, lbY = 0;
@@ -515,7 +509,7 @@
 
             lbCurrentKey = mediaKey;
             lightboxImg.src = item.dataUrl;
-            lightboxTitle.textContent = item.cleanName || 'صورة';
+            lightboxTitle.textContent = 'صورة';
             resetLightboxView(false);
             lightboxEl.style.display = 'flex';
         };
@@ -996,7 +990,7 @@
 
                             let displayLastText = lastMsg.text;
                             if (lastMsg.type === 'image') displayLastText = '📷 صورة';
-                            else if (lastMsg.type === 'file') displayLastText = '📁 ' + sanitizeDisplayName(lastMsg.fileName, false);
+                            else if (lastMsg.type === 'file') displayLastText = '📁 ' + getCleanLabel(lastMsg.fileName, false);
                             else if (lastMsg.type === 'voice') displayLastText = '🎤 رسالة صوتية';
 
                             let isOnline = allStatuses[peerCode] && allStatuses[peerCode].state === 'online';
@@ -1192,7 +1186,7 @@
                         `;
                     } else if (msg.type === 'file') {
                         const mediaKey = registerMedia(msg.text, msg.fileName, false);
-                        const displayDocName = sanitizeDisplayName(msg.fileName, false);
+                        const displayDocName = getCleanLabel(msg.fileName, false);
                         bodyHtml = `
                             <div class="wa-doc-card" onclick="event.stopPropagation()">
                                 <div class="wa-doc-left">
@@ -1481,12 +1475,12 @@
                     name: currentUserName, 
                     text: base64Data, 
                     type: fileType,
-                    fileName: file.name,
+                    fileName: fileType === 'image' ? 'صورة' : getCleanLabel(file.name, false),
                     userId: myId, 
                     timestamp: serverTimestamp() 
                 });
 
-                sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستند: ' + file.name) + " من " + currentUserName);
+                sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
                 event.target.value = ''; 
             };
             reader.readAsDataURL(file);
@@ -1547,3 +1541,4 @@
     </script>
 </body>
 </html>
+
