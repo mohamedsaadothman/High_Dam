@@ -108,12 +108,10 @@
         .wa-lightbox { position: fixed; inset: 0; background: #0b141a; display: none; flex-direction: column; z-index: 10050; }
         .wa-lightbox-top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(11, 20, 26, 0.85); color: #e9edef; z-index: 10060; }
         .wa-lightbox-title { font-size: 15px; font-weight: 700; color: #e9edef; }
-        .wa-lightbox-actions { display: flex; align-items: center; gap: 8px; }
         .wa-lightbox-btn { background: rgba(255, 255, 255, 0.12); color: #e9edef; border: none; width: 38px; height: 38px; border-radius: 50%; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
         .wa-lightbox-btn:hover { background: rgba(255, 255, 255, 0.24); }
         .wa-lightbox-stage { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; }
         .wa-lightbox-stage img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; will-change: transform; user-select: none; -webkit-user-drag: none; }
-        .wa-lightbox-hint { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.65); color: #d1d7db; font-size: 11.5px; padding: 5px 14px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
 
         .wa-input-footer { height: 70px; background: #f0f2f5; padding: 10px 20px; display: flex; align-items: center; gap: 14px; z-index: 10; border-top: 1px solid #e2e8f0; }
         .wa-input-footer button.icon-action { background: none; border: none; color: #54656f; font-size: 22px; cursor: pointer; transition: 0.2s; }
@@ -211,20 +209,16 @@
                 <button class="wa-lightbox-btn" onclick="closeWaLightbox()" title="رجوع"><i class="fa-solid fa-arrow-right"></i></button>
                 <span class="wa-lightbox-title" id="lightboxTitle">صورة</span>
             </div>
-            <div class="wa-lightbox-actions">
-                <button class="wa-lightbox-btn" onclick="stepZoom(-0.5)" title="تصغير"><i class="fa-solid fa-minus"></i></button>
-                <button class="wa-lightbox-btn" onclick="stepZoom(0.5)" title="تكبير"><i class="fa-solid fa-plus"></i></button>
-            </div>
         </div>
         <div class="wa-lightbox-stage" id="lightboxStage">
             <img id="lightboxImg" src="" alt="صورة">
-            <div class="wa-lightbox-hint">قرّب بإصبعين أو انقر مرتين للتكبير • اسحب لتحريك الصورة</div>
         </div>
     </div>
 
     <div class="msg-options-overlay" id="msgOptionsOverlay" onclick="closeMsgOptions(event)">
         <div class="msg-options-box" onclick="event.stopPropagation()">
             <h3 style="font-size: 15px; margin-bottom: 12px; color: #334155; font-weight: 800;">خيارات الرسالة</h3>
+            <button id="optDownloadMediaBtn" style="display:none;" onclick="downloadActiveMessageMedia()"><i class="fa-solid fa-download" style="color:#00a884;"></i> تنزيل</button>
             <button onclick="forwardCurrentMessage()"><i class="fa-solid fa-share" style="color:#00a884;"></i> إعادة توجيه</button>
             <button class="delete-opt" onclick="deleteCurrentMessage()"><i class="fa-solid fa-trash"></i> حذف من عندي</button>
             <button onclick="closeMsgOptions()" style="background:#f0f2f5;">إلغاء</button>
@@ -385,6 +379,7 @@
         let activeRoomId = null;
         let activeMsgText = "";
         let activeMsgType = "text";
+        let activeMsgFileName = "";
 
         let activeReactionMsgId = null;
         let activeReactionRoomId = null;
@@ -399,9 +394,9 @@
 
         const mediaStore = new Map();
 
-        function registerMedia(dataUrl, isImage = false) {
+        function registerMedia(dataUrl, isImage = false, fileName = '') {
             const key = "item_" + mediaStore.size;
-            mediaStore.set(key, { dataUrl, isImage });
+            mediaStore.set(key, { dataUrl, isImage, fileName });
             return key;
         }
 
@@ -463,12 +458,6 @@
             }
         };
 
-        window.stepZoom = function(delta) {
-            lbScale = Math.min(4, Math.max(1, Number((lbScale + delta).toFixed(2))));
-            if (lbScale === 1) { lbX = 0; lbY = 0; }
-            applyLightboxTransform(true);
-        };
-
         function getTouchDistance(t1, t2) {
             const dx = t1.clientX - t2.clientX;
             const dy = t1.clientY - t2.clientY;
@@ -524,7 +513,10 @@
 
         lightboxStage.addEventListener('wheel', (e) => {
             e.preventDefault();
-            stepZoom(e.deltaY < 0 ? 0.35 : -0.35);
+            const delta = e.deltaY < 0 ? 0.35 : -0.35;
+            lbScale = Math.min(4, Math.max(1, Number((lbScale + delta).toFixed(2))));
+            if (lbScale === 1) { lbX = 0; lbY = 0; }
+            applyLightboxTransform(true);
         }, { passive: false });
 
         lightboxStage.addEventListener('mousedown', (e) => {
@@ -1097,7 +1089,7 @@
 
                     let bodyHtml = '';
                     if (msg.type === 'image') {
-                        const mediaKey = registerMedia(msg.text, true);
+                        const mediaKey = registerMedia(msg.text, true, msg.fileName || '');
                         bodyHtml = `
                             <div class="wa-photo-card" onclick="openWaLightbox(event, '${mediaKey}')">
                                 <img class="chat-img" src="${msg.text}" alt="صورة">
@@ -1202,6 +1194,7 @@
             activeMsgId = msg.id;
             activeMsgText = msg.text;
             activeMsgType = msg.type;
+            activeMsgFileName = msg.fileName || '';
 
             msgDiv.classList.add('highlighted');
             activeHighlightedEl = msgDiv;
@@ -1228,7 +1221,48 @@
 
         window.openOptionsFromPicker = function() {
             hideReactionPicker();
+            const dlBtn = document.getElementById('optDownloadMediaBtn');
+            if (dlBtn) {
+                dlBtn.style.display = (activeMsgType === 'image' || activeMsgType === 'file') ? 'flex' : 'none';
+            }
             document.getElementById('msgOptionsOverlay').style.display = 'flex';
+        };
+
+        window.downloadActiveMessageMedia = function() {
+            document.getElementById('msgOptionsOverlay').style.display = 'none';
+            if (!activeMsgText) {
+                showToast("تعذر الوصول للملف", "error");
+                return;
+            }
+
+            try {
+                const arr = activeMsgText.split(',');
+                const mimeMatch = arr[0].match(/:(.*?);/);
+                const mime = mimeMatch ? mimeMatch[1] : (activeMsgType === 'image' ? 'image/jpeg' : 'application/octet-stream');
+                const bstr = atob(arr[1]);
+                let n = bstr.length;
+                const u8arr = new Uint8Array(n);
+                while (n--) {
+                    u8arr[n] = bstr.charCodeAt(n);
+                }
+
+                const blob = new Blob([u8arr], { type: mime });
+                const blobUrl = URL.createObjectURL(blob);
+                const fallbackName = activeMsgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`;
+                const fileName = (activeMsgFileName || fallbackName).replace(/[^\w.\-\u0600-\u06FF]/g, '_');
+
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+                showToast("جاري التنزيل...", "success");
+            } catch (err) {
+                showToast("تعذر تنزيل الملف", "error");
+            }
         };
 
         window.addReaction = async function(emoji) {
@@ -1319,6 +1353,7 @@
                 name: currentUserName, 
                 text: activeMsgText, 
                 type: activeMsgType,
+                fileName: activeMsgFileName || '',
                 userId: myId, 
                 timestamp: serverTimestamp() 
             });
