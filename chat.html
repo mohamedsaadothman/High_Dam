@@ -241,7 +241,6 @@
             margin-bottom: 10px;
         }
 
-        /* شاشة البورصة الذكية للعداد */
         .stock-ticker-board {
             background: #090c10;
             border: 1.5px solid #262b33;
@@ -761,7 +760,7 @@
         let audioChunks = [];
         let isRecording = false;
         
-        const scriptUrl = "https://script.google.com/macros/s/AKfycbxQd74HmDbyMHJgUavrCchYNeMt8kaSQkoq48MOsMqQk6PSrlrGoAcZCQ2fzua5toyXpw/exec";
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbxVfqom8dnAlgzmyNu5ey0aOjAwyf9a1IiMFppBQDjAARNPuy74aVCAMhuzZ36X5veqLA/exec";
 
         const mediaStore = new Map();
 
@@ -799,9 +798,9 @@
             const dEl = document.getElementById('stockDeliveredCount');
             const sEl = document.getElementById('stockSeenCount');
             const stEl = document.getElementById('broadcastStatusLabel');
-            if (tEl) tEl.innerText = String(targetCount);
-            if (dEl) dEl.innerText = String(deliveredCount);
-            if (sEl) sEl.innerText = String(seenCount);
+            if (tEl && targetCount !== null && targetCount !== undefined) tEl.innerText = String(targetCount);
+            if (dEl && deliveredCount !== null && deliveredCount !== undefined) dEl.innerText = String(deliveredCount);
+            if (sEl && seenCount !== null && seenCount !== undefined) sEl.innerText = String(seenCount);
             if (stEl && statusText) stEl.innerText = statusText;
         }
 
@@ -817,7 +816,10 @@
                 const deliveredUsers = data.delivered ? Object.keys(data.delivered).length : 0;
                 const seenUsers = data.seen ? Object.keys(data.seen).length : 0;
                 const total = data.targetCount || targetTotal || 0;
-                updateStockBoardNumbers(total, deliveredUsers, seenUsers, isBroadcastRunning ? 'جاري البث...' : 'مباشر');
+                const stateLabel = data.status === "completed"
+                    ? "اكتمل البث"
+                    : (isBroadcastRunning ? "جاري البث..." : "في الخلفية");
+                updateStockBoardNumbers(total, deliveredUsers, seenUsers, stateLabel);
             });
         }
 
@@ -885,7 +887,7 @@
                 await ensureAnonymousAuth();
                 isBroadcastRunning = true;
                 sendBtn.disabled = true;
-                sendBtn.innerText = "جاري البث...";
+                sendBtn.innerText = "جاري إطلاق البث...";
 
                 const broadcastId = "bc_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
                 activeBroadcastId = broadcastId;
@@ -893,69 +895,51 @@
                 await set(ref(db, `broadcast_stats/${broadcastId}`), {
                     senderCode: currentUserCode,
                     senderName: currentUserName,
+                    senderUid: myId,
                     targetCount: recipients.length,
+                    status: "queued_background",
                     createdAt: serverTimestamp(),
                     delivered: {},
                     seen: {}
                 });
 
+                await set(ref(db, `broadcast_queue/${broadcastId}`), {
+                    broadcastId: broadcastId,
+                    senderCode: currentUserCode,
+                    senderName: currentUserName,
+                    senderUid: myId,
+                    text: text,
+                    recipients: recipients.map((r) => ({
+                        username: r.username,
+                        empName: r.empName || r.username
+                    })),
+                    status: "pending",
+                    createdAt: serverTimestamp()
+                });
+
                 attachBroadcastSeenListener(broadcastId, recipients.length);
-                updateStockBoardNumbers(recipients.length, 0, 0, 'جاري البث...');
+                updateStockBoardNumbers(recipients.length, 0, 0, 'في الخلفية');
 
-                const batchSize = 5;
-                let deliveredCount = 0;
-                let failedCount = 0;
+                fetch(scriptUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'processBroadcast',
+                        broadcastId: broadcastId,
+                        senderCode: currentUserCode,
+                        senderName: currentUserName,
+                        senderUid: myId,
+                        text: text
+                    }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                }).catch((bgErr) => {
+                    console.log("Background broadcast request dispatched:", bgErr);
+                });
 
-                for (let i = 0; i < recipients.length; i += batchSize) {
-                    const batch = recipients.slice(i, i + batchSize);
-                    sendBtn.innerText = `جاري البث (${deliveredCount}/${recipients.length})...`;
-
-                    await Promise.all(batch.map(async (user) => {
-                        const targetCode = user.username;
-                        try {
-                            const roomId = getChatRoomId(currentUserCode, targetCode);
-                            const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-                            await set(newMsgRef, {
-                                id: newMsgRef.key,
-                                name: currentUserName,
-                                text: text,
-                                type: 'text',
-                                isBroadcast: true,
-                                broadcastId: broadcastId,
-                                userId: myId,
-                                timestamp: serverTimestamp()
-                            });
-
-                            await set(ref(db, `broadcast_stats/${broadcastId}/delivered/${targetCode}`), {
-                                deliveredAt: serverTimestamp()
-                            });
-
-                            deliveredCount++;
-                            updateStockBoardNumbers(recipients.length, deliveredCount, null, 'جاري البث...');
-
-                            sendNotificationToUser(targetCode, "تعميم من " + currentUserName + ": " + text).catch(() => {});
-                        } catch (itemErr) {
-                            console.error("Broadcast failed for:", targetCode, itemErr);
-                            failedCount++;
-                        }
-                    }));
-
-                    if (i + batchSize < recipients.length) {
-                        await new Promise((r) => setTimeout(r, 120));
-                    }
-                }
-
-                updateStockBoardNumbers(recipients.length, deliveredCount, null, 'اكتمل البث');
-                if (failedCount === 0) {
-                    showToast(`اكتمل التلقي لـ ${deliveredCount} مستخدم بنجاح`, "success");
-                } else {
-                    showToast(`تم التلقي لـ ${deliveredCount} مستخدم، وتعذّر ${failedCount}`, "error");
-                }
+                showToast("تم إطلاق الرسالة الجماعية في الخلفية؛ يمكنك إغلاق المتصفح بأمان", "success");
             } catch (err) {
-                console.error("Broadcast error:", err);
-                updateStockBoardNumbers(recipients.length, 0, null, 'خطأ في البث');
-                showToast("حدث خطأ أثناء إرسال الرسالة الجماعية", "error");
+                console.error("Broadcast background start error:", err);
+                updateStockBoardNumbers(recipients.length, 0, null, 'خطأ');
+                showToast("حدث خطأ أثناء إطلاق البث في الخلفية", "error");
             } finally {
                 isBroadcastRunning = false;
                 sendBtn.disabled = false;
@@ -1139,11 +1123,33 @@
             });
         }
 
-        async function ensurePendingRequestForPeer(targetCode, targetName) {
-            if (!currentUserCode || !targetCode) return;
+        async function deliverOrQueueMessageWithApproval(targetCode, targetName, payload) {
+            if (!currentUserCode || !targetCode) return { delivered: false, queued: false };
+            if (isEitherBlocked(targetCode)) return { delivered: false, queued: false };
+
+            await ensureAnonymousAuth();
             const reqKey = getRequestKey(currentUserCode, targetCode);
-            const existing = latestRequestsData ? latestRequestsData[reqKey] : null;
-            if (!existing) {
+            const existingReq = latestRequestsData ? latestRequestsData[reqKey] : null;
+            const roomId = getChatRoomId(currentUserCode, targetCode);
+
+            if (existingReq && existingReq.status === 'accepted') {
+                const newMsgRef = push(ref(db, 'chats/' + roomId));
+                await set(newMsgRef, {
+                    id: newMsgRef.key,
+                    name: currentUserName,
+                    senderCode: currentUserCode,
+                    text: payload.text,
+                    type: payload.type || 'text',
+                    fileName: payload.fileName || '',
+                    isBroadcast: Boolean(payload.isBroadcast),
+                    broadcastId: payload.broadcastId || '',
+                    userId: myId,
+                    timestamp: serverTimestamp()
+                });
+                return { delivered: true, queued: false, msgId: newMsgRef.key };
+            }
+
+            if (!existingReq || existingReq.status !== 'rejected') {
                 await set(ref(db, 'chat_requests/' + reqKey), {
                     from: currentUserCode,
                     fromName: currentUserName,
@@ -1153,12 +1159,80 @@
                     updatedAt: serverTimestamp()
                 });
             }
+
+            const queuedRef = push(ref(db, `pending_outbox/${reqKey}`));
+            await set(queuedRef, {
+                id: queuedRef.key,
+                from: currentUserCode,
+                name: currentUserName,
+                to: targetCode,
+                text: payload.text,
+                type: payload.type || 'text',
+                fileName: payload.fileName || '',
+                isBroadcast: Boolean(payload.isBroadcast),
+                broadcastId: payload.broadcastId || '',
+                userId: myId,
+                createdAt: serverTimestamp()
+            });
+
+            return { delivered: false, queued: true };
+        }
+
+        async function flushQueuedMessagesOnAccept(reqKey, roomId) {
+            const outboxRef = ref(db, `pending_outbox/${reqKey}`);
+            return new Promise((resolve) => {
+                onValue(outboxRef, async (snap) => {
+                    const queuedObj = snap.val();
+                    if (!queuedObj || typeof queuedObj !== 'object') {
+                        resolve(0);
+                        return;
+                    }
+                    const items = Object.values(queuedObj).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                    let movedCount = 0;
+
+                    for (const item of items) {
+                        if (!item) continue;
+                        const newMsgRef = push(ref(db, 'chats/' + roomId));
+                        await set(newMsgRef, {
+                            id: newMsgRef.key,
+                            name: item.name || currentUserName,
+                            senderCode: item.from || '',
+                            text: item.text,
+                            type: item.type || 'text',
+                            fileName: item.fileName || '',
+                            isBroadcast: Boolean(item.isBroadcast),
+                            broadcastId: item.broadcastId || '',
+                            userId: item.userId || myId,
+                            timestamp: serverTimestamp()
+                        });
+
+                        if (item.isBroadcast && item.broadcastId && item.to) {
+                            await set(ref(db, `broadcast_stats/${item.broadcastId}/delivered/${item.to}`), {
+                                deliveredAt: serverTimestamp()
+                            }).catch(() => {});
+                        }
+
+                        if (item.to) {
+                            const previewLabel = item.isBroadcast
+                                ? `تعميم من ${item.name}: ${item.text}`
+                                : `رسالة جديدة من ${item.name}: ${item.text || ''}`;
+                            sendNotificationToUser(item.to, previewLabel).catch(() => {});
+                        }
+                        movedCount++;
+                    }
+
+                    await set(outboxRef, null);
+                    resolve(movedCount);
+                }, { onlyOnce: true });
+            });
         }
 
         window.respondToChatRequest = async function(requesterCode, decision) {
             if (!currentUserCode || !requesterCode) return;
             await ensureAnonymousAuth();
             const reqKey = getRequestKey(currentUserCode, requesterCode);
+            const roomId = getChatRoomId(currentUserCode, requesterCode);
+
             await update(ref(db, 'chat_requests/' + reqKey), {
                 status: decision,
                 respondedBy: currentUserCode,
@@ -1166,10 +1240,12 @@
             });
 
             if (decision === 'accepted') {
-                await sendNotificationToUser(requesterCode, "وافق " + currentUserName + " على طلب المراسلة");
-                showToast("تم قبول طلب المراسلة، والآن تظهر لك الرسائل", "success");
+                await flushQueuedMessagesOnAccept(reqKey, roomId);
+                await sendNotificationToUser(requesterCode, "وافق " + currentUserName + " على طلب المراسلة").catch(() => {});
+                showToast("تم قبول طلب المراسلة وظهرت الرسائل باسم الراسل", "success");
             } else {
-                showToast("تم رفض طلب المراسلة، وستظل الرسائل غير معروضة حتى الموافقة", "error");
+                await set(ref(db, `pending_outbox/${reqKey}`), null);
+                showToast("تم رفض طلب المراسلة ولن تصل الرسائل", "error");
             }
 
             if (selectedUserCode === requesterCode) {
@@ -2403,23 +2479,19 @@
                 showToast("محظور", "error");
                 return;
             }
-            await ensureAnonymousAuth();
-            await ensurePendingRequestForPeer(targetCode, targetName);
-            let roomId = getChatRoomId(currentUserCode, targetCode);
-            const newMsgRef = push(ref(db, 'chats/' + roomId));
 
-            await set(newMsgRef, { 
-                id: newMsgRef.key,
-                name: currentUserName, 
-                text: activeMsgText, 
+            const res = await deliverOrQueueMessageWithApproval(targetCode, targetName, {
+                text: activeMsgText,
                 type: activeMsgType,
-                fileName: activeMsgFileName || '',
-                userId: myId, 
-                timestamp: serverTimestamp() 
+                fileName: activeMsgFileName || ''
             });
 
-            sendNotificationToUser(targetCode, "رسالة مُعاد توجيهها من " + currentUserName);
-            showToast("تم إرسال إعادة التوجيه إلى " + targetName, "success");
+            if (res.delivered) {
+                sendNotificationToUser(targetCode, "رسالة مُعاد توجيهها من " + currentUserName).catch(() => {});
+                showToast("تم إرسال إعادة التوجيه إلى " + targetName, "success");
+            } else if (res.queued) {
+                showToast("تم إرسال طلب المراسلة؛ ستصل إعادة التوجيه بعد الموافقة", "success");
+            }
         }
 
         window.sendMessage = async function() {
@@ -2431,21 +2503,18 @@
                 return;
             }
 
-            await ensureAnonymousAuth();
-            await ensurePendingRequestForPeer(selectedUserCode, selectedUserName);
-            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-            const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-            await set(newMsgRef, { 
-                id: newMsgRef.key,
-                name: currentUserName, 
-                text: text, 
-                type: 'text',
-                userId: myId, 
-                timestamp: serverTimestamp() 
+            const res = await deliverOrQueueMessageWithApproval(selectedUserCode, selectedUserName, {
+                text: text,
+                type: 'text'
             });
 
-            sendNotificationToUser(selectedUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
+            if (res.delivered) {
+                sendNotificationToUser(selectedUserCode, "رسالة جديدة من " + currentUserName + ": " + text).catch(() => {});
+                showToast("تم إرسال الرسالة", "success");
+            } else if (res.queued) {
+                showToast("تم إرسال طلب المراسلة؛ ستصل الرسالة بعد موافقة الطرف الآخر", "success");
+                await loadChatRoom();
+            }
             document.getElementById('msgInput').value = '';
         };
 
@@ -2464,7 +2533,7 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            showToast("جاري تجهيز وإرسال الملف...", "success");
+            showToast("جاري تجهيز الملف...", "success");
 
             const reader = new FileReader();
             reader.onload = async function(e) {
@@ -2474,22 +2543,19 @@
                     fileType = 'image';
                 }
 
-                await ensureAnonymousAuth();
-                await ensurePendingRequestForPeer(selectedUserCode, selectedUserName);
-                let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-                const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-                await set(newMsgRef, { 
-                    id: newMsgRef.key,
-                    name: currentUserName, 
-                    text: base64Data, 
+                const res = await deliverOrQueueMessageWithApproval(selectedUserCode, selectedUserName, {
+                    text: base64Data,
                     type: fileType,
-                    fileName: file.name || 'مستند',
-                    userId: myId, 
-                    timestamp: serverTimestamp() 
+                    fileName: file.name || 'مستند'
                 });
 
-                sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
+                if (res.delivered) {
+                    sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName).catch(() => {});
+                    showToast("تم إرسال الملف بنجاح", "success");
+                } else if (res.queued) {
+                    showToast("تم إرسال طلب المراسلة؛ سيصل الملف بعد الموافقة", "success");
+                    await loadChatRoom();
+                }
                 event.target.value = ''; 
             };
             reader.readAsDataURL(file);
@@ -2519,22 +2585,18 @@
                         reader.readAsDataURL(audioBlob);
                         reader.onloadend = async function() {
                             const base64Audio = reader.result;
-                            await ensureAnonymousAuth();
-                            await ensurePendingRequestForPeer(selectedUserCode, selectedUserName);
-                            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-                            const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-                            await set(newMsgRef, { 
-                                id: newMsgRef.key,
-                                name: currentUserName, 
-                                text: base64Audio, 
-                                type: 'voice',
-                                userId: myId, 
-                                timestamp: serverTimestamp() 
+                            const res = await deliverOrQueueMessageWithApproval(selectedUserCode, selectedUserName, {
+                                text: base64Audio,
+                                type: 'voice'
                             });
 
-                            sendNotificationToUser(selectedUserCode, "أرسل لك رسالة صوتية من " + currentUserName);
-                            showToast("تم إرسال الرسالة الصوتية", "success");
+                            if (res.delivered) {
+                                sendNotificationToUser(selectedUserCode, "أرسل لك رسالة صوتية من " + currentUserName).catch(() => {});
+                                showToast("تم إرسال الرسالة الصوتية", "success");
+                            } else if (res.queued) {
+                                showToast("تم إرسال طلب المراسلة؛ ستصل الرسالة الصوتية بعد الموافقة", "success");
+                                await loadChatRoom();
+                            }
                         };
                     };
 
