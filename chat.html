@@ -230,13 +230,18 @@
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(function(OneSignal) {
-        OneSignal.init({
-          appId: "446d368f-2d83-40e5-be23-106bd4f75ca5", 
-          serviceWorkerPath: "High_Dam/OneSignalSDKWorker.js", 
-          serviceWorkerParam: { scope: "/High_Dam/" },
-          allowLocalhostAsSecureOrigin: true
-        });
+      OneSignalDeferred.push(async function(OneSignal) {
+        try {
+          const isSubPath = window.location.pathname.includes("/High_Dam/");
+          await OneSignal.init({
+            appId: "446d368f-2d83-40e5-be23-106bd4f75ca5",
+            serviceWorkerPath: isSubPath ? "/High_Dam/OneSignalSDKWorker.js" : "/OneSignalSDKWorker.js",
+            serviceWorkerParam: { scope: isSubPath ? "/High_Dam/" : "/" },
+            allowLocalhostAsSecureOrigin: true
+          });
+        } catch (e) {
+          console.log("OneSignal init error:", e);
+        }
       });
     </script>
 </head>
@@ -652,27 +657,63 @@
             updatePresenceVisibilityDuringBlock();
         }
 
+        function applyLocalBlockCache(blockerCode, targetCode, blockedValue) {
+            if (!latestBlocksData || typeof latestBlocksData !== 'object') {
+                latestBlocksData = {};
+            }
+            if (!latestBlocksData[blockerCode] || typeof latestBlocksData[blockerCode] !== 'object') {
+                latestBlocksData[blockerCode] = {};
+            }
+            if (blockedValue) {
+                latestBlocksData[blockerCode][targetCode] = blockedValue;
+            } else {
+                delete latestBlocksData[blockerCode][targetCode];
+            }
+        }
+
         window.toggleBlockPeer = async function() {
-            if (!selectedUserCode) return;
+            if (!selectedUserCode || !currentUserCode) return;
             await ensureAnonymousAuth();
-            const currentlyBlocked = isBlockedByMe(selectedUserCode);
-            const targetBlockRef = ref(db, `blocks/${currentUserCode}/${selectedUserCode}`);
+            const targetCode = selectedUserCode;
+            const targetName = selectedUserName || targetCode;
+            const currentlyBlocked = isBlockedByMe(targetCode);
+            const targetBlockRef = ref(db, `blocks/${currentUserCode}/${targetCode}`);
 
             if (currentlyBlocked) {
-                await set(targetBlockRef, null);
-                showToast(`تم فك الحظر عن ${selectedUserName}`, "success");
-                updateBlockButtonUI();
-                await loadChatRoom();
+                try {
+                    await set(targetBlockRef, null);
+                    applyLocalBlockCache(currentUserCode, targetCode, null);
+                    showToast(`تم فك الحظر عن ${targetName}`, "success");
+                    updateBlockButtonUI();
+                    renderIncomingRequestsSidebar();
+                    renderConversationsSidebar();
+                    await loadChatRoom();
+                } catch (err) {
+                    console.error("Unblock error:", err);
+                    showToast("تعذر فك الحظر، حاول مرة أخرى", "error");
+                }
             } else {
                 openCustomModal(
                     "حظر الدردشة",
-                    `هل أنت متأكد من حظر الدردشة مع (${selectedUserName})؟ لن تتمكن من مراسلته حتى تقوم بفك الحظر.`,
+                    `هل أنت متأكد من حظر الدردشة مع (${targetName})؟ لن تتمكن من مراسلته حتى تقوم بفك الحظر.`,
                     async function() {
-                        await ensureAnonymousAuth();
-                        await set(targetBlockRef, true);
-                        showToast(`تم حظر الدردشة مع ${selectedUserName}`, "error");
-                        updateBlockButtonUI();
-                        await loadChatRoom();
+                        try {
+                            await ensureAnonymousAuth();
+                            await set(targetBlockRef, {
+                                blocked: true,
+                                by: currentUserCode,
+                                updatedAt: Date.now()
+                            });
+                            applyLocalBlockCache(currentUserCode, targetCode, true);
+                            showToast(`تم حظر الدردشة مع ${targetName}`, "error");
+                            updateBlockButtonUI();
+                            renderIncomingRequestsSidebar();
+                            renderConversationsSidebar();
+                            await loadChatRoom();
+                        } catch (err) {
+                            console.error("Block error:", err);
+                            showToast("تعذر تنفيذ الحظر، حاول مرة أخرى", "error");
+                        }
                     }
                 );
             }
@@ -1098,9 +1139,11 @@
             const confirmBtn = document.getElementById('modalConfirmBtn');
             const newBtn = confirmBtn.cloneNode(true);
             confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
-            newBtn.onclick = function() {
+            newBtn.onclick = async function() {
                 closeCustomModal();
-                onConfirmCallback();
+                if (typeof onConfirmCallback === 'function') {
+                    await onConfirmCallback();
+                }
             };
             document.getElementById('customModalOverlay').style.display = 'flex';
         }
@@ -1272,33 +1315,65 @@
             }
         });
 
+        async function bindOneSignalExternalUser(userCode) {
+            if (!userCode) return;
+            window.OneSignalDeferred = window.OneSignalDeferred || [];
+            window.OneSignalDeferred.push(async function(OneSignal) {
+                try {
+                    if (OneSignal && OneSignal.Notifications && typeof OneSignal.Notifications.requestPermission === 'function') {
+                        if (OneSignal.Notifications.permission !== true) {
+                            await OneSignal.Notifications.requestPermission();
+                        }
+                    }
+                    if (OneSignal && typeof OneSignal.login === 'function') {
+                        await OneSignal.login(String(userCode).trim());
+                    }
+                } catch (e) {
+                    console.log("OneSignal bind error:", e);
+                }
+            });
+        }
+
         async function sendNotificationToUser(targetUserCode, messageText) {
+            if (!targetUserCode) return;
             try {
-                await fetch(scriptUrl, { 
-                    method: 'POST', 
-                    body: JSON.stringify({
-                        action: 'sendPush', 
-                        targetName: targetUserCode, 
-                        messageText: messageText, 
-                        name: currentUserName,
-                        url: "https://mohamedsaadothman.github.io/High_Dam/chat.html"
-                    }),
+                const payload = {
+                    action: 'sendPush',
+                    targetName: String(targetUserCode).trim(),
+                    targetCode: String(targetUserCode).trim(),
+                    messageText: String(messageText || ""),
+                    text: String(messageText || ""),
+                    name: String(currentUserName || currentUserCode || ""),
+                    senderName: String(currentUserName || ""),
+                    senderCode: String(currentUserCode || ""),
+                    url: "https://mohamedsaadothman.github.io/High_Dam/chat.html"
+                };
+
+                const response = await fetch(scriptUrl, {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                 });
-            } catch (error) { console.error("خطأ في الإشعار:", error); }
+
+                if (response && response.ok) {
+                    const rawText = await response.text();
+                    try {
+                        const parsed = JSON.parse(rawText);
+                        if (parsed && parsed.status === 'error') {
+                            console.warn("OneSignal push server warning:", parsed.message);
+                        }
+                    } catch (_) {
+                        // استجابة غير JSON من Apps Script لا تمنع الإرسال
+                    }
+                }
+            } catch (error) {
+                console.error("خطأ في الإشعار:", error);
+            }
         }
 
         async function autoEnablePushNotifications() {
-            OneSignalDeferred.push(async function(OneSignal) {
-                try {
-                    const permission = await OneSignal.Notifications.requestPermission();
-                    if (permission) {
-                        await OneSignal.login(currentUserCode); 
-                    }
-                } catch (e) {
-                    console.log("الإشعارات التلقائية:", e);
-                }
-            });
+            if (!currentUserCode) return;
+            await bindOneSignalExternalUser(currentUserCode);
         }
 
         window.login = async function() {
@@ -1329,7 +1404,7 @@
                     updateBlockButtonUI();
                     
                     await setupPresence();
-                    autoEnablePushNotifications();
+                    await autoEnablePushNotifications();
 
                     document.getElementById('myProfileName').innerText = currentUserName;
                     
@@ -2050,7 +2125,7 @@
                 timestamp: serverTimestamp() 
             });
 
-            sendNotificationToUser(targetCode, "رسالة مُعاد توجيهها من " + currentUserName);
+            await sendNotificationToUser(targetCode, "رسالة مُعاد توجيهها من " + currentUserName);
             showToast("تم إرسال إعادة التوجيه إلى " + targetName, "success");
         }
 
@@ -2077,7 +2152,7 @@
                 timestamp: serverTimestamp() 
             });
 
-            sendNotificationToUser(selectedUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
+            await sendNotificationToUser(selectedUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
             document.getElementById('msgInput').value = '';
         };
 
@@ -2121,7 +2196,7 @@
                     timestamp: serverTimestamp() 
                 });
 
-                sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
+                await sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
                 event.target.value = ''; 
             };
             reader.readAsDataURL(file);
@@ -2165,7 +2240,7 @@
                                 timestamp: serverTimestamp() 
                             });
 
-                            sendNotificationToUser(selectedUserCode, "أرسل لك رسالة صوتية من " + currentUserName);
+                            await sendNotificationToUser(selectedUserCode, "أرسل لك رسالة صوتية من " + currentUserName);
                             showToast("تم إرسال الرسالة الصوتية", "success");
                         };
                     };
