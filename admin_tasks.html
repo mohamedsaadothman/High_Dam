@@ -19,7 +19,7 @@
         }
 
         .top-bar {
-            max-width: 1080px;
+            max-width: 1120px;
             margin: 0 auto 22px;
             background: rgba(15, 23, 42, 0.92);
             border: 1.5px solid rgba(251, 191, 36, 0.45);
@@ -63,7 +63,7 @@
             color: #fca5a5;
         }
 
-        .container { max-width: 1080px; margin: 0 auto; }
+        .container { max-width: 1120px; margin: 0 auto; }
 
         .search-panel {
             position: relative;
@@ -149,7 +149,7 @@
             align-items: center;
             gap: 10px;
             padding-bottom: 14px;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
             border-bottom: 1px solid rgba(148, 163, 184, 0.2);
             flex-wrap: wrap;
         }
@@ -165,31 +165,88 @@
 
         .fields-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: 14px;
-            margin-bottom: 18px;
+            margin-bottom: 20px;
         }
 
-        .field-box { display: flex; flex-direction: column; gap: 6px; }
-        .field-box label { font-size: 12px; font-weight: 700; color: #cbd5e1; }
+        .field-box {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 12px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+        .field-box.wide-field { grid-column: 1 / -1; }
+
+        .field-top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+        .field-box label {
+            font-size: 12px;
+            font-weight: 800;
+            color: #cbd5e1;
+            word-break: break-word;
+        }
+
+        .edit-pen-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            background: rgba(251, 191, 36, 0.12);
+            color: #fbbf24;
+            font-size: 12.5px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: 0.2s;
+        }
+        .edit-pen-btn:hover {
+            background: rgba(251, 191, 36, 0.24);
+        }
+        .edit-pen-btn.editing {
+            background: #10b981;
+            border-color: #10b981;
+            color: #0f172a;
+        }
+
         .field-box input, .field-box textarea {
             width: 100%;
             padding: 10px 12px;
             border-radius: 10px;
-            border: 1px solid rgba(148, 163, 184, 0.3);
-            background: #0f172a;
-            color: #fff;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            background: rgba(15, 23, 42, 0.72);
+            color: #cbd5e1;
             font-size: 13px;
             outline: none;
+            transition: 0.2s;
         }
-        .field-box input:focus, .field-box textarea:focus { border-color: #fbbf24; }
+        .field-box input[readonly], .field-box textarea[readonly] {
+            opacity: 0.85;
+            cursor: default;
+        }
+        .field-box input:not([readonly]), .field-box textarea:not([readonly]) {
+            background: #0f172a;
+            color: #ffffff;
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.15);
+            opacity: 1;
+        }
         .field-box textarea { min-height: 90px; resize: vertical; }
 
         .save-doc-btn {
             background: linear-gradient(135deg, #10b981, #059669);
             color: #fff;
             border: none;
-            padding: 11px 20px;
+            padding: 11px 22px;
             border-radius: 10px;
             font-size: 13.5px;
             font-weight: 800;
@@ -257,7 +314,7 @@
         </div>
 
         <div id="documentsContainer" class="docs-grid">
-            <div class="empty-state">ابدأ بكتابة أول حرف أو أول اسم من اسم الموظف لعرض المقترحات وجلب مستنداته من مجموعة <strong>users</strong>.</div>
+            <div class="empty-state">ابدأ بكتابة أول حرف أو أول اسم من اسم الموظف لعرض المقترحات وجلب جميع حقول مستنداته من مجموعة <strong>users</strong>.</div>
         </div>
     </div>
 
@@ -288,6 +345,7 @@
         const db = getFirestore(app);
 
         let allUserDocs = [];
+        const docFieldMetaMap = new Map();
 
         function showToast(msg, isError = false) {
             const el = document.getElementById("statusToast");
@@ -373,57 +431,117 @@
             renderEmployeeDocuments(matchingDocs.length > 0 ? matchingDocs : [chosen]);
         };
 
+        function formatFieldValueForDisplay(val) {
+            if (val === null || val === undefined) return "";
+            if (Array.isArray(val)) return val.join("\n");
+            if (typeof val === "object") return JSON.stringify(val, null, 2);
+            return String(val);
+        }
+
+        function parseFieldValueForSave(rawVal, originalVal) {
+            if (typeof originalVal === "number") {
+                const num = Number(rawVal.trim());
+                return Number.isNaN(num) ? rawVal : num;
+            }
+            if (typeof originalVal === "boolean") {
+                const lower = rawVal.trim().toLowerCase();
+                if (lower === "true") return true;
+                if (lower === "false") return false;
+                return rawVal;
+            }
+            if (Array.isArray(originalVal)) {
+                return rawVal
+                    .split(/\r?\n/)
+                    .map(line => line.trim())
+                    .filter(Boolean);
+            }
+            if (originalVal !== null && typeof originalVal === "object") {
+                try {
+                    return JSON.parse(rawVal);
+                } catch {
+                    return rawVal;
+                }
+            }
+            return rawVal;
+        }
+
         function renderEmployeeDocuments(docsList) {
             const container = document.getElementById("documentsContainer");
+            docFieldMetaMap.clear();
+
             if (!docsList || docsList.length === 0) {
                 container.innerHTML = `<div class="empty-state">لم يتم العثور على مستندات لهذا الموظف.</div>`;
                 return;
             }
 
             container.innerHTML = docsList.map((item, docIdx) => {
-                const d = item.data;
-                const tasksText = Array.isArray(d.tasks) ? d.tasks.join("\n") : (d.tasks || "");
+                const d = item.data || {};
+                const keys = Object.keys(d);
+                docFieldMetaMap.set(docIdx, { docId: item.docId, keys, originalData: d });
+
+                const fieldsHtml = keys.map((key, fieldIdx) => {
+                    const val = d[key];
+                    const displayVal = formatFieldValueForDisplay(val);
+                    const useTextarea = displayVal.includes("\n") || displayVal.length > 75 || key === "tasks";
+                    const inputId = `field_${docIdx}_${fieldIdx}`;
+                    const penBtnId = `pen_${docIdx}_${fieldIdx}`;
+
+                    const controlHtml = useTextarea
+                        ? `<textarea id="${inputId}" readonly>${escapeHtml(displayVal)}</textarea>`
+                        : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" readonly>`;
+
+                    return `
+                        <div class="field-box ${useTextarea ? "wide-field" : ""}">
+                            <div class="field-top-row">
+                                <label for="${inputId}">${escapeHtml(key)}</label>
+                                <button type="button" id="${penBtnId}" class="edit-pen-btn" title="تعديل ${escapeAttr(key)}" onclick="toggleFieldEdit('${inputId}', '${penBtnId}')">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                            </div>
+                            ${controlHtml}
+                        </div>
+                    `;
+                }).join("");
+
                 return `
                     <div class="doc-card">
                         <div class="doc-header">
                             <div>
-                                <strong>${d.name || "بدون اسم"}</strong>
-                                <span style="font-size: 12px; color: #94a3b8; margin-right: 8px;">(${d.username || ""})</span>
+                                <strong>${escapeHtml(d.name || "بدون اسم")}</strong>
+                                <span style="font-size: 12px; color: #94a3b8; margin-right: 8px;">(${escapeHtml(d.username || "")})</span>
                             </div>
-                            <span class="doc-id-badge">مستند: ${item.docId}</span>
+                            <span class="doc-id-badge">مستند: ${escapeHtml(item.docId)}</span>
                         </div>
 
                         <div class="fields-grid">
-                            <div class="field-box">
-                                <label>الوظيفة / الفئة الوظيفية (jobCategory)</label>
-                                <input type="text" id="jobCategory_${docIdx}" value="${escapeAttr(d.jobCategory || "")}">
-                            </div>
-                            <div class="field-box">
-                                <label>الإدارة (department)</label>
-                                <input type="text" id="department_${docIdx}" value="${escapeAttr(d.department || "")}">
-                            </div>
-                            <div class="field-box">
-                                <label>الدور / الصلاحية (role)</label>
-                                <input type="text" id="role_${docIdx}" value="${escapeAttr(d.role || "")}">
-                            </div>
-                            <div class="field-box">
-                                <label>الحالة (status)</label>
-                                <input type="text" id="status_${docIdx}" value="${escapeAttr(d.status || "")}">
-                            </div>
+                            ${fieldsHtml || `<div class="empty-state">هذا المستند لا يحتوي على حقول.</div>`}
                         </div>
 
-                        <div class="field-box" style="margin-bottom: 16px;">
-                            <label>المهام المكلف بها الموظف (tasks)</label>
-                            <textarea id="tasks_${docIdx}" placeholder="اكتب المهام الخاصة بالموظف...">${escapeHtml(tasksText)}</textarea>
-                        </div>
-
-                        <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx}, '${item.docId}')">
+                        <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
                             <i class="fas fa-save"></i> حفظ التعديلات في قاعدة البيانات
                         </button>
                     </div>
                 `;
             }).join("");
         }
+
+        window.toggleFieldEdit = function(inputId, penBtnId) {
+            const fieldEl = document.getElementById(inputId);
+            const penBtn = document.getElementById(penBtnId);
+            if (!fieldEl || !penBtn) return;
+
+            const isCurrentlyReadonly = fieldEl.hasAttribute("readonly");
+            if (isCurrentlyReadonly) {
+                fieldEl.removeAttribute("readonly");
+                penBtn.classList.add("editing");
+                penBtn.title = "جاري التعديل";
+                fieldEl.focus();
+            } else {
+                fieldEl.setAttribute("readonly", "readonly");
+                penBtn.classList.remove("editing");
+                penBtn.title = "تعديل الحقل";
+            }
+        };
 
         function escapeAttr(val) {
             return String(val).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -433,28 +551,37 @@
             return String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        window.saveDocumentChanges = async function(docIdx, docId) {
-            try {
-                const jobCategory = document.getElementById(`jobCategory_${docIdx}`).value.trim();
-                const department = document.getElementById(`department_${docIdx}`).value.trim();
-                const role = document.getElementById(`role_${docIdx}`).value.trim();
-                const status = document.getElementById(`status_${docIdx}`).value.trim();
-                const tasks = document.getElementById(`tasks_${docIdx}`).value;
+        window.saveDocumentChanges = async function(docIdx) {
+            const meta = docFieldMetaMap.get(docIdx);
+            if (!meta) return;
 
-                await updateDoc(doc(db, "users", docId), {
-                    jobCategory,
-                    department,
-                    role,
-                    status,
-                    tasks
+            try {
+                const updatedPayload = {};
+                meta.keys.forEach((key, fieldIdx) => {
+                    const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
+                    if (!el) return;
+                    updatedPayload[key] = parseFieldValueForSave(el.value, meta.originalData[key]);
                 });
 
-                const target = allUserDocs.find(u => u.docId === docId);
+                await updateDoc(doc(db, "users", meta.docId), updatedPayload);
+
+                meta.originalData = { ...meta.originalData, ...updatedPayload };
+                const target = allUserDocs.find(u => u.docId === meta.docId);
                 if (target) {
-                    target.data = { ...target.data, jobCategory, department, role, status, tasks };
+                    target.data = { ...target.data, ...updatedPayload };
                 }
 
-                showToast("تم حفظ التعديلات بنجاح في قاعدة البيانات.");
+                meta.keys.forEach((_, fieldIdx) => {
+                    const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
+                    const penBtn = document.getElementById(`pen_${docIdx}_${fieldIdx}`);
+                    if (el) el.setAttribute("readonly", "readonly");
+                    if (penBtn) {
+                        penBtn.classList.remove("editing");
+                        penBtn.title = "تعديل الحقل";
+                    }
+                });
+
+                showToast("تم حفظ جميع الحقول المعدّلة بنجاح في قاعدة البيانات.");
             } catch (err) {
                 console.error("Update error:", err);
                 showToast("تعذر حفظ التعديلات. تحقق من صلاحيات التعديل.", true);
