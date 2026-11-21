@@ -573,14 +573,6 @@
             return getChatRoomId(code1, code2);
         }
 
-        function hasAnyMessagesBetween(code1, code2) {
-            if (!latestChatsData || !code1 || !code2) return false;
-            const roomId = getChatRoomId(code1, code2);
-            const roomMsgs = latestChatsData[roomId];
-            if (!roomMsgs || typeof roomMsgs !== 'object') return false;
-            return Object.values(roomMsgs).some(m => Boolean(m));
-        }
-
         function getPeerApprovalStatus(peerCode) {
             if (!currentUserCode || !peerCode) return 'none';
             const reqKey = getRequestKey(currentUserCode, peerCode);
@@ -737,6 +729,7 @@
             if (countEl) countEl.innerText = String(incoming.length);
 
             incoming.forEach(item => {
+                const safeName = item.senderName.replace(/'/g, "\\'");
                 const card = document.createElement('div');
                 card.className = 'request-card';
                 card.innerHTML = `
@@ -745,8 +738,8 @@
                         <div class="request-card-sub">طلب بدء مراسلة بينكما</div>
                     </div>
                     <div class="request-card-actions">
-                        <button class="btn-accept-req" onclick="respondToChatRequest('${item.from}', 'accepted')">موافقة</button>
-                        <button class="btn-reject-req" onclick="respondToChatRequest('${item.from}', 'rejected')">رفض</button>
+                        <button class="btn-accept-req" onclick="respondToChatRequest('${item.from}', 'accepted', '${safeName}')">موافقة</button>
+                        <button class="btn-reject-req" onclick="respondToChatRequest('${item.from}', 'rejected', '${safeName}')">رفض</button>
                     </div>
                 `;
                 list.appendChild(card);
@@ -790,7 +783,7 @@
             renderConversationsSidebar();
         };
 
-        window.respondToChatRequest = async function(requesterCode, decision) {
+        window.respondToChatRequest = async function(requesterCode, decision, requesterName = "") {
             if (!currentUserCode || !requesterCode) return;
             await ensureAnonymousAuth();
             const reqKey = getRequestKey(currentUserCode, requesterCode);
@@ -802,16 +795,21 @@
 
             if (decision === 'accepted') {
                 await sendNotificationToUser(requesterCode, "وافق " + currentUserName + " على طلب المراسلة");
-                showToast("تمت الموافقة على المراسلة، يمكنك بدء المحادثة الآن", "success");
+                showToast("تمت الموافقة على المراسلة، جاري فتح المحادثة...", "success");
+                const senderObj = allUsersList.find(u => u.username === requesterCode);
+                const resolvedName = requesterName || (senderObj && senderObj.empName) || requesterCode;
+                renderIncomingRequestsSidebar();
+                renderConversationsSidebar();
+                await selectPeer(requesterCode, resolvedName);
+                return;
             } else {
                 showToast("تم رفض طلب المراسلة", "error");
+                if (selectedUserCode === requesterCode) {
+                    await loadChatRoom();
+                }
+                renderIncomingRequestsSidebar();
+                renderConversationsSidebar();
             }
-
-            if (selectedUserCode === requesterCode) {
-                await loadChatRoom();
-            }
-            renderIncomingRequestsSidebar();
-            renderConversationsSidebar();
         };
 
         function renderRequestGate(peerCode, peerName, status) {
@@ -1600,8 +1598,7 @@
             }
 
             const approvalStatus = getPeerApprovalStatus(selectedUserCode);
-            const hasExistingMsgs = hasAnyMessagesBetween(currentUserCode, selectedUserCode);
-            if (approvalStatus !== 'accepted' && !hasExistingMsgs) {
+            if (approvalStatus !== 'accepted') {
                 renderRequestGate(selectedUserCode, selectedUserName, approvalStatus);
                 return;
             }
@@ -1619,7 +1616,7 @@
             let isFirstLoad = true;
 
             onValue(currentChatRef, (snapshot) => {
-                if (!selectedUserCode || isEitherBlocked(selectedUserCode)) {
+                if (!selectedUserCode || isEitherBlocked(selectedUserCode) || getPeerApprovalStatus(selectedUserCode) !== 'accepted') {
                     return;
                 }
                 messagesDiv.innerHTML = '';
