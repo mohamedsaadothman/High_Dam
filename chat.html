@@ -509,9 +509,11 @@
         let sidebarChatsRef = null;
         let sidebarStatusRef = null;
         let blocksRef = null;
+        let approvalsRef = null;
         let latestChatsData = null;
         let latestStatusesData = {};
         let latestBlocksData = {};
+        let latestApprovalsData = {};
         let latestRoomMsgsSnapshot = {};
 
         let activeMsgId = null;
@@ -529,7 +531,7 @@
         let audioChunks = [];
         let isRecording = false;
 
-        const scriptUrl = "https://script.google.com/macros/s/AKfycbzzckKsYjM5P9XYyTjZYl5Ky99Gk99JRegT1g4xGqZd9gB-skJPMJSdepaWGJYEeFKpyg/exec";
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbyt2_j1wr5a1g1qSXRNrLyObJ5pFOC7CgsY5nFKDBLIZENRtwVed2JcxbPXkE-5CGroqw/exec";
 
         const mediaStore = new Map();
 
@@ -564,6 +566,30 @@
             if (!peerCode) return false;
             return isBlockedByMe(peerCode) || isBlockedByPeer(peerCode);
         }
+
+        function getApprovalState(ownerCode, requesterCode) {
+            if (!ownerCode || !requesterCode) return "approved";
+            const node = latestApprovalsData && latestApprovalsData[ownerCode]
+                ? latestApprovalsData[ownerCode][requesterCode]
+                : null;
+            return node || "none";
+        }
+
+        window.approvePeerMessages = async function(peerCode) {
+            if (!currentUserCode || !peerCode) return;
+            await ensureAnonymousAuth();
+            await set(ref(db, `chat_approvals/${currentUserCode}/${peerCode}`), "approved");
+            showToast("تمت الموافقة على تلقي الرسائل", "success");
+            await loadChatRoom();
+        };
+
+        window.rejectPeerMessages = async function(peerCode) {
+            if (!currentUserCode || !peerCode) return;
+            await ensureAnonymousAuth();
+            await set(ref(db, `chat_approvals/${currentUserCode}/${peerCode}`), "rejected");
+            showToast("تم رفض تلقي الرسائل", "error");
+            await loadChatRoom();
+        };
 
         function updatePresenceVisibilityDuringBlock() {
             const statusEl = document.getElementById('chatHeaderStatus');
@@ -1176,6 +1202,10 @@
                     let displayLastText = lastMsg.text;
                     if (isEitherBlocked(peerCode)) {
                         displayLastText = '🚫 محظور';
+                    } else if (getApprovalState(currentUserCode, peerCode) === 'pending') {
+                        displayLastText = '⏳ بانتظار موافقتك';
+                    } else if (getApprovalState(currentUserCode, peerCode) === 'rejected') {
+                        displayLastText = '✖ مرفوض';
                     } else if (lastMsg.type === 'image') {
                         displayLastText = '📷 صورة';
                     } else if (lastMsg.type === 'file') {
@@ -1231,10 +1261,12 @@
             if (sidebarChatsRef) off(sidebarChatsRef);
             if (sidebarStatusRef) off(sidebarStatusRef);
             if (blocksRef) off(blocksRef);
+            if (approvalsRef) off(approvalsRef);
 
             sidebarChatsRef = ref(db, 'chats');
             sidebarStatusRef = ref(db, 'status');
             blocksRef = ref(db, 'blocks');
+            approvalsRef = ref(db, 'chat_approvals');
 
             onValue(sidebarChatsRef, (chatSnapshot) => {
                 latestChatsData = chatSnapshot.val();
@@ -1262,6 +1294,16 @@
                 }
             }, (error) => {
                 console.error("Blocks read error:", error);
+            });
+
+            onValue(approvalsRef, (approvalSnapshot) => {
+                latestApprovalsData = approvalSnapshot.val() || {};
+                renderConversationsSidebar();
+                if (selectedUserCode && !isEitherBlocked(selectedUserCode)) {
+                    loadChatRoom();
+                }
+            }, (error) => {
+                console.error("Approvals read error:", error);
             });
         }
 
@@ -1306,10 +1348,16 @@
 
         window.selectPeer = async function(peerCode, peerName) {
             await ensureAnonymousAuth();
-            activeChatPeerCode = String(peerCode || "").trim();
-            activeChatPeerName = String(peerName || peerCode || "").trim();
-            selectedUserCode = activeChatPeerCode;
-            selectedUserName = activeChatPeerName;
+            const matchedUser = allUsersList.find(
+                u => String(u.username || "").trim() === String(peerCode || "").trim()
+            );
+            const cleanCode = matchedUser ? String(matchedUser.username).trim() : String(peerCode || "").trim();
+            const cleanName = matchedUser ? String(matchedUser.empName || peerName || cleanCode).trim() : String(peerName || cleanCode).trim();
+
+            activeChatPeerCode = cleanCode;
+            activeChatPeerName = cleanName;
+            selectedUserCode = cleanCode;
+            selectedUserName = cleanName;
 
             updateBlockButtonUI();
             document.getElementById('chatHeaderTitle').innerText = activeChatPeerName;
@@ -1352,6 +1400,36 @@
                     <div style="margin: auto; color: #667781; text-align: center; background: #ffffff; padding: 24px; border-radius: 14px; font-size: 13.5px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 330px;">
                         <h3 style="color:#111b21; font-size:16px; font-weight:800; margin-bottom:8px;">محظور</h3>
                         <p>لقد تم حظرك من المراسلة بواسطة ${selectedUserName}.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const incomingApproval = getApprovalState(currentUserCode, selectedUserCode);
+            if (incomingApproval === "pending") {
+                setInputFooterHidden(true);
+                if (currentChatRef) { off(currentChatRef); currentChatRef = null; }
+                messagesDiv.innerHTML = `
+                    <div style="margin: auto; color: #111b21; text-align: center; background: #ffffff; padding: 22px; border-radius: 14px; font-size: 13.5px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.06); max-width: 340px;">
+                        <h3 style="font-size:15.5px; font-weight:800; margin-bottom:8px;">طلب مراسلة</h3>
+                        <p style="color:#667781; margin-bottom:16px;">يرغب <strong>${selectedUserName}</strong> في مراسلتك. هل توافق على تلقي الرسائل بينكما؟</p>
+                        <div style="display:flex; gap:10px; justify-content:center;">
+                            <button onclick="approvePeerMessages('${selectedUserCode}')" style="flex:1; background:#00a884; color:#fff; border:none; border-radius:10px; padding:10px; font-weight:700; cursor:pointer;">موافقة</button>
+                            <button onclick="rejectPeerMessages('${selectedUserCode}')" style="flex:1; background:#fef2f2; color:#ea0038; border:1px solid #fecaca; border-radius:10px; padding:10px; font-weight:700; cursor:pointer;">رفض</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (incomingApproval === "rejected") {
+                setInputFooterHidden(true);
+                if (currentChatRef) { off(currentChatRef); currentChatRef = null; }
+                messagesDiv.innerHTML = `
+                    <div style="margin: auto; color: #667781; text-align: center; background: #ffffff; padding: 22px; border-radius: 14px; font-size: 13.5px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.06); max-width: 340px;">
+                        <h3 style="color:#111b21; font-size:15.5px; font-weight:800; margin-bottom:8px;">تم رفض تلقي الرسائل</h3>
+                        <p style="margin-bottom:14px;">لقد قمت برفض تلقي الرسائل من ${selectedUserName}.</p>
+                        <button onclick="approvePeerMessages('${selectedUserCode}')" style="background:#00a884; color:#fff; border:none; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer;">الموافقة الآن</button>
                     </div>
                 `;
                 return;
@@ -1800,12 +1878,16 @@
                 return;
             }
             await ensureAnonymousAuth();
+            if (getApprovalState(targetCode, currentUserCode) === "none") {
+                await set(ref(db, `chat_approvals/${targetCode}/${currentUserCode}`), "pending");
+            }
             let targetRoomId = getChatRoomId(currentUserCode, targetCode);
             const newMsgRef = push(ref(db, 'chats/' + targetRoomId));
             await set(newMsgRef, {
                 id: newMsgRef.key,
                 name: currentUserName,
                 senderCode: currentUserCode,
+                recipientCode: targetCode,
                 text: activeMsgText,
                 type: activeMsgType,
                 fileName: activeMsgFileName || '',
@@ -1819,36 +1901,42 @@
         window.sendMessage = async function() {
             const text = document.getElementById('msgInput').value.trim();
             if (!text) return;
-            if (!selectedUserCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
-            if (isEitherBlocked(selectedUserCode)) {
+            const recipientCode = String(activeChatPeerCode || selectedUserCode || "").trim();
+            if (!recipientCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
+            if (isEitherBlocked(recipientCode)) {
                 showToast("محظور", "error");
                 return;
             }
 
             await ensureAnonymousAuth();
-            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
+            if (getApprovalState(recipientCode, currentUserCode) === "none") {
+                await set(ref(db, `chat_approvals/${recipientCode}/${currentUserCode}`), "pending");
+            }
+            let roomId = getChatRoomId(currentUserCode, recipientCode);
             const newMsgRef = push(ref(db, 'chats/' + roomId));
             await set(newMsgRef, {
                 id: newMsgRef.key,
                 name: currentUserName,
                 senderCode: currentUserCode,
+                recipientCode: recipientCode,
                 text: text,
                 type: 'text',
                 userId: myId,
                 timestamp: serverTimestamp()
             });
 
-            await sendNotificationToUser(selectedUserCode, "رسالة جديدة من " + currentUserName + ": " + text);
+            await sendNotificationToUser(recipientCode, "رسالة جديدة من " + currentUserName + ": " + text);
             document.getElementById('msgInput').value = '';
         };
 
         window.handleFileUpload = function(event, fileTypeOverride) {
-            if (!selectedUserCode) {
+            const recipientCode = String(activeChatPeerCode || selectedUserCode || "").trim();
+            if (!recipientCode) {
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
                 event.target.value = '';
                 return;
             }
-            if (isEitherBlocked(selectedUserCode)) {
+            if (isEitherBlocked(recipientCode)) {
                 showToast("محظور", "error");
                 event.target.value = '';
                 return;
@@ -1868,12 +1956,16 @@
                 }
 
                 await ensureAnonymousAuth();
-                let roomId = getChatRoomId(currentUserCode, selectedUserCode);
+                if (getApprovalState(recipientCode, currentUserCode) === "none") {
+                    await set(ref(db, `chat_approvals/${recipientCode}/${currentUserCode}`), "pending");
+                }
+                let roomId = getChatRoomId(currentUserCode, recipientCode);
                 const newMsgRef = push(ref(db, 'chats/' + roomId));
                 await set(newMsgRef, {
                     id: newMsgRef.key,
                     name: currentUserName,
                     senderCode: currentUserCode,
+                    recipientCode: recipientCode,
                     text: base64Data,
                     type: fileType,
                     fileName: file.name || 'مستند',
@@ -1881,7 +1973,7 @@
                     timestamp: serverTimestamp()
                 });
 
-                await sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
+                await sendNotificationToUser(recipientCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
                 showToast("تم إرسال الملف بنجاح", "success");
                 event.target.value = '';
             };
@@ -1889,8 +1981,9 @@
         };
 
         window.toggleVoiceRecording = async function() {
-            if (!selectedUserCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
-            if (isEitherBlocked(selectedUserCode)) {
+            const recipientCode = String(activeChatPeerCode || selectedUserCode || "").trim();
+            if (!recipientCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
+            if (isEitherBlocked(recipientCode)) {
                 showToast("محظور", "error");
                 return;
             }
@@ -1913,19 +2006,23 @@
                         reader.onloadend = async function() {
                             const base64Audio = reader.result;
                             await ensureAnonymousAuth();
-                            let roomId = getChatRoomId(currentUserCode, selectedUserCode);
+                            if (getApprovalState(recipientCode, currentUserCode) === "none") {
+                                await set(ref(db, `chat_approvals/${recipientCode}/${currentUserCode}`), "pending");
+                            }
+                            let roomId = getChatRoomId(currentUserCode, recipientCode);
                             const newMsgRef = push(ref(db, 'chats/' + roomId));
                             await set(newMsgRef, {
                                 id: newMsgRef.key,
                                 name: currentUserName,
                                 senderCode: currentUserCode,
+                                recipientCode: recipientCode,
                                 text: base64Audio,
                                 type: 'voice',
                                 userId: myId,
                                 timestamp: serverTimestamp()
                             });
 
-                            await sendNotificationToUser(selectedUserCode, "أرسل لك رسالة صوتية من " + currentUserName);
+                            await sendNotificationToUser(recipientCode, "أرسل لك رسالة صوتية من " + currentUserName);
                             showToast("تم إرسال الرسالة الصوتية", "success");
                         };
                     };
