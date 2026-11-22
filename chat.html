@@ -724,6 +724,9 @@
             return { ...info, metaLine };
         }
 
+        // ============================================================
+        // ✅✅✅ الدالة المُعدَّلة بالكامل لتنزيل PDF والملفات ✅✅✅
+        // ============================================================
         function triggerDownloadFromBase64(dataUrl, msgType, fileName) {
             if (!dataUrl || typeof dataUrl !== 'string') {
                 showToast("تعذر الوصول للملف", "error");
@@ -753,21 +756,26 @@
                     mime = 'application/pdf';
                 }
 
-                const bstr = atob(base64Clean);
-                const len = bstr.length;
-                if (len === 0) {
+                // فك ترميز Base64
+                let byteArray;
+                try {
+                    const bstr = atob(base64Clean);
+                    byteArray = new Uint8Array(bstr.length);
+                    for (let i = 0; i < bstr.length; i++) {
+                        byteArray[i] = bstr.charCodeAt(i);
+                    }
+                } catch (decodeErr) {
+                    console.error("Base64 decode error:", decodeErr);
+                    showToast("الملف تالف أو غير صالح للتنزيل", "error");
+                    return;
+                }
+
+                if (byteArray.length === 0) {
                     showToast("الملف فارغ (0 بايت) ولا يمكن تنزيله", "error");
                     return;
                 }
 
-                const u8arr = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
-                    u8arr[i] = bstr.charCodeAt(i);
-                }
-
-                const normalizedDataUrl = `data:${mime};base64,${base64Clean}`;
-                const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-
+                // تجهيز اسم ملف آمن
                 let baseName = (fileName || (msgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`)).trim();
                 baseName = baseName.replace(/\s*\(\d+\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
                 if (mime === 'application/pdf' && !/\.pdf$/i.test(baseName)) {
@@ -775,66 +783,63 @@
                 }
                 const safeFileName = baseName.replace(/[\\/:*?"<>|]+/g, '_') || (mime === 'application/pdf' ? 'document.pdf' : 'file');
 
-                if (isMobileBrowser && mime === 'application/pdf') {
-                    const win = window.open('', '_blank');
-                    if (win && win.document) {
-                        win.document.open();
-                        win.document.write(`
-                            <!DOCTYPE html>
-                            <html lang="ar" dir="rtl">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>${escapeHtml(safeFileName)}</title>
-                                <style>
-                                    body { margin: 0; background: #1e293b; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-                                    .bar { background: #0f172a; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
-                                    .bar a { background: #00a884; color: #fff; text-decoration: none; padding: 7px 14px; border-radius: 8px; font-weight: bold; }
-                                    iframe { flex: 1; width: 100%; border: none; background: #fff; }
-                                </style>
-                            </head>
-                            <body>
-                                <div class="bar">
-                                    <span>${escapeHtml(safeFileName)}</span>
-                                    <a href="${normalizedDataUrl}" download="${escapeHtml(safeFileName)}">حفظ PDF</a>
-                                </div>
-                                <iframe src="${normalizedDataUrl}"></iframe>
-                            </body>
-                            </html>
-                        `);
-                        win.document.close();
-                        showToast("تم فتح ملف PDF في تبويب جديد", "success");
-                        return;
-                    }
-                }
-
-                const blob = new Blob([u8arr], { type: mime });
+                // إنشاء Blob
+                const blob = new Blob([byteArray], { type: mime });
                 if (!blob || blob.size === 0) {
                     showToast("الملف فارغ ولا يمكن تنزيله", "error");
                     return;
                 }
 
                 const blobUrl = URL.createObjectURL(blob);
+
+                const ua = navigator.userAgent || '';
+                const isIOS = /iPad|iPhone|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                const isAndroid = /Android/i.test(ua);
+                const isMobile = isIOS || isAndroid;
+
+                // ✅ حل خاص لـ iOS Safari: فتح PDF في تبويب جديد ثم المشاركة/الحفظ
+                if (mime === 'application/pdf' && isIOS) {
+                    const newWin = window.open(blobUrl, '_blank');
+                    if (!newWin) {
+                        // Popup blocked → استخدام iframe مخفي
+                        const iframe = document.createElement('iframe');
+                        iframe.style.display = 'none';
+                        iframe.src = blobUrl;
+                        document.body.appendChild(iframe);
+                        setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 120000);
+                        showToast("تم فتح PDF - اضغط على زر المشاركة للحفظ", "success");
+                        return;
+                    }
+                    showToast("تم فتح PDF - اضغط على زر المشاركة للحفظ", "success");
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+                    return;
+                }
+
+                // ✅ الطريقة القياسية (تعمل على الكمبيوتر و Android)
                 const a = document.createElement('a');
                 a.href = blobUrl;
                 a.download = safeFileName;
                 a.rel = 'noopener';
+                a.style.display = 'none';
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
 
                 setTimeout(() => {
                     try {
+                        document.body.removeChild(a);
                         URL.revokeObjectURL(blobUrl);
                     } catch (_) {}
-                }, 20000);
+                }, 30000);
 
                 showToast("جاري تنزيل الملف...", "success");
             } catch (err) {
                 console.error("Download error:", err);
-                showToast("تعذر تنزيل الملف أو فتحه", "error");
+                showToast("تعذر تنزيل الملف: " + (err.message || 'خطأ غير معروف'), "error");
             }
         }
+        // ============================================================
+        // ✅✅✅ نهاية الدالة المُعدَّلة ✅✅✅
+        // ============================================================
 
         window.downloadDocByKey = function(e, mediaKey) {
             if (e) {
@@ -2313,8 +2318,13 @@
             }
         };
 
+        // ✅✅✅ دالة تنزيل المرفق النشط (تم إضافة حماية) ✅✅✅
         window.downloadActiveMessageMedia = function() {
             document.getElementById('msgOptionsOverlay').style.display = 'none';
+            if (activeMsgType !== 'image' && activeMsgType !== 'file') {
+                showToast("هذه الرسالة لا تحتوي على ملف قابل للتنزيل", "error");
+                return;
+            }
             triggerDownloadFromBase64(activeMsgText, activeMsgType, activeMsgFileName);
         };
 
