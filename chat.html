@@ -460,7 +460,7 @@
                     </div>
 
                     <input type="file" id="imageUploader" style="display: none;" accept="image/*" onchange="handleFileUpload(event, 'image')">
-                    <input type="file" id="fileUploader" style="display: none;" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx,.zip,.rar" onchange="handleFileUpload(event, 'file')">
+                    <input type="file" id="fileUploader" style="display: none;" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx,.zip,.rar" onchange="handleFileUpload(event, 'file')">
                     <input type="file" id="cameraUploader" style="display: none;" accept="image/*" capture="environment" onchange="handleFileUpload(event, 'image')">
 
                     <button type="button" class="icon-action" id="attachBtn" onclick="toggleAttachmentMenu(event)" title="إرفاق مستند أو صورة"><i class="fa-solid fa-paperclip"></i></button>
@@ -530,7 +530,6 @@
         const span_8 = window.span_8;
         const span_9 = window.span_9;
 
-        // 1. إعدادات مشروع Dam-purchases-App (قاعدة بيانات كلاود Firestore - مجموعة users)
         const damPurchasesConfig = {
             apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
             authDomain: "dam-purchases-app.firebaseapp.com",
@@ -540,7 +539,6 @@
             appId: "1:123271128649:web:1096b95fc97c8575b50198"
         };
 
-        // 2. إعدادات مشروع chat-app (Realtime Database لتسجيل المحادثات)
         const chatAppConfig = {
             apiKey: "AIzaSyCGxjWSdyrPUpPKbXieSapBx--kUvRjwLY",
             authDomain: "chat-app-8df58.firebaseapp.com",
@@ -727,25 +725,44 @@
         }
 
         function triggerDownloadFromBase64(dataUrl, msgType, fileName) {
-            if (!dataUrl) {
+            if (!dataUrl || typeof dataUrl !== 'string') {
                 showToast("تعذر الوصول للملف", "error");
                 return;
             }
             try {
-                const arr = dataUrl.split(',');
-                const mimeMatch = arr[0].match(/:(.*?);/);
-                const mime = mimeMatch ? mimeMatch[1] : (msgType === 'image' ? 'image/jpeg' : 'application/octet-stream');
-                const bstr = atob(arr[1]);
-                let n = bstr.length;
-                const u8arr = new Uint8Array(n);
-                while (n--) {
-                    u8arr[n] = bstr.charCodeAt(n);
+                const commaIdx = dataUrl.indexOf(',');
+                if (commaIdx === -1) {
+                    showToast("صيغة الملف غير صالحة للتنزيل", "error");
+                    return;
+                }
+
+                const headerPart = dataUrl.slice(0, commaIdx);
+                const base64Clean = dataUrl.slice(commaIdx + 1).replace(/\s+/g, '');
+                const mimeMatch = headerPart.match(/:(.*?);/);
+
+                const isPdfByName = /\.pdf$/i.test(fileName || '');
+                const isPdfByHeader = /application\/pdf/i.test(headerPart);
+                let mime = mimeMatch ? mimeMatch[1] : (msgType === 'image' ? 'image/jpeg' : 'application/octet-stream');
+
+                if (isPdfByName || isPdfByHeader) {
+                    mime = 'application/pdf';
+                }
+
+                const bstr = atob(base64Clean);
+                const len = bstr.length;
+                const u8arr = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    u8arr[i] = bstr.charCodeAt(i);
                 }
 
                 const blob = new Blob([u8arr], { type: mime });
                 const blobUrl = URL.createObjectURL(blob);
-                const fallbackName = msgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`;
-                const safeFileName = (fileName || fallbackName).replace(/[^\w.\-\u0600-\u06FF]/g, '_');
+
+                let baseName = (fileName || (msgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`)).trim();
+                if (mime === 'application/pdf' && !/\.pdf$/i.test(baseName)) {
+                    baseName += '.pdf';
+                }
+                const safeFileName = baseName.replace(/[\\/:*?"<>|]+/g, '_') || 'document.pdf';
 
                 const a = document.createElement('a');
                 a.href = blobUrl;
@@ -754,9 +771,10 @@
                 a.click();
                 document.body.removeChild(a);
 
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-                showToast("جاري التنزيل...", "success");
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+                showToast("جاري تنزيل الملف...", "success");
             } catch (err) {
+                console.error("Download error:", err);
                 showToast("تعذر تنزيل الملف", "error");
             }
         }
@@ -2393,36 +2411,61 @@
                 return;
             }
 
-            const file = event.target.files[0];
+            const file = event.target.files && event.target.files[0];
             if (!file) return;
 
-            showToast("جاري تجهيز وإرسال الملف...", "success");
+            const isPdfFile = (file.type && file.type.toLowerCase() === 'application/pdf') || /\.pdf$/i.test(file.name || '');
+
+            const maxBytes = 3.5 * 1024 * 1024;
+            if (file.size > maxBytes) {
+                showToast("حجم الملف كبير جداً؛ يُفضل أن يكون أقل من 3.5 ميجابايت", "error");
+                event.target.value = '';
+                return;
+            }
+
+            showToast(isPdfFile ? "جاري تجهيز وإرسال ملف PDF..." : "جاري تجهيز وإرسال الملف...", "success");
 
             const reader = new FileReader();
-            reader.onload = async function(e) {
-                const base64Data = e.target.result;
-                let fileType = fileTypeOverride || 'file';
-                if (file.type.startsWith('image/')) {
-                    fileType = 'image';
-                }
-
-                await ensureAnonymousAuth();
-                await ensurePendingRequestForPeer(selectedUserCode, selectedUserName);
-                let roomId = getChatRoomId(currentUserCode, selectedUserCode);
-                const newMsgRef = push(ref(db, 'chats/' + roomId));
-
-                await set(newMsgRef, {
-                    id: newMsgRef.key,
-                    name: currentUserName,
-                    text: base64Data,
-                    type: fileType,
-                    fileName: file.name || 'مستند',
-                    userId: myId,
-                    timestamp: serverTimestamp()
-                });
-
-                await sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
+            reader.onerror = function() {
+                showToast("فشل قراءة الملف من الجهاز", "error");
                 event.target.value = '';
+            };
+            reader.onload = async function(e) {
+                try {
+                    let base64Data = e.target.result || "";
+                    if (isPdfFile && base64Data.startsWith("data:application/octet-stream;base64,")) {
+                        base64Data = base64Data.replace("data:application/octet-stream;base64,", "data:application/pdf;base64,");
+                    }
+
+                    let fileType = fileTypeOverride || 'file';
+                    if (file.type && file.type.startsWith('image/')) {
+                        fileType = 'image';
+                    }
+
+                    await ensureAnonymousAuth();
+                    await ensurePendingRequestForPeer(selectedUserCode, selectedUserName);
+                    let roomId = getChatRoomId(currentUserCode, selectedUserCode);
+                    const newMsgRef = push(ref(db, 'chats/' + roomId));
+
+                    await set(newMsgRef, {
+                        id: newMsgRef.key,
+                        name: currentUserName,
+                        text: base64Data,
+                        type: fileType,
+                        fileName: file.name || (isPdfFile ? 'document.pdf' : 'مستند'),
+                        mimeType: isPdfFile ? 'application/pdf' : (file.type || 'application/octet-stream'),
+                        userId: myId,
+                        timestamp: serverTimestamp()
+                    });
+
+                    await sendNotificationToUser(selectedUserCode, "أرسل لك " + (fileType === 'image' ? 'صورة' : 'مستنداً') + " من " + currentUserName);
+                    showToast(isPdfFile ? "تم إرسال ملف PDF بنجاح" : "تم إرسال الملف بنجاح", "success");
+                } catch (err) {
+                    console.error("File upload error:", err);
+                    showToast("تعذر إرسال الملف، تحقق من حجم الملف أو الاتصال", "error");
+                } finally {
+                    event.target.value = '';
+                }
             };
             reader.readAsDataURL(file);
         };
