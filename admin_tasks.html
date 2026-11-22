@@ -285,6 +285,13 @@
         }
         .field-box textarea { min-height: 90px; resize: vertical; }
 
+        .actions-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
         .save-doc-btn {
             background: linear-gradient(135deg, #10b981, #059669);
             color: #fff;
@@ -300,6 +307,22 @@
             transition: 0.2s;
         }
         .save-doc-btn:hover { filter: brightness(1.08); }
+
+        .auth-btn {
+            background: linear-gradient(135deg, #0284c7, #2563eb);
+            color: #fff;
+            border: none;
+            padding: 11px 20px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+        }
+        .auth-btn:hover { filter: brightness(1.08); }
 
         .status-toast {
             position: fixed;
@@ -364,6 +387,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getFirestore, collection, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+        import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
         const isAdminSession = sessionStorage.getItem("is_system_admin") === "true" &&
             String(sessionStorage.getItem("admin_role") || "").toLowerCase().includes("admin");
@@ -385,7 +409,9 @@
         };
 
         const app = initializeApp(purchasesFirebaseConfig, "damPurchasesTasksPanel");
+        const secondaryAuthApp = initializeApp(purchasesFirebaseConfig, "damPurchasesAuthCreator");
         const db = getFirestore(app);
+        const secondaryAuth = getAuth(secondaryAuthApp);
 
         let allUserDocs = [];
         let allCollectionKeys = [];
@@ -394,6 +420,7 @@
 
         const MANAGER_ALIASES = ["centralmanager", "crntralmanager"];
         const CORE_FEATURED_KEYS = ["centralManager", "type", "password", "department", "jobCategory", "role"];
+        const DUMMY_EMAIL_DOMAIN = "dam-app.com";
 
         function getHighlightClass(key) {
             const lower = String(key).toLowerCase();
@@ -414,7 +441,7 @@
             clearTimeout(window.__toastTimer);
             window.__toastTimer = setTimeout(() => {
                 el.style.display = "none";
-            }, 3200);
+            }, 3400);
         }
 
         function normalizeArabic(text) {
@@ -668,13 +695,99 @@
                             ${otherHtml}
                         </div>
 
-                        <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
-                            <i class="fas fa-save"></i> حفظ جميع الحقول في قاعدة البيانات
-                        </button>
+                        <div class="actions-row">
+                            <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
+                                <i class="fas fa-save"></i> حفظ جميع الحقول في قاعدة البيانات
+                            </button>
+                            <button type="button" class="auth-btn" onclick="createDummyAuthForDoc(${docIdx})">
+                                <i class="fas fa-user-plus"></i> إنشاء إيميل وهمي في Authentication بالرقم القومي
+                            </button>
+                        </div>
                     </div>
                 `;
             }).join("");
         }
+
+        function getFieldValueFromForm(docIdx, targetKey, fallback = "") {
+            const meta = docFieldMetaMap.get(docIdx);
+            if (!meta) return fallback;
+            const idx = meta.keys.findIndex(k => String(k).toLowerCase() === String(targetKey).toLowerCase());
+            if (idx === -1) return fallback;
+            const el = document.getElementById(`field_${docIdx}_${idx}`);
+            return el ? el.value.trim() : fallback;
+        }
+
+        function setFieldValueInForm(docIdx, targetKey, newValue) {
+            const meta = docFieldMetaMap.get(docIdx);
+            if (!meta) return;
+            const idx = meta.keys.findIndex(k => String(k).toLowerCase() === String(targetKey).toLowerCase());
+            if (idx === -1) return;
+            const el = document.getElementById(`field_${docIdx}_${idx}`);
+            if (el) el.value = newValue;
+        }
+
+        window.createDummyAuthForDoc = async function(docIdx) {
+            const meta = docFieldMetaMap.get(docIdx);
+            if (!meta) return;
+
+            const nationalId = (
+                getFieldValueFromForm(docIdx, "nationalId") ||
+                getFieldValueFromForm(docIdx, "username") ||
+                meta.originalData.nationalId ||
+                meta.originalData.username ||
+                ""
+            ).replace(/\D/g, "").trim();
+
+            if (!nationalId) {
+                showToast("الرجاء إدخال الرقم القومي (nationalId أو username) أولاً.", true);
+                return;
+            }
+
+            let rawPassword = getFieldValueFromForm(docIdx, "password") || String(meta.originalData.password || "").trim();
+            if (!rawPassword || rawPassword.length < 6) {
+                rawPassword = nationalId.slice(-6) || "123456";
+                setFieldValueInForm(docIdx, "password", rawPassword);
+            }
+
+            const dummyEmail = `${nationalId}@${DUMMY_EMAIL_DOMAIN}`;
+
+            try {
+                const cred = await createUserWithEmailAndPassword(secondaryAuth, dummyEmail, rawPassword);
+                const newUid = cred.user.uid;
+
+                setFieldValueInForm(docIdx, "email", dummyEmail);
+                setFieldValueInForm(docIdx, "uid", newUid);
+
+                await setDoc(doc(db, "users", meta.docId), {
+                    email: dummyEmail,
+                    uid: newUid,
+                    password: rawPassword
+                }, { merge: true });
+
+                meta.originalData = {
+                    ...meta.originalData,
+                    email: dummyEmail,
+                    uid: newUid,
+                    password: rawPassword
+                };
+
+                const target = allUserDocs.find(u => u.docId === meta.docId);
+                if (target) {
+                    target.data = { ...meta.originalData };
+                }
+
+                showToast(`تم إنشاء الحساب الوهمي (${dummyEmail}) في Authentication وربطه بالمستند.`);
+            } catch (err) {
+                console.error("Dummy auth creation error:", err);
+                if (err && err.code === "auth/email-already-in-use") {
+                    setFieldValueInForm(docIdx, "email", dummyEmail);
+                    await setDoc(doc(db, "users", meta.docId), { email: dummyEmail }, { merge: true });
+                    showToast(`الإيميل الوهمي (${dummyEmail}) موجود مسبقاً في Authentication وتم تحديثه في المستند.`);
+                } else {
+                    showToast("تعذر إنشاء الإيميل الوهمي في Authentication. تحقق من إعدادات المشروع.", true);
+                }
+            }
+        };
 
         function escapeAttr(val) {
             return String(val).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
