@@ -166,7 +166,7 @@
         .wa-input-footer button.mic-action:hover { color: #00a884; }
         .wa-input-footer button.mic-action.recording { color: #ea0038; animation: pulse 1.5s infinite; }
 
-        .attachment-menu { position: absolute; bottom: 64px; right: 12px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: none; flex-direction: column; padding: 8px 0; z-index: 950; border: 1px solid #e2e8f0; width: 165px; }
+        .attachment-menu { position: absolute; bottom: 64px; right: 12px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: none; flex-direction: column; padding: 8px 0; z-index: 9999; border: 1px solid #e2e8f0; width: 165px; }
         .attachment-menu button { background: none; border: none; padding: 10px 15px; text-align: right; font-size: 13px; color: #111b21; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 600; transition: 0.2s; }
         .attachment-menu button:hover { background: #f0f2f5; color: #00a884; }
 
@@ -336,8 +336,8 @@
         <div class="login-box">
             <div class="login-brand-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
             <h2><i class="fa-solid fa-envelope"></i> التبليغات</h2>
-            <input type="text" id="loginCode" placeholder="كود المستخدم (اسم المستخدم)">
-            <input type="password" id="loginPassword" placeholder="كلمة المرور">
+            <input type="text" id="loginCode" placeholder="اسم المستخدم (username)">
+            <input type="password" id="loginPassword" placeholder="كلمة المرور (password)">
             <button onclick="login()">دخول للتبليغات</button>
         </div>
     </div>
@@ -424,13 +424,59 @@
             </div>
         </div>
     </div>
-    
+
+    <script>
+        (function() {
+            window.toggleAttachmentMenu = function(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                var menu = document.getElementById('attachmentMenu');
+                if (!menu) return;
+                menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+                menu.style.zIndex = '9999';
+            };
+
+            window.triggerAttachmentPicker = function(inputId) {
+                var menu = document.getElementById('attachmentMenu');
+                if (menu) menu.style.display = 'none';
+                var inputEl = document.getElementById(inputId);
+                if (inputEl) {
+                    inputEl.value = '';
+                    inputEl.click();
+                }
+            };
+
+            document.addEventListener('click', function(e) {
+                var menu = document.getElementById('attachmentMenu');
+                var attachBtn = document.getElementById('attachBtn');
+                if (!menu || menu.style.display !== 'flex') return;
+                if (!menu.contains(e.target) && !(attachBtn && attachBtn.contains(e.target))) {
+                    menu.style.display = 'none';
+                }
+            });
+        })();
+    </script>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
         import { getDatabase, ref, push, serverTimestamp, onValue, update, set, off, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-        const firebaseConfig = {
+        // 1. إعدادات مشروع Dam-purchases-App (قاعدة بيانات كلاود Firestore - مجموعة users)
+        const damPurchasesConfig = {
+            apiKey: "PUT_DAM_PURCHASES_API_KEY",
+            authDomain: "PUT_DAM_PURCHASES_AUTH_DOMAIN",
+            projectId: "dam-purchases-app",
+            storageBucket: "PUT_DAM_PURCHASES_STORAGE_BUCKET",
+            messagingSenderId: "PUT_DAM_PURCHASES_SENDER_ID",
+            appId: "PUT_DAM_PURCHASES_APP_ID"
+        };
+
+        // 2. إعدادات مشروع chat-app (Realtime Database لتسجيل المحادثات)
+        const chatAppConfig = {
             apiKey: "AIzaSyCGxjWSdyrPUpPKbXieSapBx--kUvRjwLY",
             authDomain: "chat-app-8df58.firebaseapp.com",
             databaseURL: "https://chat-app-8df58-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -440,10 +486,15 @@
             appId: "1:59724152330:web:2fe3c04b35dfa2e9cc69f3"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getDatabase(app);
+        const appPurchases = initializeApp(damPurchasesConfig, "damPurchasesApp");
+        const appChat = initializeApp(chatAppConfig, "chatApp");
+
+        const firestoreDb = getFirestore(appPurchases);
+        const auth = getAuth(appChat);
+        const db = getDatabase(appChat);
         const messagesDiv = document.getElementById('messagesDiv');
+
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbzDK_Jy6DzVFU_E7ocs479J6kFlsLcLMrOwaD7ExCXn6w1EAcW6tMJ3OuoCXEUQ0GGFAQ/exec";
 
         let authReadyPromise = null;
         let isAnonymousAuthed = false;
@@ -563,8 +614,6 @@
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
-        
-        const scriptUrl = "https://script.google.com/macros/s/AKfycbzDK_Jy6DzVFU_E7ocs479J6kFlsLcLMrOwaD7ExCXn6w1EAcW6tMJ3OuoCXEUQ0GGFAQ/exec";
 
         const mediaStore = new Map();
 
@@ -915,16 +964,6 @@
             `;
         }
 
-        window.triggerAttachmentPicker = function(inputId) {
-            const menu = document.getElementById('attachmentMenu');
-            if (menu) menu.style.display = 'none';
-            const fileInput = document.getElementById(inputId);
-            if (fileInput) {
-                fileInput.value = '';
-                fileInput.click();
-            }
-        };
-
         window.handleCameraButtonClick = function() {
             const menu = document.getElementById('attachmentMenu');
             if (menu) menu.style.display = 'none';
@@ -1101,34 +1140,7 @@
             });
         }
 
-        window.toggleAttachmentMenu = function(e) {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            if (!selectedUserCode) {
-                showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
-                return;
-            }
-            if (isEitherBlocked(selectedUserCode)) {
-                showToast("محظور", "error");
-                return;
-            }
-            const menu = document.getElementById('attachmentMenu');
-            if (!menu) return;
-            menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
-        }
-
-        document.addEventListener('click', function(e) {
-            const menu = document.getElementById('attachmentMenu');
-            const attachBtn = document.getElementById('attachBtn');
-            if (menu && menu.style.display === 'flex') {
-                const clickedInsideMenu = menu.contains(e.target);
-                const clickedAttachBtn = attachBtn && attachBtn.contains(e.target);
-                if (!clickedInsideMenu && !clickedAttachBtn) {
-                    menu.style.display = 'none';
-                }
-            }
+        document.addEventListener('click', function() {
             hideReactionPicker();
         });
 
@@ -1427,25 +1439,65 @@
             await bindOneSignalExternalUser(currentUserCode);
         }
 
+        async function verifyAndLoadUsersFromFirestore(codeInput, passInput) {
+            const usersCol = collection(firestoreDb, "users");
+            const loginQuery = query(
+                usersCol,
+                where("username", "==", codeInput),
+                where("password", "==", passInput)
+            );
+            const loginSnap = await getDocs(loginQuery);
+
+            if (loginSnap.empty) {
+                return { ok: false, message: "بيانات الدخول غير صحيحة" };
+            }
+
+            const matchedDoc = loginSnap.docs[0];
+            const matchedData = matchedDoc.data() || {};
+            const empName = matchedData.empName || matchedData.name || matchedData.fullName || codeInput;
+
+            const allSnap = await getDocs(usersCol);
+            const usersArr = [];
+            allSnap.forEach((docItem) => {
+                const d = docItem.data() || {};
+                const uname = d.username ? String(d.username).trim() : "";
+                const ename = d.empName || d.name || d.fullName || uname;
+                if (uname) {
+                    usersArr.push({
+                        username: uname,
+                        empName: String(ename).trim()
+                    });
+                }
+            });
+
+            return {
+                ok: true,
+                empName: String(empName).trim(),
+                usersList: usersArr
+            };
+        }
+
         window.login = async function() {
             const codeInput = document.getElementById('loginCode').value.trim();
             const passInput = document.getElementById('loginPassword').value.trim();
-            if (!codeInput || !passInput) { showToast("الرجاء إدخال البيانات", "error"); return; }
+            const loginBtn = document.querySelector('#loginScreen button');
+
+            if (!codeInput || !passInput) {
+                showToast("الرجاء إدخال اسم المستخدم وكلمة المرور", "error");
+                return;
+            }
 
             try {
-                document.querySelector('#loginScreen button').innerText = "جاري التحقق...";
-                const response = await fetch(scriptUrl, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'login', username: codeInput, password: passInput }),
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-                });
-                const result = await response.json();
+                loginBtn.innerText = "جاري التحقق...";
+                const authResult = await verifyAndLoadUsersFromFirestore(codeInput, passInput);
 
-                if (result.status === 'success') {
+                if (authResult.ok) {
                     await ensureAnonymousAuth();
 
-                    currentUserName = result.empName; 
+                    currentUserName = authResult.empName;
                     currentUserCode = codeInput;
+                    allUsersList = authResult.usersList;
+
                     selectedUserCode = "";
                     selectedUserName = "";
                     localStorage.removeItem('selected_peer_code');
@@ -1471,20 +1523,17 @@
 
                     document.getElementById('loginScreen').style.display = 'none';
                     document.getElementById('chatScreen').style.display = 'block';
-
-                    const usersResponse = await fetch(scriptUrl);
-                    allUsersList = await usersResponse.json();
                     
                     showToast("تم تسجيل الدخول بنجاح وتفعيل الإشعارات", "success");
                     await loadConversationsSidebar();
                 } else {
-                    showToast(result.message || "بيانات الدخول غير صحيحة", "error");
-                    document.querySelector('#loginScreen button').innerText = "دخول للتبليغات";
+                    showToast(authResult.message || "بيانات الدخول غير صحيحة", "error");
+                    loginBtn.innerText = "دخول للتبليغات";
                 }
             } catch (error) {
-                console.error("Login / Auth error:", error);
-                showToast("خطأ في الاتصال بالسيرفر أو المصادقة", "error");
-                document.querySelector('#loginScreen button').innerText = "دخول للتبليغات";
+                console.error("Login / Firestore / Auth error:", error);
+                showToast("تعذر الاتصال بقاعدة بيانات المستخدمين أو المحادثات", "error");
+                loginBtn.innerText = "دخول للتبليغات";
             }
         }
 
