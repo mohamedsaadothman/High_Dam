@@ -132,10 +132,23 @@
         .wa-photo-card { position: relative; border-radius: 8px; overflow: hidden; background: #e2e8f0; cursor: pointer; }
         .wa-photo-card img.chat-img { display: block; width: 100%; max-width: 270px; max-height: 310px; object-fit: cover; }
 
-        .wa-doc-card { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.85); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); min-width: 210px; }
-        .wa-doc-icon { width: 36px; height: 36px; border-radius: 8px; background: #00a884; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+        .wa-doc-card { display: flex; align-items: center; gap: 10px; background: rgba(255, 255, 255, 0.88); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.1); min-width: 210px; cursor: pointer; transition: 0.15s; }
+        .wa-doc-card:hover { background: #ffffff; }
+        .wa-doc-icon { width: 38px; height: 38px; border-radius: 8px; background: #00a884; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+        .wa-doc-icon.pdf-icon { background: #dc2626; }
+        .wa-doc-icon.excel-icon { background: #16a34a; }
+        .wa-doc-icon.word-icon { background: #2563eb; }
+        .wa-doc-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
         .wa-doc-name { font-size: 13px; font-weight: 700; color: #111b21; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
-        .wa-doc-sub { font-size: 11px; color: #667781; }
+        .wa-doc-sub { font-size: 10.5px; color: #667781; font-weight: 600; margin-top: 2px; }
+        .wa-doc-dl-icon { color: #54656f; font-size: 14px; flex-shrink: 0; }
+
+        .wa-code-block { margin-top: 4px; background: #111b21; color: #e9edef; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.12); direction: ltr; text-align: left; }
+        .wa-code-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; background: #1f2c34; border-bottom: 1px solid rgba(255, 255, 255, 0.08); font-size: 11px; color: #8696a0; font-family: monospace; }
+        .wa-code-copy-btn { background: rgba(0, 168, 132, 0.18); color: #00e6b8; border: 1px solid rgba(0, 230, 184, 0.35); border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: 'Cairo', sans-serif; }
+        .wa-code-copy-btn:hover { background: #00a884; color: #ffffff; }
+        .wa-code-block pre { margin: 0; padding: 10px; overflow-x: auto; font-size: 12px; line-height: 1.45; font-family: Consolas, Monaco, 'Courier New', monospace; color: #f8fafc; white-space: pre; }
+        .wa-inline-code { background: rgba(17, 27, 33, 0.09); color: #0f172a; padding: 1px 5px; border-radius: 5px; font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 12.5px; direction: ltr; unicode-bidi: isolate; }
 
         .wa-message audio { max-width: 225px; height: 36px; display: block; }
 
@@ -617,6 +630,111 @@
         let isRecording = false;
 
         const mediaStore = new Map();
+        const codeStore = new Map();
+
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function registerCodeSnippet(codeText) {
+            const key = "code_" + codeStore.size;
+            codeStore.set(key, String(codeText || ''));
+            return key;
+        }
+
+        window.copyCodeSnippetByKey = async function(e, codeKey) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const rawCode = codeStore.get(codeKey) || "";
+            if (!rawCode) {
+                showToast("لا يوجد كود لنسخه", "error");
+                return;
+            }
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(rawCode);
+                } else {
+                    const tempArea = document.createElement('textarea');
+                    tempArea.value = rawCode;
+                    document.body.appendChild(tempArea);
+                    tempArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(tempArea);
+                }
+                showToast("تم نسخ الكود بنجاح", "success");
+            } catch (err) {
+                showToast("تعذر نسخ الكود", "error");
+            }
+        };
+
+        function looksLikeCodeBlock(rawText) {
+            const text = String(rawText || "");
+            if (/```[\s\S]*?```/.test(text)) return true;
+            const lines = text.split(/\r?\n/);
+            if (lines.length >= 2) {
+                const codeIndicators = /(function\s*\(|const\s+|let\s+|var\s+|=>|<\/?[a-zA-Z][^>]*>|import\s+|export\s+|class\s+|SELECT\s+|FROM\s+|WHERE\s+|;\s*$|\{\s*$|\}\s*$)/m;
+                if (codeIndicators.test(text)) return true;
+            }
+            return false;
+        }
+
+        function formatTextMessageHtml(rawText) {
+            const text = String(rawText || "");
+            const fencedMatch = text.match(/^```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```$/);
+            if (fencedMatch) {
+                const langLabel = (fencedMatch[1] || "CODE").toUpperCase();
+                const codeBody = fencedMatch[2].replace(/\n$/, "");
+                const codeKey = registerCodeSnippet(codeBody);
+                return `
+                    <div class="wa-code-block" onclick="event.stopPropagation()">
+                        <div class="wa-code-header">
+                            <span>${escapeHtml(langLabel)}</span>
+                            <button type="button" class="wa-code-copy-btn" onclick="copyCodeSnippetByKey(event, '${codeKey}')"><i class="fa-solid fa-copy"></i> نسخ</button>
+                        </div>
+                        <pre><code>${escapeHtml(codeBody)}</code></pre>
+                    </div>
+                `;
+            }
+
+            if (looksLikeCodeBlock(text)) {
+                const codeKey = registerCodeSnippet(text);
+                return `
+                    <div class="wa-code-block" onclick="event.stopPropagation()">
+                        <div class="wa-code-header">
+                            <span>CODE</span>
+                            <button type="button" class="wa-code-copy-btn" onclick="copyCodeSnippetByKey(event, '${codeKey}')"><i class="fa-solid fa-copy"></i> نسخ</button>
+                        </div>
+                        <pre><code>${escapeHtml(text)}</code></pre>
+                    </div>
+                `;
+            }
+
+            return `<div>${escapeHtml(text).replace(/\n/g, '<br>')}</div>`;
+        }
+
+        function getDocVisualMeta(fileName) {
+            const cleanName = String(fileName || 'مستند');
+            const lower = cleanName.toLowerCase();
+            if (lower.endsWith('.pdf')) {
+                return { iconClass: 'fa-solid fa-file-pdf', badgeClass: 'pdf-icon', label: 'PDF' };
+            }
+            if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv')) {
+                return { iconClass: 'fa-solid fa-file-excel', badgeClass: 'excel-icon', label: 'Excel' };
+            }
+            if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
+                return { iconClass: 'fa-solid fa-file-word', badgeClass: 'word-icon', label: 'Word' };
+            }
+            const extMatch = lower.match(/\.([a-z0-9]+)$/);
+            const extLabel = extMatch ? extMatch[1].toUpperCase() : 'مستند';
+            return { iconClass: 'fa-solid fa-file-lines', badgeClass: '', label: extLabel };
+        }
 
         function triggerDownloadFromBase64(dataUrl, msgType, fileName) {
             if (!dataUrl) {
@@ -652,6 +770,19 @@
                 showToast("تعذر تنزيل الملف", "error");
             }
         }
+
+        window.downloadDocByKey = function(e, mediaKey) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const item = mediaStore.get(mediaKey);
+            if (!item) {
+                showToast("تعذر الوصول للمستند", "error");
+                return;
+            }
+            triggerDownloadFromBase64(item.dataUrl, 'file', item.fileName);
+        };
 
         function registerMedia(dataUrl, isImage = false, fileName = '') {
             const key = "item_" + mediaStore.size;
@@ -1881,19 +2012,23 @@
                             </div>
                         `;
                     } else if (msg.type === 'file') {
+                        const docName = msg.fileName || 'مستند';
+                        const docMeta = getDocVisualMeta(docName);
+                        const docKey = registerMedia(msg.text, false, docName);
                         bodyHtml = `
-                            <div class="wa-doc-card">
-                                <div class="wa-doc-icon"><i class="fa-solid fa-file-lines"></i></div>
-                                <div>
-                                    <div class="wa-doc-name">${msg.fileName || 'مستند'}</div>
-                                    <div class="wa-doc-sub">مستند</div>
+                            <div class="wa-doc-card" onclick="downloadDocByKey(event, '${docKey}')" title="اضغط لتنزيل المستند">
+                                <div class="wa-doc-icon ${docMeta.badgeClass}"><i class="${docMeta.iconClass}"></i></div>
+                                <div class="wa-doc-meta">
+                                    <span class="wa-doc-name">${escapeHtml(docName)}</span>
+                                    <span class="wa-doc-sub">${docMeta.label} • اضغط للتنزيل</span>
                                 </div>
+                                <i class="fa-solid fa-download wa-doc-dl-icon"></i>
                             </div>
                         `;
                     } else if (msg.type === 'voice') {
                         bodyHtml = `<div onclick="event.stopPropagation()"><audio controls src="${msg.text}"></audio></div>`;
                     } else {
-                        bodyHtml = `<div>${msg.text}</div>`;
+                        bodyHtml = formatTextMessageHtml(msg.text);
                     }
 
                     let reactionsHtml = '';
@@ -1911,7 +2046,7 @@
 
                     msgDiv.innerHTML = `
                         <div class="msg-bubble">
-                            ${!isMine ? `<div style="font-size: 11px; font-weight: 700; color: #00a884; margin-bottom: 3px;">${msg.name}</div>` : ''}
+                            ${!isMine ? `<div style="font-size: 11px; font-weight: 700; color: #00a884; margin-bottom: 3px;">${escapeHtml(msg.name)}</div>` : ''}
                             ${bodyHtml}
                             ${reactionsHtml}
                             <div class="msg-meta-row">
@@ -2040,11 +2175,13 @@
                 return;
             }
             try {
+                const fencedMatch = String(activeMsgText).match(/^```[a-zA-Z0-9_-]*\n?([\s\S]*?)```$/);
+                const textToCopy = fencedMatch ? fencedMatch[1].replace(/\n$/, "") : activeMsgText;
                 if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(activeMsgText);
+                    await navigator.clipboard.writeText(textToCopy);
                 } else {
                     const tempArea = document.createElement('textarea');
-                    tempArea.value = activeMsgText;
+                    tempArea.value = textToCopy;
                     document.body.appendChild(tempArea);
                     tempArea.select();
                     document.execCommand('copy');
