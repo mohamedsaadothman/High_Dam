@@ -729,6 +729,7 @@
                 showToast("تعذر الوصول للملف", "error");
                 return;
             }
+
             try {
                 const commaIdx = dataUrl.indexOf(',');
                 if (commaIdx === -1) {
@@ -738,8 +739,12 @@
 
                 const headerPart = dataUrl.slice(0, commaIdx);
                 const base64Clean = dataUrl.slice(commaIdx + 1).replace(/\s+/g, '');
-                const mimeMatch = headerPart.match(/:(.*?);/);
+                if (!base64Clean) {
+                    showToast("الملف فارغ (0 بايت) ولا يمكن تنزيله", "error");
+                    return;
+                }
 
+                const mimeMatch = headerPart.match(/:(.*?);/);
                 const isPdfByName = /\.pdf$/i.test(fileName || '');
                 const isPdfByHeader = /application\/pdf/i.test(headerPart);
                 let mime = mimeMatch ? mimeMatch[1] : (msgType === 'image' ? 'image/jpeg' : 'application/octet-stream');
@@ -750,32 +755,62 @@
 
                 const bstr = atob(base64Clean);
                 const len = bstr.length;
+                if (len === 0) {
+                    showToast("الملف فارغ (0 بايت) ولا يمكن تنزيله", "error");
+                    return;
+                }
+
                 const u8arr = new Uint8Array(len);
                 for (let i = 0; i < len; i++) {
                     u8arr[i] = bstr.charCodeAt(i);
                 }
 
                 const blob = new Blob([u8arr], { type: mime });
-                const blobUrl = URL.createObjectURL(blob);
+                if (!blob || blob.size === 0) {
+                    showToast("الملف فارغ ولا يمكن تنزيله", "error");
+                    return;
+                }
 
+                const blobUrl = URL.createObjectURL(blob);
                 let baseName = (fileName || (msgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`)).trim();
                 if (mime === 'application/pdf' && !/\.pdf$/i.test(baseName)) {
                     baseName += '.pdf';
                 }
                 const safeFileName = baseName.replace(/[\\/:*?"<>|]+/g, '_') || 'document.pdf';
 
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = safeFileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-                showToast("جاري تنزيل الملف...", "success");
+                if (isMobileBrowser && mime === 'application/pdf') {
+                    const openedTab = window.open(blobUrl, '_blank');
+                    if (!openedTab) {
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        a.download = safeFileName;
+                        a.rel = 'noopener';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    }
+                    showToast("جاري فتح ملف PDF في تبويب جديد...", "success");
+                } else {
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = safeFileName;
+                    a.rel = 'noopener';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    showToast("جاري تنزيل الملف...", "success");
+                }
+
+                setTimeout(() => {
+                    try {
+                        URL.revokeObjectURL(blobUrl);
+                    } catch (_) {}
+                }, 20000);
             } catch (err) {
                 console.error("Download error:", err);
-                showToast("تعذر تنزيل الملف", "error");
+                showToast("تعذر تنزيل الملف أو فتحه", "error");
             }
         }
 
