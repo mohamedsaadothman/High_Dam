@@ -744,9 +744,9 @@
                     return;
                 }
 
-                const mimeMatch = headerPart.match(/:(.*?);/);
                 const isPdfByName = /\.pdf$/i.test(fileName || '');
                 const isPdfByHeader = /application\/pdf/i.test(headerPart);
+                const mimeMatch = headerPart.match(/:(.*?);/);
                 let mime = mimeMatch ? mimeMatch[1] : (msgType === 'image' ? 'image/jpeg' : 'application/octet-stream');
 
                 if (isPdfByName || isPdfByHeader) {
@@ -765,6 +765,49 @@
                     u8arr[i] = bstr.charCodeAt(i);
                 }
 
+                const normalizedDataUrl = `data:${mime};base64,${base64Clean}`;
+                const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+
+                let baseName = (fileName || (msgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`)).trim();
+                baseName = baseName.replace(/\s*\(\d+\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+                if (mime === 'application/pdf' && !/\.pdf$/i.test(baseName)) {
+                    baseName += '.pdf';
+                }
+                const safeFileName = baseName.replace(/[\\/:*?"<>|]+/g, '_') || (mime === 'application/pdf' ? 'document.pdf' : 'file');
+
+                if (isMobileBrowser && mime === 'application/pdf') {
+                    const win = window.open('', '_blank');
+                    if (win && win.document) {
+                        win.document.open();
+                        win.document.write(`
+                            <!DOCTYPE html>
+                            <html lang="ar" dir="rtl">
+                            <head>
+                                <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <title>${escapeHtml(safeFileName)}</title>
+                                <style>
+                                    body { margin: 0; background: #1e293b; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+                                    .bar { background: #0f172a; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+                                    .bar a { background: #00a884; color: #fff; text-decoration: none; padding: 7px 14px; border-radius: 8px; font-weight: bold; }
+                                    iframe { flex: 1; width: 100%; border: none; background: #fff; }
+                                </style>
+                            </head>
+                            <body>
+                                <div class="bar">
+                                    <span>${escapeHtml(safeFileName)}</span>
+                                    <a href="${normalizedDataUrl}" download="${escapeHtml(safeFileName)}">حفظ PDF</a>
+                                </div>
+                                <iframe src="${normalizedDataUrl}"></iframe>
+                            </body>
+                            </html>
+                        `);
+                        win.document.close();
+                        showToast("تم فتح ملف PDF في تبويب جديد", "success");
+                        return;
+                    }
+                }
+
                 const blob = new Blob([u8arr], { type: mime });
                 if (!blob || blob.size === 0) {
                     showToast("الملف فارغ ولا يمكن تنزيله", "error");
@@ -772,42 +815,21 @@
                 }
 
                 const blobUrl = URL.createObjectURL(blob);
-                let baseName = (fileName || (msgType === 'image' ? `image_${Date.now()}.jpg` : `document_${Date.now()}`)).trim();
-                if (mime === 'application/pdf' && !/\.pdf$/i.test(baseName)) {
-                    baseName += '.pdf';
-                }
-                const safeFileName = baseName.replace(/[\\/:*?"<>|]+/g, '_') || 'document.pdf';
-
-                const isMobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-
-                if (isMobileBrowser && mime === 'application/pdf') {
-                    const openedTab = window.open(blobUrl, '_blank');
-                    if (!openedTab) {
-                        const a = document.createElement('a');
-                        a.href = blobUrl;
-                        a.download = safeFileName;
-                        a.rel = 'noopener';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                    }
-                    showToast("جاري فتح ملف PDF في تبويب جديد...", "success");
-                } else {
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = safeFileName;
-                    a.rel = 'noopener';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    showToast("جاري تنزيل الملف...", "success");
-                }
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = safeFileName;
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
 
                 setTimeout(() => {
                     try {
                         URL.revokeObjectURL(blobUrl);
                     } catch (_) {}
                 }, 20000);
+
+                showToast("جاري تنزيل الملف...", "success");
             } catch (err) {
                 console.error("Download error:", err);
                 showToast("تعذر تنزيل الملف أو فتحه", "error");
