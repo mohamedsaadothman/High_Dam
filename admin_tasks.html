@@ -194,8 +194,8 @@
         }
 
         .field-box {
-            background: rgba(15, 23, 42, 0.55);
-            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid rgba(148, 163, 184, 0.22);
             border-radius: 12px;
             padding: 10px 12px;
             display: flex;
@@ -203,18 +203,17 @@
             gap: 7px;
         }
         .field-box.wide-field { grid-column: 1 / -1; }
-        .field-box.auto-filled {
+        .field-box.missing-field {
             border-style: dashed;
-            border-color: rgba(52, 211, 153, 0.85);
-            background: linear-gradient(145deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.85));
+            border-color: rgba(251, 191, 36, 0.75);
         }
 
-        .auto-badge {
+        .missing-badge {
             font-size: 10px;
             font-weight: 800;
-            color: #6ee7b7;
-            background: rgba(16, 185, 129, 0.2);
-            border: 1px solid rgba(52, 211, 153, 0.5);
+            color: #fde68a;
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid rgba(251, 191, 36, 0.45);
             padding: 2px 7px;
             border-radius: 999px;
             margin-right: 6px;
@@ -269,60 +268,22 @@
             word-break: break-word;
         }
 
-        .edit-pen-btn {
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
-            border: 1px solid rgba(251, 191, 36, 0.35);
-            background: rgba(251, 191, 36, 0.12);
-            color: #fbbf24;
-            font-size: 12.5px;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: 0.2s;
-        }
-        .edit-pen-btn:hover {
-            background: rgba(251, 191, 36, 0.24);
-        }
-        .edit-pen-btn.editing {
-            background: #10b981;
-            border-color: #10b981;
-            color: #0f172a;
-        }
-
         .field-box input, .field-box textarea {
             width: 100%;
             padding: 10px 12px;
             border-radius: 10px;
-            border: 1px solid rgba(148, 163, 184, 0.24);
-            background: rgba(15, 23, 42, 0.72);
-            color: #cbd5e1;
+            border: 1.5px solid rgba(148, 163, 184, 0.35);
+            background: #0f172a;
+            color: #ffffff;
             font-size: 13px;
             outline: none;
             transition: 0.2s;
         }
-        .field-box input[readonly], .field-box textarea[readonly] {
-            opacity: 0.9;
-            cursor: default;
-        }
-        .field-box input:not([readonly]), .field-box textarea:not([readonly]) {
-            background: #0f172a;
-            color: #ffffff;
+        .field-box input:focus, .field-box textarea:focus {
             border-color: #fbbf24;
-            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.15);
-            opacity: 1;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.16);
         }
         .field-box textarea { min-height: 90px; resize: vertical; }
-
-        .actions-footer {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
 
         .save-doc-btn {
             background: linear-gradient(135deg, #10b981, #059669);
@@ -396,7 +357,7 @@
         </div>
 
         <div id="documentsContainer" class="docs-grid">
-            <div class="empty-state">ابدأ بكتابة أول حرف أو أول اسم من اسم الموظف لعرض المقترحات وإكمال الحقول الناقصة تلقائياً من أغلب الموظفين.</div>
+            <div class="empty-state">ابدأ بكتابة أول حرف أو أول اسم من اسم الموظف لعرض جميع مربعات الإدخال وتعبئتها بنفسك.</div>
         </div>
     </div>
 
@@ -427,11 +388,12 @@
         const db = getFirestore(app);
 
         let allUserDocs = [];
-        let majorityDefaultsMap = new Map();
+        let allCollectionKeys = [];
+        let activeRenderedDocs = [];
         const docFieldMetaMap = new Map();
 
         const MANAGER_ALIASES = ["centralmanager", "crntralmanager"];
-        const UNIQUE_PER_USER_KEYS = new Set(["uid", "username", "email", "name", "nationalid", "password", "hiredate", "pensiondate"]);
+        const CORE_FEATURED_KEYS = ["centralManager", "type", "password", "department", "jobCategory", "role"];
 
         function getHighlightClass(key) {
             const lower = String(key).toLowerCase();
@@ -452,7 +414,7 @@
             clearTimeout(window.__toastTimer);
             window.__toastTimer = setTimeout(() => {
                 el.style.display = "none";
-            }, 3400);
+            }, 3200);
         }
 
         function normalizeArabic(text) {
@@ -465,95 +427,37 @@
                 .toLowerCase();
         }
 
-        function isEmptyValue(val) {
-            if (val === null || val === undefined) return true;
-            if (typeof val === "string" && val.trim() === "") return true;
-            if (Array.isArray(val) && val.length === 0) return true;
-            return false;
-        }
+        function collectAllKeysAcrossUsers(docsList) {
+            const ordered = [];
+            const seenLower = new Set();
 
-        function computeMajorityValues(docsList) {
-            const countsPerKey = new Map();
+            for (const cKey of CORE_FEATURED_KEYS) {
+                const lower = cKey.toLowerCase();
+                if (!seenLower.has(lower)) {
+                    seenLower.add(lower);
+                    ordered.push(cKey);
+                }
+            }
 
             for (const item of docsList) {
                 const d = item.data || {};
-                for (const [key, val] of Object.entries(d)) {
-                    const lowerKey = String(key).toLowerCase();
-                    if (UNIQUE_PER_USER_KEYS.has(lowerKey)) continue;
-                    if (isEmptyValue(val)) continue;
-
-                    const sig = JSON.stringify(val);
-                    if (!countsPerKey.has(key)) {
-                        countsPerKey.set(key, new Map());
-                    }
-                    const freqMap = countsPerKey.get(key);
-                    const prev = freqMap.get(sig);
-                    freqMap.set(sig, { value: val, count: (prev ? prev.count : 0) + 1 });
-                }
-            }
-
-            const defaults = new Map();
-            for (const [key, freqMap] of countsPerKey.entries()) {
-                let best = null;
-                for (const entry of freqMap.values()) {
-                    if (!best || entry.count > best.count) {
-                        best = entry;
-                    }
-                }
-                if (best) {
-                    defaults.set(key, best.value);
-                }
-            }
-            return defaults;
-        }
-
-        function buildAutoCompletedDoc(rawData, docId) {
-            const completed = { ...(rawData || {}) };
-            const autoFilledKeys = new Set();
-
-            const requiredCommonKeys = [
-                "centralManager",
-                "type",
-                "password",
-                "department",
-                "jobCategory",
-                "role"
-            ];
-
-            for (const [commonKey, majorityVal] of majorityDefaultsMap.entries()) {
-                const existingKey = Object.keys(completed).find(k => k.toLowerCase() === commonKey.toLowerCase());
-                if (!existingKey) {
-                    completed[commonKey] = majorityVal;
-                    autoFilledKeys.add(commonKey);
-                } else if (isEmptyValue(completed[existingKey]) && !UNIQUE_PER_USER_KEYS.has(existingKey.toLowerCase())) {
-                    completed[existingKey] = majorityVal;
-                    autoFilledKeys.add(existingKey);
-                }
-            }
-
-            for (const reqKey of requiredCommonKeys) {
-                const existingKey = Object.keys(completed).find(k => k.toLowerCase() === reqKey.toLowerCase());
-                if (!existingKey) {
-                    const maj = majorityDefaultsMap.get(reqKey);
-                    if (maj !== undefined && !isEmptyValue(maj)) {
-                        completed[reqKey] = maj;
-                        autoFilledKeys.add(reqKey);
+                for (const key of Object.keys(d)) {
+                    const lower = key.toLowerCase();
+                    if (!seenLower.has(lower)) {
+                        seenLower.add(lower);
+                        ordered.push(key);
                     }
                 }
             }
 
-            if (!completed.uid) {
-                completed.uid = docId;
-            }
-
-            return { completed, autoFilledKeys };
+            return ordered;
         }
 
         async function loadAllUsers() {
             try {
                 const snap = await getDocs(collection(db, "users"));
                 allUserDocs = snap.docs.map(d => ({ docId: d.id, data: d.data() || {} }));
-                majorityDefaultsMap = computeMajorityValues(allUserDocs);
+                allCollectionKeys = collectAllKeysAcrossUsers(allUserDocs);
             } catch (err) {
                 console.error("Failed to fetch users collection:", err);
                 showToast("تعذر جلب بيانات مجموعة users من قاعدة البيانات.", true);
@@ -595,7 +499,7 @@
             dropdown.style.display = "block";
         };
 
-        window.selectEmployeeByIndex = async function(idx) {
+        window.selectEmployeeByIndex = function(idx) {
             const matches = window.__currentMatches || [];
             const chosen = matches[idx];
             if (!chosen) return;
@@ -611,15 +515,8 @@
                 return item.docId === chosen.docId;
             });
 
-            const targetDocs = matchingDocs.length > 0 ? matchingDocs : [chosen];
-            renderEmployeeDocuments(targetDocs);
-
-            for (let i = 0; i < targetDocs.length; i++) {
-                const meta = docFieldMetaMap.get(i);
-                if (meta && meta.hasAutoFilled) {
-                    await saveDocumentChanges(i, true);
-                }
-            }
+            activeRenderedDocs = matchingDocs.length > 0 ? matchingDocs : [chosen];
+            renderEmployeeDocuments(activeRenderedDocs);
         };
 
         function formatFieldValueForDisplay(val) {
@@ -631,6 +528,7 @@
 
         function parseFieldValueForSave(rawVal, originalVal) {
             if (typeof originalVal === "number") {
+                if (rawVal.trim() === "") return "";
                 const num = Number(rawVal.trim());
                 return Number.isNaN(num) ? rawVal : num;
             }
@@ -656,25 +554,29 @@
             return rawVal;
         }
 
-        function buildFieldCardHtml(key, val, docIdx, fieldIdx, forceSingleRow = false, isAutoFilled = false) {
+        function resolveKeyInDoc(allKeys, candidates) {
+            for (const candidate of candidates) {
+                const found = allKeys.find(k => String(k).toLowerCase() === candidate.toLowerCase());
+                if (found) return { key: found, existsInDoc: true };
+            }
+            return { key: candidates[0], existsInDoc: false };
+        }
+
+        function buildFieldCardHtml(key, val, docIdx, fieldIdx, forceSingleRow = false, isMissing = false) {
             const displayVal = formatFieldValueForDisplay(val);
             const useTextarea = !forceSingleRow && (displayVal.includes("\n") || displayVal.length > 75 || key === "tasks");
             const inputId = `field_${docIdx}_${fieldIdx}`;
-            const penBtnId = `pen_${docIdx}_${fieldIdx}`;
             const hlClass = getHighlightClass(key);
-            const autoClass = isAutoFilled ? "auto-filled" : "";
+            const missingClass = isMissing ? "missing-field" : "";
 
             const controlHtml = useTextarea
-                ? `<textarea id="${inputId}" readonly>${escapeHtml(displayVal)}</textarea>`
-                : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" readonly>`;
+                ? `<textarea id="${inputId}" placeholder="أدخل قيمة ${escapeAttr(key)}...">${escapeHtml(displayVal)}</textarea>`
+                : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" placeholder="أدخل قيمة ${escapeAttr(key)}...">`;
 
             return `
-                <div class="field-box ${hlClass} ${autoClass} ${useTextarea ? "wide-field" : ""}">
+                <div class="field-box ${hlClass} ${missingClass} ${useTextarea ? "wide-field" : ""}">
                     <div class="field-top-row">
-                        <label for="${inputId}">${escapeHtml(key)}${isAutoFilled ? `<span class="auto-badge">من الأغلبية</span>` : ""}</label>
-                        <button type="button" id="${penBtnId}" class="edit-pen-btn" title="تعديل ${escapeAttr(key)}" onclick="toggleFieldEdit('${inputId}', '${penBtnId}')">
-                            <i class="fas fa-pen"></i>
-                        </button>
+                        <label for="${inputId}">${escapeHtml(key)}${isMissing ? `<span class="missing-badge">ناقص</span>` : ""}</label>
                     </div>
                     ${controlHtml}
                 </div>
@@ -691,87 +593,88 @@
             }
 
             container.innerHTML = docsList.map((item, docIdx) => {
-                const { completed, autoFilledKeys } = buildAutoCompletedDoc(item.data || {}, item.docId);
-                const allKeys = Object.keys(completed);
+                const d = item.data || {};
+                const docKeys = Object.keys(d);
 
-                const managerKeys = allKeys.filter(k => MANAGER_ALIASES.includes(String(k).toLowerCase()));
-                const row1OtherKeys = ["type", "password"]
-                    .map(target => allKeys.find(k => String(k).toLowerCase() === target))
-                    .filter(Boolean);
-                const row1Keys = [...managerKeys, ...row1OtherKeys].slice(0, 3);
+                const managerSlot = resolveKeyInDoc(docKeys, ["centralManager", "crntralmanager"]);
+                const typeSlot = resolveKeyInDoc(docKeys, ["type"]);
+                const passSlot = resolveKeyInDoc(docKeys, ["password"]);
+                const deptSlot = resolveKeyInDoc(docKeys, ["department"]);
+                const jobCatSlot = resolveKeyInDoc(docKeys, ["jobCategory", "jobcategory"]);
+                const roleSlot = resolveKeyInDoc(docKeys, ["role"]);
 
-                const row2Keys = ["department", "jobcategory", "role"]
-                    .map(target => allKeys.find(k => String(k).toLowerCase() === target))
-                    .filter(Boolean)
-                    .slice(0, 3);
+                const row1Slots = [managerSlot, typeSlot, passSlot];
+                const row2Slots = [deptSlot, jobCatSlot, roleSlot];
 
-                const featuredSet = new Set([...row1Keys, ...row2Keys]);
-                const otherKeys = allKeys.filter(k => !featuredSet.has(k));
+                const featuredLowerSet = new Set([
+                    ...row1Slots.map(s => s.key.toLowerCase()),
+                    ...row2Slots.map(s => s.key.toLowerCase()),
+                    "centralmanager",
+                    "crntralmanager",
+                    "type",
+                    "password",
+                    "department",
+                    "jobcategory",
+                    "role"
+                ]);
 
-                const orderedKeys = [...row1Keys, ...row2Keys, ...otherKeys];
+                const mergedOtherKeys = [];
+                const seenOtherLower = new Set();
+
+                for (const k of docKeys) {
+                    const lower = k.toLowerCase();
+                    if (!featuredLowerSet.has(lower) && !seenOtherLower.has(lower)) {
+                        seenOtherLower.add(lower);
+                        mergedOtherKeys.push({ key: k, existsInDoc: true });
+                    }
+                }
+
+                for (const colKey of allCollectionKeys) {
+                    const lower = colKey.toLowerCase();
+                    if (!featuredLowerSet.has(lower) && !seenOtherLower.has(lower)) {
+                        seenOtherLower.add(lower);
+                        mergedOtherKeys.push({ key: colKey, existsInDoc: false });
+                    }
+                }
+
+                const orderedSlots = [...row1Slots, ...row2Slots, ...mergedOtherKeys];
                 docFieldMetaMap.set(docIdx, {
                     docId: item.docId,
-                    keys: orderedKeys,
-                    originalData: completed,
-                    hasAutoFilled: autoFilledKeys.size > 0
+                    keys: orderedSlots.map(s => s.key),
+                    originalData: d
                 });
 
                 let nextFieldIdx = 0;
-                const row1Html = row1Keys.map(k => buildFieldCardHtml(k, completed[k], docIdx, nextFieldIdx++, true, autoFilledKeys.has(k))).join("");
-                const row2Html = row2Keys.map(k => buildFieldCardHtml(k, completed[k], docIdx, nextFieldIdx++, true, autoFilledKeys.has(k))).join("");
-                const otherHtml = otherKeys.map(k => buildFieldCardHtml(k, completed[k], docIdx, nextFieldIdx++, false, autoFilledKeys.has(k))).join("");
-
-                const hasFeatured = row1Keys.length > 0 || row2Keys.length > 0;
-                const featuredBlockHtml = hasFeatured ? `
-                    <div class="featured-two-rows">
-                        ${row1Keys.length > 0 ? `<div class="featured-row">${row1Html}</div>` : ""}
-                        ${row2Keys.length > 0 ? `<div class="featured-row">${row2Html}</div>` : ""}
-                    </div>
-                ` : "";
+                const row1Html = row1Slots.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, true, !s.existsInDoc)).join("");
+                const row2Html = row2Slots.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, true, !s.existsInDoc)).join("");
+                const otherHtml = mergedOtherKeys.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, false, !s.existsInDoc)).join("");
 
                 return `
                     <div class="doc-card">
                         <div class="doc-header">
                             <div>
-                                <strong>${escapeHtml(completed.name || "بدون اسم")}</strong>
-                                <span style="font-size: 12px; color: #94a3b8; margin-right: 8px;">(${escapeHtml(completed.username || "")})</span>
+                                <strong>${escapeHtml(d.name || "بدون اسم")}</strong>
+                                <span style="font-size: 12px; color: #94a3b8; margin-right: 8px;">(${escapeHtml(d.username || "")})</span>
                             </div>
                             <span class="doc-id-badge">مستند: ${escapeHtml(item.docId)}</span>
                         </div>
 
-                        ${featuredBlockHtml}
+                        <div class="featured-two-rows">
+                            <div class="featured-row">${row1Html}</div>
+                            <div class="featured-row">${row2Html}</div>
+                        </div>
 
                         <div class="fields-grid">
-                            ${otherHtml || (!hasFeatured ? `<div class="empty-state">هذا المستند لا يحتوي على حقول.</div>` : "")}
+                            ${otherHtml}
                         </div>
 
-                        <div class="actions-footer">
-                            <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx}, false)">
-                                <i class="fas fa-save"></i> حفظ التعديلات في قاعدة البيانات
-                            </button>
-                        </div>
+                        <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
+                            <i class="fas fa-save"></i> حفظ جميع الحقول في قاعدة البيانات
+                        </button>
                     </div>
                 `;
             }).join("");
         }
-
-        window.toggleFieldEdit = function(inputId, penBtnId) {
-            const fieldEl = document.getElementById(inputId);
-            const penBtn = document.getElementById(penBtnId);
-            if (!fieldEl || !penBtn) return;
-
-            const isCurrentlyReadonly = fieldEl.hasAttribute("readonly");
-            if (isCurrentlyReadonly) {
-                fieldEl.removeAttribute("readonly");
-                penBtn.classList.add("editing");
-                penBtn.title = "جاري التعديل";
-                fieldEl.focus();
-            } else {
-                fieldEl.setAttribute("readonly", "readonly");
-                penBtn.classList.remove("editing");
-                penBtn.title = "تعديل الحقل";
-            }
-        };
 
         function escapeAttr(val) {
             return String(val).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -781,7 +684,7 @@
             return String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        window.saveDocumentChanges = async function(docIdx, silentAutoSave = false) {
+        window.saveDocumentChanges = async function(docIdx) {
             const meta = docFieldMetaMap.get(docIdx);
             if (!meta) return;
 
@@ -796,28 +699,14 @@
                 await setDoc(doc(db, "users", meta.docId), updatedPayload, { merge: true });
 
                 meta.originalData = { ...meta.originalData, ...updatedPayload };
-                meta.hasAutoFilled = false;
                 const target = allUserDocs.find(u => u.docId === meta.docId);
                 if (target) {
                     target.data = { ...target.data, ...updatedPayload };
                 }
-                majorityDefaultsMap = computeMajorityValues(allUserDocs);
+                allCollectionKeys = collectAllKeysAcrossUsers(allUserDocs);
 
-                meta.keys.forEach((_, fieldIdx) => {
-                    const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
-                    const penBtn = document.getElementById(`pen_${docIdx}_${fieldIdx}`);
-                    if (el) el.setAttribute("readonly", "readonly");
-                    if (penBtn) {
-                        penBtn.classList.remove("editing");
-                        penBtn.title = "تعديل الحقل";
-                    }
-                });
-
-                showToast(
-                    silentAutoSave
-                        ? "تم إكمال الحقول الناقصة من أغلب الموظفين وحفظها تلقائياً."
-                        : "تم حفظ جميع الحقول بنجاح في قاعدة البيانات."
-                );
+                showToast("تم حفظ جميع الحقول بنجاح في قاعدة البيانات.");
+                renderEmployeeDocuments(activeRenderedDocs);
             } catch (err) {
                 console.error("Update error:", err);
                 showToast("تعذر حفظ التعديلات. تحقق من صلاحيات التعديل.", true);
