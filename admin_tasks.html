@@ -203,17 +203,18 @@
             gap: 7px;
         }
         .field-box.wide-field { grid-column: 1 / -1; }
-        .field-box.missing-field {
+        .field-box.auto-filled {
             border-style: dashed;
-            border-color: rgba(251, 191, 36, 0.75);
+            border-color: rgba(52, 211, 153, 0.85);
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.85));
         }
 
-        .missing-badge {
-            font-size: 10.5px;
+        .auto-badge {
+            font-size: 10px;
             font-weight: 800;
-            color: #fde68a;
-            background: rgba(245, 158, 11, 0.22);
-            border: 1px solid rgba(251, 191, 36, 0.45);
+            color: #6ee7b7;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(52, 211, 153, 0.5);
             padding: 2px 7px;
             border-radius: 999px;
             margin-right: 6px;
@@ -316,65 +317,6 @@
         }
         .field-box textarea { min-height: 90px; resize: vertical; }
 
-        .add-missing-panel {
-            background: rgba(15, 23, 42, 0.62);
-            border: 1px dashed rgba(56, 189, 248, 0.55);
-            border-radius: 14px;
-            padding: 14px;
-            margin-bottom: 18px;
-        }
-        .add-missing-title {
-            font-size: 13px;
-            font-weight: 800;
-            color: #7dd3fc;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .add-missing-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
-            gap: 10px;
-            align-items: center;
-        }
-        @media (max-width: 720px) {
-            .add-missing-row {
-                grid-template-columns: 1fr;
-            }
-        }
-        .add-missing-row input {
-            width: 100%;
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid rgba(148, 163, 184, 0.3);
-            background: #0f172a;
-            color: #fff;
-            font-size: 13px;
-            outline: none;
-        }
-        .add-missing-row input:focus {
-            border-color: #38bdf8;
-        }
-        .add-field-btn {
-            background: rgba(56, 189, 248, 0.18);
-            border: 1px solid rgba(56, 189, 248, 0.55);
-            color: #bae6fd;
-            padding: 10px 16px;
-            border-radius: 10px;
-            font-size: 13px;
-            font-weight: 800;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            transition: 0.2s;
-        }
-        .add-field-btn:hover {
-            background: rgba(56, 189, 248, 0.28);
-        }
-
         .actions-footer {
             display: flex;
             gap: 10px;
@@ -454,7 +396,7 @@
         </div>
 
         <div id="documentsContainer" class="docs-grid">
-            <div class="empty-state">ابدأ بكتابة أول حرف أو أول اسم من اسم الموظف لعرض المقترحات وجلب جميع حقول مستنداته من مجموعة <strong>users</strong>.</div>
+            <div class="empty-state">ابدأ بكتابة أول حرف أو أول اسم من اسم الموظف لعرض المقترحات وإكمال الحقول الناقصة تلقائياً من أغلب الموظفين.</div>
         </div>
     </div>
 
@@ -485,12 +427,11 @@
         const db = getFirestore(app);
 
         let allUserDocs = [];
-        let activeRenderedDocs = [];
+        let majorityDefaultsMap = new Map();
         const docFieldMetaMap = new Map();
 
         const MANAGER_ALIASES = ["centralmanager", "crntralmanager"];
-        const ROW_1_OTHERS = ["type", "password"];
-        const ROW_2_KEYS = ["department", "jobcategory", "role"];
+        const UNIQUE_PER_USER_KEYS = new Set(["uid", "username", "email", "name", "nationalid", "password", "hiredate", "pensiondate"]);
 
         function getHighlightClass(key) {
             const lower = String(key).toLowerCase();
@@ -511,7 +452,7 @@
             clearTimeout(window.__toastTimer);
             window.__toastTimer = setTimeout(() => {
                 el.style.display = "none";
-            }, 3200);
+            }, 3400);
         }
 
         function normalizeArabic(text) {
@@ -524,10 +465,95 @@
                 .toLowerCase();
         }
 
+        function isEmptyValue(val) {
+            if (val === null || val === undefined) return true;
+            if (typeof val === "string" && val.trim() === "") return true;
+            if (Array.isArray(val) && val.length === 0) return true;
+            return false;
+        }
+
+        function computeMajorityValues(docsList) {
+            const countsPerKey = new Map();
+
+            for (const item of docsList) {
+                const d = item.data || {};
+                for (const [key, val] of Object.entries(d)) {
+                    const lowerKey = String(key).toLowerCase();
+                    if (UNIQUE_PER_USER_KEYS.has(lowerKey)) continue;
+                    if (isEmptyValue(val)) continue;
+
+                    const sig = JSON.stringify(val);
+                    if (!countsPerKey.has(key)) {
+                        countsPerKey.set(key, new Map());
+                    }
+                    const freqMap = countsPerKey.get(key);
+                    const prev = freqMap.get(sig);
+                    freqMap.set(sig, { value: val, count: (prev ? prev.count : 0) + 1 });
+                }
+            }
+
+            const defaults = new Map();
+            for (const [key, freqMap] of countsPerKey.entries()) {
+                let best = null;
+                for (const entry of freqMap.values()) {
+                    if (!best || entry.count > best.count) {
+                        best = entry;
+                    }
+                }
+                if (best) {
+                    defaults.set(key, best.value);
+                }
+            }
+            return defaults;
+        }
+
+        function buildAutoCompletedDoc(rawData, docId) {
+            const completed = { ...(rawData || {}) };
+            const autoFilledKeys = new Set();
+
+            const requiredCommonKeys = [
+                "centralManager",
+                "type",
+                "password",
+                "department",
+                "jobCategory",
+                "role"
+            ];
+
+            for (const [commonKey, majorityVal] of majorityDefaultsMap.entries()) {
+                const existingKey = Object.keys(completed).find(k => k.toLowerCase() === commonKey.toLowerCase());
+                if (!existingKey) {
+                    completed[commonKey] = majorityVal;
+                    autoFilledKeys.add(commonKey);
+                } else if (isEmptyValue(completed[existingKey]) && !UNIQUE_PER_USER_KEYS.has(existingKey.toLowerCase())) {
+                    completed[existingKey] = majorityVal;
+                    autoFilledKeys.add(existingKey);
+                }
+            }
+
+            for (const reqKey of requiredCommonKeys) {
+                const existingKey = Object.keys(completed).find(k => k.toLowerCase() === reqKey.toLowerCase());
+                if (!existingKey) {
+                    const maj = majorityDefaultsMap.get(reqKey);
+                    if (maj !== undefined && !isEmptyValue(maj)) {
+                        completed[reqKey] = maj;
+                        autoFilledKeys.add(reqKey);
+                    }
+                }
+            }
+
+            if (!completed.uid) {
+                completed.uid = docId;
+            }
+
+            return { completed, autoFilledKeys };
+        }
+
         async function loadAllUsers() {
             try {
                 const snap = await getDocs(collection(db, "users"));
                 allUserDocs = snap.docs.map(d => ({ docId: d.id, data: d.data() || {} }));
+                majorityDefaultsMap = computeMajorityValues(allUserDocs);
             } catch (err) {
                 console.error("Failed to fetch users collection:", err);
                 showToast("تعذر جلب بيانات مجموعة users من قاعدة البيانات.", true);
@@ -548,7 +574,8 @@
             const matches = allUserDocs.filter(item => {
                 const nameNorm = normalizeArabic(item.data.name || "");
                 const firstNameNorm = nameNorm.split(" ")[0] || "";
-                return nameNorm.startsWith(q) || firstNameNorm.startsWith(q) || nameNorm.includes(q);
+                const userNorm = normalizeArabic(item.data.username || item.data.nationalId || "");
+                return nameNorm.startsWith(q) || firstNameNorm.startsWith(q) || nameNorm.includes(q) || userNorm.includes(q);
             });
 
             if (matches.length === 0) {
@@ -560,7 +587,7 @@
             dropdown.innerHTML = matches.map((m, idx) => `
                 <div class="suggestion-item" onclick="selectEmployeeByIndex(${idx})">
                     <span class="suggestion-name">${escapeHtml(m.data.name || m.docId)}</span>
-                    <span class="suggestion-meta">${escapeHtml(m.data.department || m.data.jobCategory || m.docId)}</span>
+                    <span class="suggestion-meta">${escapeHtml(m.data.department || m.data.username || m.docId)}</span>
                 </div>
             `).join("");
 
@@ -568,7 +595,7 @@
             dropdown.style.display = "block";
         };
 
-        window.selectEmployeeByIndex = function(idx) {
+        window.selectEmployeeByIndex = async function(idx) {
             const matches = window.__currentMatches || [];
             const chosen = matches[idx];
             if (!chosen) return;
@@ -584,8 +611,15 @@
                 return item.docId === chosen.docId;
             });
 
-            activeRenderedDocs = matchingDocs.length > 0 ? matchingDocs : [chosen];
-            renderEmployeeDocuments(activeRenderedDocs);
+            const targetDocs = matchingDocs.length > 0 ? matchingDocs : [chosen];
+            renderEmployeeDocuments(targetDocs);
+
+            for (let i = 0; i < targetDocs.length; i++) {
+                const meta = docFieldMetaMap.get(i);
+                if (meta && meta.hasAutoFilled) {
+                    await saveDocumentChanges(i, true);
+                }
+            }
         };
 
         function formatFieldValueForDisplay(val) {
@@ -622,33 +656,23 @@
             return rawVal;
         }
 
-        function resolveFeaturedKey(allKeys, candidates) {
-            for (const candidate of candidates) {
-                const found = allKeys.find(k => String(k).toLowerCase() === candidate.toLowerCase());
-                if (found) return { key: found, existsInDoc: true };
-            }
-            return { key: candidates[0], existsInDoc: false };
-        }
-
-        function buildFieldCardHtml(key, val, docIdx, fieldIdx, forceSingleRow = false, isMissing = false) {
+        function buildFieldCardHtml(key, val, docIdx, fieldIdx, forceSingleRow = false, isAutoFilled = false) {
             const displayVal = formatFieldValueForDisplay(val);
             const useTextarea = !forceSingleRow && (displayVal.includes("\n") || displayVal.length > 75 || key === "tasks");
             const inputId = `field_${docIdx}_${fieldIdx}`;
             const penBtnId = `pen_${docIdx}_${fieldIdx}`;
             const hlClass = getHighlightClass(key);
-            const missingClass = isMissing ? "missing-field" : "";
-            const readonlyAttr = isMissing ? "" : "readonly";
-            const editingClass = isMissing ? "editing" : "";
+            const autoClass = isAutoFilled ? "auto-filled" : "";
 
             const controlHtml = useTextarea
-                ? `<textarea id="${inputId}" ${readonlyAttr}>${escapeHtml(displayVal)}</textarea>`
-                : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" ${readonlyAttr}>`;
+                ? `<textarea id="${inputId}" readonly>${escapeHtml(displayVal)}</textarea>`
+                : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" readonly>`;
 
             return `
-                <div class="field-box ${hlClass} ${missingClass} ${useTextarea ? "wide-field" : ""}">
+                <div class="field-box ${hlClass} ${autoClass} ${useTextarea ? "wide-field" : ""}">
                     <div class="field-top-row">
-                        <label for="${inputId}">${escapeHtml(key)}${isMissing ? `<span class="missing-badge">ناقص</span>` : ""}</label>
-                        <button type="button" id="${penBtnId}" class="edit-pen-btn ${editingClass}" title="${isMissing ? "قيد الإكمال" : "تعديل " + escapeAttr(key)}" onclick="toggleFieldEdit('${inputId}', '${penBtnId}')">
+                        <label for="${inputId}">${escapeHtml(key)}${isAutoFilled ? `<span class="auto-badge">من الأغلبية</span>` : ""}</label>
+                        <button type="button" id="${penBtnId}" class="edit-pen-btn" title="تعديل ${escapeAttr(key)}" onclick="toggleFieldEdit('${inputId}', '${penBtnId}')">
                             <i class="fas fa-pen"></i>
                         </button>
                     </div>
@@ -667,52 +691,50 @@
             }
 
             container.innerHTML = docsList.map((item, docIdx) => {
-                const d = item.data || {};
-                const allKeys = Object.keys(d);
+                const { completed, autoFilledKeys } = buildAutoCompletedDoc(item.data || {}, item.docId);
+                const allKeys = Object.keys(completed);
 
-                const managerSlot = resolveFeaturedKey(allKeys, ["centralManager", "crntralmanager"]);
-                const typeSlot = resolveFeaturedKey(allKeys, ["type"]);
-                const passSlot = resolveFeaturedKey(allKeys, ["password"]);
-                const deptSlot = resolveFeaturedKey(allKeys, ["department"]);
-                const jobCatSlot = resolveFeaturedKey(allKeys, ["jobCategory", "jobcategory"]);
-                const roleSlot = resolveFeaturedKey(allKeys, ["role"]);
+                const managerKeys = allKeys.filter(k => MANAGER_ALIASES.includes(String(k).toLowerCase()));
+                const row1OtherKeys = ["type", "password"]
+                    .map(target => allKeys.find(k => String(k).toLowerCase() === target))
+                    .filter(Boolean);
+                const row1Keys = [...managerKeys, ...row1OtherKeys].slice(0, 3);
 
-                const row1Slots = [managerSlot, typeSlot, passSlot];
-                const row2Slots = [deptSlot, jobCatSlot, roleSlot];
+                const row2Keys = ["department", "jobcategory", "role"]
+                    .map(target => allKeys.find(k => String(k).toLowerCase() === target))
+                    .filter(Boolean)
+                    .slice(0, 3);
 
-                const featuredKeySet = new Set([...row1Slots, ...row2Slots].map(s => s.key));
-                const otherKeys = allKeys.filter(k => !featuredKeySet.has(k));
+                const featuredSet = new Set([...row1Keys, ...row2Keys]);
+                const otherKeys = allKeys.filter(k => !featuredSet.has(k));
 
-                const orderedSlots = [
-                    ...row1Slots.map(s => ({ key: s.key, isMissing: !s.existsInDoc })),
-                    ...row2Slots.map(s => ({ key: s.key, isMissing: !s.existsInDoc })),
-                    ...otherKeys.map(k => ({ key: k, isMissing: false }))
-                ];
-
+                const orderedKeys = [...row1Keys, ...row2Keys, ...otherKeys];
                 docFieldMetaMap.set(docIdx, {
                     docId: item.docId,
-                    keys: orderedSlots.map(s => s.key),
-                    originalData: d
+                    keys: orderedKeys,
+                    originalData: completed,
+                    hasAutoFilled: autoFilledKeys.size > 0
                 });
 
                 let nextFieldIdx = 0;
-                const row1Html = row1Slots.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, true, !s.existsInDoc)).join("");
-                const row2Html = row2Slots.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, true, !s.existsInDoc)).join("");
-                const otherHtml = otherKeys.map(k => buildFieldCardHtml(k, d[k], docIdx, nextFieldIdx++, false, false)).join("");
+                const row1Html = row1Keys.map(k => buildFieldCardHtml(k, completed[k], docIdx, nextFieldIdx++, true, autoFilledKeys.has(k))).join("");
+                const row2Html = row2Keys.map(k => buildFieldCardHtml(k, completed[k], docIdx, nextFieldIdx++, true, autoFilledKeys.has(k))).join("");
+                const otherHtml = otherKeys.map(k => buildFieldCardHtml(k, completed[k], docIdx, nextFieldIdx++, false, autoFilledKeys.has(k))).join("");
 
-                const featuredBlockHtml = `
+                const hasFeatured = row1Keys.length > 0 || row2Keys.length > 0;
+                const featuredBlockHtml = hasFeatured ? `
                     <div class="featured-two-rows">
-                        <div class="featured-row">${row1Html}</div>
-                        <div class="featured-row">${row2Html}</div>
+                        ${row1Keys.length > 0 ? `<div class="featured-row">${row1Html}</div>` : ""}
+                        ${row2Keys.length > 0 ? `<div class="featured-row">${row2Html}</div>` : ""}
                     </div>
-                `;
+                ` : "";
 
                 return `
                     <div class="doc-card">
                         <div class="doc-header">
                             <div>
-                                <strong>${escapeHtml(d.name || "بدون اسم")}</strong>
-                                <span style="font-size: 12px; color: #94a3b8; margin-right: 8px;">(${escapeHtml(d.username || "")})</span>
+                                <strong>${escapeHtml(completed.name || "بدون اسم")}</strong>
+                                <span style="font-size: 12px; color: #94a3b8; margin-right: 8px;">(${escapeHtml(completed.username || "")})</span>
                             </div>
                             <span class="doc-id-badge">مستند: ${escapeHtml(item.docId)}</span>
                         </div>
@@ -720,55 +742,18 @@
                         ${featuredBlockHtml}
 
                         <div class="fields-grid">
-                            ${otherHtml}
-                        </div>
-
-                        <div class="add-missing-panel">
-                            <div class="add-missing-title"><i class="fas fa-plus-circle"></i> إضافة حقل ناقص جديد للمستند</div>
-                            <div class="add-missing-row">
-                                <input type="text" id="newFieldKey_${docIdx}" placeholder="اسم الحقل الناقص (مثال: permissions أو phone)">
-                                <input type="text" id="newFieldVal_${docIdx}" placeholder="قيمة الحقل">
-                                <button type="button" class="add-field-btn" onclick="addMissingFieldToDoc(${docIdx})">
-                                    <i class="fas fa-plus"></i> إضافة الحقل
-                                </button>
-                            </div>
+                            ${otherHtml || (!hasFeatured ? `<div class="empty-state">هذا المستند لا يحتوي على حقول.</div>` : "")}
                         </div>
 
                         <div class="actions-footer">
-                            <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
-                                <i class="fas fa-save"></i> حفظ وإكمال الحقول في قاعدة البيانات
+                            <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx}, false)">
+                                <i class="fas fa-save"></i> حفظ التعديلات في قاعدة البيانات
                             </button>
                         </div>
                     </div>
                 `;
             }).join("");
         }
-
-        window.addMissingFieldToDoc = function(docIdx) {
-            const keyInput = document.getElementById(`newFieldKey_${docIdx}`);
-            const valInput = document.getElementById(`newFieldVal_${docIdx}`);
-            const meta = docFieldMetaMap.get(docIdx);
-            if (!keyInput || !valInput || !meta) return;
-
-            const newKey = keyInput.value.trim();
-            const newVal = valInput.value;
-
-            if (!newKey) {
-                showToast("الرجاء إدخال اسم الحقل الناقص أولاً.", true);
-                return;
-            }
-
-            const currentDraft = collectCurrentDraftPayload(docIdx);
-            currentDraft[newKey] = newVal;
-
-            const targetDoc = activeRenderedDocs[docIdx];
-            if (targetDoc) {
-                targetDoc.data = currentDraft;
-            }
-
-            renderEmployeeDocuments(activeRenderedDocs);
-            showToast(`تمت إضافة الحقل "${newKey}"، اضغط حفظ لإرساله لقاعدة البيانات.`);
-        };
 
         window.toggleFieldEdit = function(inputId, penBtnId) {
             const fieldEl = document.getElementById(inputId);
@@ -796,24 +781,7 @@
             return String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        function collectCurrentDraftPayload(docIdx) {
-            const meta = docFieldMetaMap.get(docIdx);
-            if (!meta) return {};
-            const draft = { ...(meta.originalData || {}) };
-
-            meta.keys.forEach((key, fieldIdx) => {
-                const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
-                if (!el) return;
-                const isEditingOrNew = !el.hasAttribute("readonly") || !(key in (meta.originalData || {}));
-                if (isEditingOrNew) {
-                    draft[key] = parseFieldValueForSave(el.value, meta.originalData[key]);
-                }
-            });
-
-            return draft;
-        }
-
-        window.saveDocumentChanges = async function(docIdx) {
+        window.saveDocumentChanges = async function(docIdx, silentAutoSave = false) {
             const meta = docFieldMetaMap.get(docIdx);
             if (!meta) return;
 
@@ -828,18 +796,30 @@
                 await setDoc(doc(db, "users", meta.docId), updatedPayload, { merge: true });
 
                 meta.originalData = { ...meta.originalData, ...updatedPayload };
+                meta.hasAutoFilled = false;
                 const target = allUserDocs.find(u => u.docId === meta.docId);
                 if (target) {
                     target.data = { ...target.data, ...updatedPayload };
                 }
-                if (activeRenderedDocs[docIdx]) {
-                    activeRenderedDocs[docIdx].data = { ...meta.originalData };
-                }
+                majorityDefaultsMap = computeMajorityValues(allUserDocs);
 
-                renderEmployeeDocuments(activeRenderedDocs);
-                showToast("تم حفظ وإكمال جميع الحقول بنجاح في قاعدة البيانات.");
+                meta.keys.forEach((_, fieldIdx) => {
+                    const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
+                    const penBtn = document.getElementById(`pen_${docIdx}_${fieldIdx}`);
+                    if (el) el.setAttribute("readonly", "readonly");
+                    if (penBtn) {
+                        penBtn.classList.remove("editing");
+                        penBtn.title = "تعديل الحقل";
+                    }
+                });
+
+                showToast(
+                    silentAutoSave
+                        ? "تم إكمال الحقول الناقصة من أغلب الموظفين وحفظها تلقائياً."
+                        : "تم حفظ جميع الحقول بنجاح في قاعدة البيانات."
+                );
             } catch (err) {
-                console.error("Save error:", err);
+                console.error("Update error:", err);
                 showToast("تعذر حفظ التعديلات. تحقق من صلاحيات التعديل.", true);
             }
         };
