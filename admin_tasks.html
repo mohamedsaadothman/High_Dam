@@ -296,33 +296,18 @@
             background: linear-gradient(135deg, #10b981, #059669);
             color: #fff;
             border: none;
-            padding: 11px 22px;
+            padding: 12px 24px;
             border-radius: 10px;
-            font-size: 13.5px;
+            font-size: 14px;
             font-weight: 800;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             gap: 8px;
             transition: 0.2s;
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.28);
         }
         .save-doc-btn:hover { filter: brightness(1.08); }
-
-        .auth-btn {
-            background: linear-gradient(135deg, #0284c7, #2563eb);
-            color: #fff;
-            border: none;
-            padding: 11px 20px;
-            border-radius: 10px;
-            font-size: 13.5px;
-            font-weight: 800;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: 0.2s;
-        }
-        .auth-btn:hover { filter: brightness(1.08); }
 
         .status-toast {
             position: fixed;
@@ -399,13 +384,17 @@
         const adminName = sessionStorage.getItem("admin_name") || sessionStorage.getItem("admin_username") || "مسئول النظام";
         document.getElementById("adminSessionInfo").textContent = `مسئول النظام: ${adminName}`;
 
+        // =========================================================================
+        // مكان وضع مفتاح apiKey وبيانات مشروع Dam-purchases-App من تبويب Config:
+        // استبدل (محمد سعد) في apiKey بالمفتاح الحقيقي من Firebase Console
+        // =========================================================================
         const purchasesFirebaseConfig = {
-            apiKey: "PUT_YOUR_DAM_PURCHASES_API_KEY",
+            apiKey: "AIzaSyAOp-FyI7gDM-8Dn7GAL9BXSbiuqbrLvzg",
             authDomain: "dam-purchases-app.firebaseapp.com",
             projectId: "dam-purchases-app",
             storageBucket: "dam-purchases-app.firebasestorage.app",
-            messagingSenderId: "PUT_SENDER_ID",
-            appId: "PUT_YOUR_DAM_PURCHASES_APP_ID"
+            messagingSenderId: "123271128649",
+            appId: "1:123271128649:web:1096b95fc97c8575b50198"
         };
 
         const app = initializeApp(purchasesFirebaseConfig, "damPurchasesTasksPanel");
@@ -441,7 +430,7 @@
             clearTimeout(window.__toastTimer);
             window.__toastTimer = setTimeout(() => {
                 el.style.display = "none";
-            }, 3400);
+            }, 3800);
         }
 
         function normalizeArabic(text) {
@@ -696,11 +685,8 @@
                         </div>
 
                         <div class="actions-row">
-                            <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
-                                <i class="fas fa-save"></i> حفظ جميع الحقول في قاعدة البيانات
-                            </button>
-                            <button type="button" class="auth-btn" onclick="createDummyAuthForDoc(${docIdx})">
-                                <i class="fas fa-user-plus"></i> إنشاء إيميل وهمي في Authentication بالرقم القومي
+                            <button type="button" class="save-doc-btn" onclick="saveAndGenerateAuth(${docIdx})">
+                                <i class="fas fa-save"></i> حفظ وتوليد الإيميل الوهمي في Authentication
                             </button>
                         </div>
                     </div>
@@ -726,24 +712,21 @@
             if (el) el.value = newValue;
         }
 
-        window.createDummyAuthForDoc = async function(docIdx) {
+        async function generateDummyAuthForDoc(docIdx, basePayload) {
             const meta = docFieldMetaMap.get(docIdx);
-            if (!meta) return;
+            if (!meta) return { ok: false, message: "تعذر العثور على بيانات المستند." };
 
             const nationalId = (
                 getFieldValueFromForm(docIdx, "nationalId") ||
                 getFieldValueFromForm(docIdx, "username") ||
-                meta.originalData.nationalId ||
-                meta.originalData.username ||
-                ""
+                String(basePayload.nationalId || basePayload.username || "")
             ).replace(/\D/g, "").trim();
 
             if (!nationalId) {
-                showToast("الرجاء إدخال الرقم القومي (nationalId أو username) أولاً.", true);
-                return;
+                return { ok: false, message: "تم حفظ الحقول، لكن لم يُدخل الرقم القومي لتوليد الإيميل الوهمي." };
             }
 
-            let rawPassword = getFieldValueFromForm(docIdx, "password") || String(meta.originalData.password || "").trim();
+            let rawPassword = getFieldValueFromForm(docIdx, "password") || String(basePayload.password || "").trim();
             if (!rawPassword || rawPassword.length < 6) {
                 rawPassword = nationalId.slice(-6) || "123456";
                 setFieldValueInForm(docIdx, "password", rawPassword);
@@ -757,6 +740,7 @@
 
                 setFieldValueInForm(docIdx, "email", dummyEmail);
                 setFieldValueInForm(docIdx, "uid", newUid);
+                setFieldValueInForm(docIdx, "password", rawPassword);
 
                 await setDoc(doc(db, "users", meta.docId), {
                     email: dummyEmail,
@@ -764,30 +748,36 @@
                     password: rawPassword
                 }, { merge: true });
 
-                meta.originalData = {
-                    ...meta.originalData,
+                return {
+                    ok: true,
                     email: dummyEmail,
                     uid: newUid,
-                    password: rawPassword
+                    password: rawPassword,
+                    message: `تم حفظ الحقول وإنشاء الإيميل الوهمي (${dummyEmail}) في Authentication.`
                 };
-
-                const target = allUserDocs.find(u => u.docId === meta.docId);
-                if (target) {
-                    target.data = { ...meta.originalData };
-                }
-
-                showToast(`تم إنشاء الحساب الوهمي (${dummyEmail}) في Authentication وربطه بالمستند.`);
             } catch (err) {
                 console.error("Dummy auth creation error:", err);
-                if (err && err.code === "auth/email-already-in-use") {
+                const errCode = err && err.code ? err.code : "unknown-error";
+
+                if (errCode === "auth/email-already-in-use") {
                     setFieldValueInForm(docIdx, "email", dummyEmail);
                     await setDoc(doc(db, "users", meta.docId), { email: dummyEmail }, { merge: true });
-                    showToast(`الإيميل الوهمي (${dummyEmail}) موجود مسبقاً في Authentication وتم تحديثه في المستند.`);
+                    return {
+                        ok: true,
+                        email: dummyEmail,
+                        uid: basePayload.uid || "",
+                        password: rawPassword,
+                        message: `تم حفظ الحقول، والإيميل الوهمي (${dummyEmail}) موجود مسبقاً في Authentication.`
+                    };
+                } else if (errCode === "auth/invalid-api-key") {
+                    return { ok: false, message: "تم حفظ الحقول، لكن خطأ (auth/invalid-api-key): استبدل (محمد سعد) في apiKey بمفتاح المشروع الحقيقي." };
+                } else if (errCode === "auth/operation-not-allowed") {
+                    return { ok: false, message: "تم حفظ الحقول، لكن خطأ (auth/operation-not-allowed): فعّل Email/Password في Authentication." };
                 } else {
-                    showToast("تعذر إنشاء الإيميل الوهمي في Authentication. تحقق من إعدادات المشروع.", true);
+                    return { ok: false, message: `تم حفظ الحقول، لكن تعذر إنشاء الإيميل الوهمي (${errCode}).` };
                 }
             }
-        };
+        }
 
         function escapeAttr(val) {
             return String(val).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -797,7 +787,7 @@
             return String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        window.saveDocumentChanges = async function(docIdx) {
+        window.saveAndGenerateAuth = async function(docIdx) {
             const meta = docFieldMetaMap.get(docIdx);
             if (!meta) return;
 
@@ -811,17 +801,31 @@
 
                 await setDoc(doc(db, "users", meta.docId), updatedPayload, { merge: true });
 
-                meta.originalData = { ...meta.originalData, ...updatedPayload };
+                const authResult = await generateDummyAuthForDoc(docIdx, updatedPayload);
+                const finalData = {
+                    ...meta.originalData,
+                    ...updatedPayload,
+                    ...(authResult.ok ? {
+                        email: authResult.email,
+                        ...(authResult.uid ? { uid: authResult.uid } : {}),
+                        password: authResult.password
+                    } : {})
+                };
+
+                meta.originalData = finalData;
                 const target = allUserDocs.find(u => u.docId === meta.docId);
                 if (target) {
-                    target.data = { ...target.data, ...updatedPayload };
+                    target.data = { ...finalData };
+                }
+                if (activeRenderedDocs[docIdx]) {
+                    activeRenderedDocs[docIdx].data = { ...finalData };
                 }
                 allCollectionKeys = collectAllKeysAcrossUsers(allUserDocs);
 
-                showToast("تم حفظ جميع الحقول بنجاح في قاعدة البيانات.");
+                showToast(authResult.message, !authResult.ok);
                 renderEmployeeDocuments(activeRenderedDocs);
             } catch (err) {
-                console.error("Update error:", err);
+                console.error("Save / Auth error:", err);
                 showToast("تعذر حفظ التعديلات. تحقق من صلاحيات التعديل.", true);
             }
         };
