@@ -30,6 +30,8 @@
             padding: 20px;
             overflow-y: auto;
         }
+        #loginScreen.hidden-screen { display: none !important; }
+
         .login-box { background: rgba(255, 255, 255, 0.97); backdrop-filter: blur(8px); padding: 32px 24px; border-radius: 22px; text-align: center; width: 100%; max-width: 390px; box-shadow: 0 20px 40px rgba(0,0,0,0.28); border: 1px solid rgba(255,255,255,0.6); }
         .login-brand-icon { width: 64px; height: 64px; margin: 0 auto 14px auto; border-radius: 18px; background: linear-gradient(135deg, #00a884, #007a61); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 0 8px 20px rgba(0, 168, 132, 0.35); }
         .login-box h2 { color: #007a61; margin-bottom: 20px; font-weight: 900; font-size: 22px; display: flex; align-items: center; justify-content: center; gap: 10px; }
@@ -182,12 +184,6 @@
             transition: 0.15s;
         }
         .wa-doc-dl-btn:hover { background: #00a884; color: #ffffff; border-color: #00a884; }
-
-        .wa-code-block { margin-top: 4px; background: #111b21; color: #e9edef; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.12); direction: ltr; text-align: left; }
-        .wa-code-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; background: #1f2c34; border-bottom: 1px solid rgba(255, 255, 255, 0.08); font-size: 11px; color: #8696a0; font-family: monospace; }
-        .wa-code-copy-btn { background: rgba(0, 168, 132, 0.18); color: #00e6b8; border: 1px solid rgba(0, 230, 184, 0.35); border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: 'Cairo', sans-serif; }
-        .wa-code-copy-btn:hover { background: #00a884; color: #ffffff; }
-        .wa-code-block pre { margin: 0; padding: 10px; overflow-x: auto; font-size: 12px; line-height: 1.45; font-family: Consolas, Monaco, 'Courier New', monospace; color: #f8fafc; white-space: pre; }
 
         .wa-message audio { max-width: 225px; height: 36px; display: block; }
 
@@ -520,7 +516,6 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
         import { getDatabase, ref, push, serverTimestamp, onValue, update, set, off, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-        // 1. إعدادات مشروع Dam-purchases-App (قاعدة بيانات كلاود Firestore - مجموعة users)
         const damPurchasesConfig = {
             apiKey: "PUT_DAM_PURCHASES_API_KEY",
             authDomain: "PUT_DAM_PURCHASES_AUTH_DOMAIN",
@@ -530,7 +525,6 @@
             appId: "PUT_DAM_PURCHASES_APP_ID"
         };
 
-        // 2. إعدادات مشروع chat-app (Realtime Database لتسجيل المحادثات)
         const chatAppConfig = {
             apiKey: "AIzaSyCGxjWSdyrPUpPKbXieSapBx--kUvRjwLY",
             authDomain: "chat-app-8df58.firebaseapp.com",
@@ -587,8 +581,10 @@
         });
 
         let softAudioCtx = null;
+        let hasUserGesture = false;
 
         function unlockSoftAudioContext() {
+            hasUserGesture = true;
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 if (!AudioCtx) return;
@@ -596,20 +592,23 @@
                     softAudioCtx = new AudioCtx();
                 }
                 if (softAudioCtx.state === 'suspended') {
-                    softAudioCtx.resume();
+                    softAudioCtx.resume().catch(() => {});
                 }
-            } catch (e) {
-                console.log("Audio unlock error:", e);
-            }
+            } catch (_) {}
         }
 
-        document.addEventListener('pointerdown', unlockSoftAudioContext, { once: true });
-        document.addEventListener('keydown', unlockSoftAudioContext, { once: true });
+        document.addEventListener('pointerdown', unlockSoftAudioContext, { passive: true });
+        document.addEventListener('keydown', unlockSoftAudioContext, { passive: true });
 
         function playSoftNotificationTone() {
+            if (!hasUserGesture) return;
             try {
-                unlockSoftAudioContext();
-                if (!softAudioCtx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                if (!softAudioCtx) {
+                    softAudioCtx = new AudioCtx();
+                }
+                if (softAudioCtx.state === 'suspended') return;
 
                 const now = softAudioCtx.currentTime;
                 const osc = softAudioCtx.createOscillator();
@@ -628,9 +627,7 @@
 
                 osc.start(now);
                 osc.stop(now + 0.44);
-            } catch (e) {
-                console.log("Soft alert tone error:", e);
-            }
+            } catch (_) {}
         }
 
         let myId = localStorage.getItem('chat_user_id') || "user_" + Math.floor(Math.random() * 100000);
@@ -865,6 +862,7 @@
         }
 
         window.toggleBlockPeer = async function() {
+            unlockSoftAudioContext();
             if (!selectedUserCode || !currentUserCode) return;
             await ensureAnonymousAuth();
             const targetCode = selectedUserCode;
@@ -882,7 +880,6 @@
                     renderConversationsSidebar();
                     await loadChatRoom();
                 } catch (err) {
-                    console.error("Unblock error:", err);
                     showToast("تعذر فك الحظر، حاول مرة أخرى", "error");
                 }
             } else {
@@ -904,7 +901,6 @@
                             renderConversationsSidebar();
                             await loadChatRoom();
                         } catch (err) {
-                            console.error("Block error:", err);
                             showToast("تعذر تنفيذ الحظر، حاول مرة أخرى", "error");
                         }
                     },
@@ -998,6 +994,7 @@
         }
 
         window.sendStartChatRequest = async function(targetCode, targetName) {
+            unlockSoftAudioContext();
             if (!currentUserCode || !targetCode) return;
             await ensureAnonymousAuth();
             const reqKey = getRequestKey(currentUserCode, targetCode);
@@ -1019,6 +1016,7 @@
         };
 
         window.respondToChatRequest = async function(requesterCode, decision, requesterName = "") {
+            unlockSoftAudioContext();
             if (!currentUserCode || !requesterCode) return;
             await ensureAnonymousAuth();
             const reqKey = getRequestKey(currentUserCode, requesterCode);
@@ -1109,6 +1107,7 @@
         }
 
         window.handleCameraButtonClick = function() {
+            unlockSoftAudioContext();
             const menu = document.getElementById('attachmentMenu');
             if (menu) menu.style.display = 'none';
             if (!selectedUserCode) {
@@ -1150,6 +1149,7 @@
         }
 
         window.openWaLightbox = function(e, mediaKey) {
+            unlockSoftAudioContext();
             if (e) e.stopPropagation();
             hideReactionPicker();
             const item = mediaStore.get(mediaKey);
@@ -1334,6 +1334,7 @@
         }
 
         window.openSettingsModal = async function() {
+            unlockSoftAudioContext();
             document.getElementById('newPasswordInput').value = '';
             await ensureAnonymousAuth();
             const profileRef = ref(db, 'users_profile/' + currentUserCode);
@@ -1536,9 +1537,7 @@
                         }),
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                     });
-                } catch (e) {
-                    console.log("OneSignal bind error:", e);
-                }
+                } catch (_) {}
             });
         }
 
@@ -1557,25 +1556,12 @@
                     url: "https://mohamedsaadothman.github.io/High_Dam/chat.html"
                 };
 
-                const response = await fetch(scriptUrl, {
+                await fetch(scriptUrl, {
                     method: 'POST',
                     body: JSON.stringify(payload),
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                 });
-
-                if (response && response.ok) {
-                    const rawText = await response.text();
-                    try {
-                        const parsed = JSON.parse(rawText);
-                        if (parsed && parsed.status === 'error') {
-                            console.warn("OneSignal push server warning:", parsed.message);
-                        }
-                    } catch (_) {
-                    }
-                }
-            } catch (error) {
-                console.error("خطأ في الإشعار:", error);
-            }
+            } catch (_) {}
         }
 
         async function autoEnablePushNotifications() {
@@ -1622,6 +1608,7 @@
         }
 
         window.login = async function() {
+            unlockSoftAudioContext();
             const codeInput = document.getElementById('loginCode').value.trim();
             const passInput = document.getElementById('loginPassword').value.trim();
             const loginBtn = document.querySelector('#loginScreen button');
@@ -1665,9 +1652,8 @@
                         }
                     }, { onlyOnce: true });
 
-                    document.getElementById('loginScreen').style.display = 'none';
-                    const chatScreenEl = document.getElementById('chatScreen');
-                    chatScreenEl.classList.add('active-session');
+                    document.getElementById('loginScreen').classList.add('hidden-screen');
+                    document.getElementById('chatScreen').classList.add('active-session');
 
                     showToast("تم تسجيل الدخول بنجاح وتفعيل الإشعارات", "success");
                     await loadConversationsSidebar();
@@ -1791,15 +1777,11 @@
                 if (selectedUserCode && !isEitherBlocked(selectedUserCode) && getPeerApprovalStatus(selectedUserCode) === 'accepted') {
                     loadChatRoom();
                 }
-            }, (error) => {
-                console.error("Chats sidebar read error:", error);
             });
 
             onValue(sidebarStatusRef, (statusSnapshot) => {
                 latestStatusesData = statusSnapshot.val() || {};
                 updatePresenceVisibilityDuringBlock();
-            }, (error) => {
-                console.error("Status read error:", error);
             });
 
             onValue(requestsRef, (reqSnapshot) => {
@@ -1809,8 +1791,6 @@
                 if (selectedUserCode) {
                     loadChatRoom();
                 }
-            }, (error) => {
-                console.error("Requests read error:", error);
             });
 
             onValue(blocksRef, (blockSnapshot) => {
@@ -1821,12 +1801,11 @@
                 if (selectedUserCode) {
                     loadChatRoom();
                 }
-            }, (error) => {
-                console.error("Blocks read error:", error);
             });
         }
 
         window.hideFullConversation = function(roomId, peerName) {
+            unlockSoftAudioContext();
             openCustomModal(
                 "حذف المحادثة الكاملة",
                 `هل أنت متأكد من إخفاء/حذف محادثتك مع (${peerName}) من عندك فقط؟`,
@@ -1865,6 +1844,7 @@
         }
 
         window.selectPeer = async function(peerCode, peerName) {
+            unlockSoftAudioContext();
             await ensureAnonymousAuth();
             selectedUserCode = peerCode;
             selectedUserName = peerName;
@@ -1880,6 +1860,7 @@
         }
 
         window.backToChatsList = function() {
+            unlockSoftAudioContext();
             setInputFooterLocked(false, null, false);
             document.getElementById('waContainer').classList.remove('chat-active');
         }
@@ -2089,8 +2070,6 @@
                     messagesDiv.appendChild(msgDiv);
                 });
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }, (error) => {
-                console.error("Chat messages read error:", error);
             });
         }
 
@@ -2234,7 +2213,6 @@
                     closeEditMsgModal();
                 }, { onlyOnce: true });
             } catch (err) {
-                console.error("Edit message error:", err);
                 showToast("حدث خطأ أثناء تعديل الرسالة", "error");
             } finally {
                 if (saveBtn) {
@@ -2250,6 +2228,7 @@
         };
 
         window.addReaction = async function(emoji) {
+            unlockSoftAudioContext();
             hideReactionPicker();
             if (!activeReactionRoomId || !activeReactionMsgId) return;
 
@@ -2259,6 +2238,7 @@
         };
 
         window.quickToggleReaction = async function(e, roomId, msgId, emoji) {
+            unlockSoftAudioContext();
             e.stopPropagation();
             await ensureAnonymousAuth();
             const reactionRef = ref(db, `chats/${roomId}/${msgId}/reactions/${currentUserCode}`);
@@ -2331,6 +2311,7 @@
         }
 
         window.executeForwardMessage = async function(targetCode, targetName) {
+            unlockSoftAudioContext();
             document.getElementById('forwardModalOverlay').style.display = 'none';
             if (isEitherBlocked(targetCode)) {
                 showToast("محظور", "error");
@@ -2356,6 +2337,7 @@
         }
 
         window.sendMessage = async function() {
+            unlockSoftAudioContext();
             const text = document.getElementById('msgInput').value.trim();
             if (!text) return;
             if (!selectedUserCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
@@ -2383,6 +2365,7 @@
         };
 
         window.handleFileUpload = function(event, fileTypeOverride) {
+            unlockSoftAudioContext();
             if (!selectedUserCode) {
                 showToast("الرجاء اختيار زميل للمراسلة أولاً", "error");
                 event.target.value = '';
@@ -2429,6 +2412,7 @@
         };
 
         window.toggleVoiceRecording = async function() {
+            unlockSoftAudioContext();
             if (!selectedUserCode) { showToast("الرجاء اختيار زميل للمراسلة أولاً", "error"); return; }
             if (isEitherBlocked(selectedUserCode)) {
                 showToast("محظور", "error");
