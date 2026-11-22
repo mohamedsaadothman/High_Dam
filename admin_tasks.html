@@ -163,7 +163,6 @@
             font-weight: 800;
         }
 
-        /* --- الحقول الستة المميزة في صفين: كل صف 3 حقول --- */
         .featured-two-rows {
             display: flex;
             flex-direction: column;
@@ -204,8 +203,22 @@
             gap: 7px;
         }
         .field-box.wide-field { grid-column: 1 / -1; }
+        .field-box.missing-field {
+            border-style: dashed;
+            border-color: rgba(251, 191, 36, 0.75);
+        }
 
-        /* ألوان تمييز الحقول الستة */
+        .missing-badge {
+            font-size: 10.5px;
+            font-weight: 800;
+            color: #fde68a;
+            background: rgba(245, 158, 11, 0.22);
+            border: 1px solid rgba(251, 191, 36, 0.45);
+            padding: 2px 7px;
+            border-radius: 999px;
+            margin-right: 6px;
+        }
+
         .field-box.hl-manager {
             background: linear-gradient(145deg, rgba(56, 189, 248, 0.15), rgba(15, 23, 42, 0.85));
             border: 1.5px solid rgba(56, 189, 248, 0.65);
@@ -303,6 +316,72 @@
         }
         .field-box textarea { min-height: 90px; resize: vertical; }
 
+        .add-missing-panel {
+            background: rgba(15, 23, 42, 0.62);
+            border: 1px dashed rgba(56, 189, 248, 0.55);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 18px;
+        }
+        .add-missing-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #7dd3fc;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .add-missing-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+        @media (max-width: 720px) {
+            .add-missing-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        .add-missing-row input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            background: #0f172a;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        .add-missing-row input:focus {
+            border-color: #38bdf8;
+        }
+        .add-field-btn {
+            background: rgba(56, 189, 248, 0.18);
+            border: 1px solid rgba(56, 189, 248, 0.55);
+            color: #bae6fd;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: 0.2s;
+        }
+        .add-field-btn:hover {
+            background: rgba(56, 189, 248, 0.28);
+        }
+
+        .actions-footer {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
         .save-doc-btn {
             background: linear-gradient(135deg, #10b981, #059669);
             color: #fff;
@@ -381,7 +460,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
         const isAdminSession = sessionStorage.getItem("is_system_admin") === "true" &&
             String(sessionStorage.getItem("admin_role") || "").toLowerCase().includes("admin");
@@ -406,6 +485,7 @@
         const db = getFirestore(app);
 
         let allUserDocs = [];
+        let activeRenderedDocs = [];
         const docFieldMetaMap = new Map();
 
         const MANAGER_ALIASES = ["centralmanager", "crntralmanager"];
@@ -504,7 +584,8 @@
                 return item.docId === chosen.docId;
             });
 
-            renderEmployeeDocuments(matchingDocs.length > 0 ? matchingDocs : [chosen]);
+            activeRenderedDocs = matchingDocs.length > 0 ? matchingDocs : [chosen];
+            renderEmployeeDocuments(activeRenderedDocs);
         };
 
         function formatFieldValueForDisplay(val) {
@@ -541,22 +622,33 @@
             return rawVal;
         }
 
-        function buildFieldCardHtml(key, val, docIdx, fieldIdx, forceSingleRow = false) {
+        function resolveFeaturedKey(allKeys, candidates) {
+            for (const candidate of candidates) {
+                const found = allKeys.find(k => String(k).toLowerCase() === candidate.toLowerCase());
+                if (found) return { key: found, existsInDoc: true };
+            }
+            return { key: candidates[0], existsInDoc: false };
+        }
+
+        function buildFieldCardHtml(key, val, docIdx, fieldIdx, forceSingleRow = false, isMissing = false) {
             const displayVal = formatFieldValueForDisplay(val);
             const useTextarea = !forceSingleRow && (displayVal.includes("\n") || displayVal.length > 75 || key === "tasks");
             const inputId = `field_${docIdx}_${fieldIdx}`;
             const penBtnId = `pen_${docIdx}_${fieldIdx}`;
             const hlClass = getHighlightClass(key);
+            const missingClass = isMissing ? "missing-field" : "";
+            const readonlyAttr = isMissing ? "" : "readonly";
+            const editingClass = isMissing ? "editing" : "";
 
             const controlHtml = useTextarea
-                ? `<textarea id="${inputId}" readonly>${escapeHtml(displayVal)}</textarea>`
-                : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" readonly>`;
+                ? `<textarea id="${inputId}" ${readonlyAttr}>${escapeHtml(displayVal)}</textarea>`
+                : `<input type="text" id="${inputId}" value="${escapeAttr(displayVal)}" ${readonlyAttr}>`;
 
             return `
-                <div class="field-box ${hlClass} ${useTextarea ? "wide-field" : ""}">
+                <div class="field-box ${hlClass} ${missingClass} ${useTextarea ? "wide-field" : ""}">
                     <div class="field-top-row">
-                        <label for="${inputId}">${escapeHtml(key)}</label>
-                        <button type="button" id="${penBtnId}" class="edit-pen-btn" title="تعديل ${escapeAttr(key)}" onclick="toggleFieldEdit('${inputId}', '${penBtnId}')">
+                        <label for="${inputId}">${escapeHtml(key)}${isMissing ? `<span class="missing-badge">ناقص</span>` : ""}</label>
+                        <button type="button" id="${penBtnId}" class="edit-pen-btn ${editingClass}" title="${isMissing ? "قيد الإكمال" : "تعديل " + escapeAttr(key)}" onclick="toggleFieldEdit('${inputId}', '${penBtnId}')">
                             <i class="fas fa-pen"></i>
                         </button>
                     </div>
@@ -578,35 +670,42 @@
                 const d = item.data || {};
                 const allKeys = Object.keys(d);
 
-                const managerKeys = allKeys.filter(k => MANAGER_ALIASES.includes(String(k).toLowerCase()));
-                const row1OtherKeys = ROW_1_OTHERS
-                    .map(target => allKeys.find(k => String(k).toLowerCase() === target))
-                    .filter(Boolean);
-                const row1Keys = [...managerKeys, ...row1OtherKeys].slice(0, 3);
+                const managerSlot = resolveFeaturedKey(allKeys, ["centralManager", "crntralmanager"]);
+                const typeSlot = resolveFeaturedKey(allKeys, ["type"]);
+                const passSlot = resolveFeaturedKey(allKeys, ["password"]);
+                const deptSlot = resolveFeaturedKey(allKeys, ["department"]);
+                const jobCatSlot = resolveFeaturedKey(allKeys, ["jobCategory", "jobcategory"]);
+                const roleSlot = resolveFeaturedKey(allKeys, ["role"]);
 
-                const row2Keys = ROW_2_KEYS
-                    .map(target => allKeys.find(k => String(k).toLowerCase() === target))
-                    .filter(Boolean)
-                    .slice(0, 3);
+                const row1Slots = [managerSlot, typeSlot, passSlot];
+                const row2Slots = [deptSlot, jobCatSlot, roleSlot];
 
-                const featuredSet = new Set([...row1Keys, ...row2Keys]);
-                const otherKeys = allKeys.filter(k => !featuredSet.has(k));
+                const featuredKeySet = new Set([...row1Slots, ...row2Slots].map(s => s.key));
+                const otherKeys = allKeys.filter(k => !featuredKeySet.has(k));
 
-                const orderedKeys = [...row1Keys, ...row2Keys, ...otherKeys];
-                docFieldMetaMap.set(docIdx, { docId: item.docId, keys: orderedKeys, originalData: d });
+                const orderedSlots = [
+                    ...row1Slots.map(s => ({ key: s.key, isMissing: !s.existsInDoc })),
+                    ...row2Slots.map(s => ({ key: s.key, isMissing: !s.existsInDoc })),
+                    ...otherKeys.map(k => ({ key: k, isMissing: false }))
+                ];
+
+                docFieldMetaMap.set(docIdx, {
+                    docId: item.docId,
+                    keys: orderedSlots.map(s => s.key),
+                    originalData: d
+                });
 
                 let nextFieldIdx = 0;
-                const row1Html = row1Keys.map(k => buildFieldCardHtml(k, d[k], docIdx, nextFieldIdx++, true)).join("");
-                const row2Html = row2Keys.map(k => buildFieldCardHtml(k, d[k], docIdx, nextFieldIdx++, true)).join("");
-                const otherHtml = otherKeys.map(k => buildFieldCardHtml(k, d[k], docIdx, nextFieldIdx++, false)).join("");
+                const row1Html = row1Slots.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, true, !s.existsInDoc)).join("");
+                const row2Html = row2Slots.map(s => buildFieldCardHtml(s.key, d[s.key], docIdx, nextFieldIdx++, true, !s.existsInDoc)).join("");
+                const otherHtml = otherKeys.map(k => buildFieldCardHtml(k, d[k], docIdx, nextFieldIdx++, false, false)).join("");
 
-                const hasFeatured = row1Keys.length > 0 || row2Keys.length > 0;
-                const featuredBlockHtml = hasFeatured ? `
+                const featuredBlockHtml = `
                     <div class="featured-two-rows">
-                        ${row1Keys.length > 0 ? `<div class="featured-row">${row1Html}</div>` : ""}
-                        ${row2Keys.length > 0 ? `<div class="featured-row">${row2Html}</div>` : ""}
+                        <div class="featured-row">${row1Html}</div>
+                        <div class="featured-row">${row2Html}</div>
                     </div>
-                ` : "";
+                `;
 
                 return `
                     <div class="doc-card">
@@ -621,16 +720,55 @@
                         ${featuredBlockHtml}
 
                         <div class="fields-grid">
-                            ${otherHtml || (!hasFeatured ? `<div class="empty-state">هذا المستند لا يحتوي على حقول.</div>` : "")}
+                            ${otherHtml}
                         </div>
 
-                        <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
-                            <i class="fas fa-save"></i> حفظ التعديلات في قاعدة البيانات
-                        </button>
+                        <div class="add-missing-panel">
+                            <div class="add-missing-title"><i class="fas fa-plus-circle"></i> إضافة حقل ناقص جديد للمستند</div>
+                            <div class="add-missing-row">
+                                <input type="text" id="newFieldKey_${docIdx}" placeholder="اسم الحقل الناقص (مثال: permissions أو phone)">
+                                <input type="text" id="newFieldVal_${docIdx}" placeholder="قيمة الحقل">
+                                <button type="button" class="add-field-btn" onclick="addMissingFieldToDoc(${docIdx})">
+                                    <i class="fas fa-plus"></i> إضافة الحقل
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="actions-footer">
+                            <button type="button" class="save-doc-btn" onclick="saveDocumentChanges(${docIdx})">
+                                <i class="fas fa-save"></i> حفظ وإكمال الحقول في قاعدة البيانات
+                            </button>
+                        </div>
                     </div>
                 `;
             }).join("");
         }
+
+        window.addMissingFieldToDoc = function(docIdx) {
+            const keyInput = document.getElementById(`newFieldKey_${docIdx}`);
+            const valInput = document.getElementById(`newFieldVal_${docIdx}`);
+            const meta = docFieldMetaMap.get(docIdx);
+            if (!keyInput || !valInput || !meta) return;
+
+            const newKey = keyInput.value.trim();
+            const newVal = valInput.value;
+
+            if (!newKey) {
+                showToast("الرجاء إدخال اسم الحقل الناقص أولاً.", true);
+                return;
+            }
+
+            const currentDraft = collectCurrentDraftPayload(docIdx);
+            currentDraft[newKey] = newVal;
+
+            const targetDoc = activeRenderedDocs[docIdx];
+            if (targetDoc) {
+                targetDoc.data = currentDraft;
+            }
+
+            renderEmployeeDocuments(activeRenderedDocs);
+            showToast(`تمت إضافة الحقل "${newKey}"، اضغط حفظ لإرساله لقاعدة البيانات.`);
+        };
 
         window.toggleFieldEdit = function(inputId, penBtnId) {
             const fieldEl = document.getElementById(inputId);
@@ -658,6 +796,23 @@
             return String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
+        function collectCurrentDraftPayload(docIdx) {
+            const meta = docFieldMetaMap.get(docIdx);
+            if (!meta) return {};
+            const draft = { ...(meta.originalData || {}) };
+
+            meta.keys.forEach((key, fieldIdx) => {
+                const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
+                if (!el) return;
+                const isEditingOrNew = !el.hasAttribute("readonly") || !(key in (meta.originalData || {}));
+                if (isEditingOrNew) {
+                    draft[key] = parseFieldValueForSave(el.value, meta.originalData[key]);
+                }
+            });
+
+            return draft;
+        }
+
         window.saveDocumentChanges = async function(docIdx) {
             const meta = docFieldMetaMap.get(docIdx);
             if (!meta) return;
@@ -670,27 +825,21 @@
                     updatedPayload[key] = parseFieldValueForSave(el.value, meta.originalData[key]);
                 });
 
-                await updateDoc(doc(db, "users", meta.docId), updatedPayload);
+                await setDoc(doc(db, "users", meta.docId), updatedPayload, { merge: true });
 
                 meta.originalData = { ...meta.originalData, ...updatedPayload };
                 const target = allUserDocs.find(u => u.docId === meta.docId);
                 if (target) {
                     target.data = { ...target.data, ...updatedPayload };
                 }
+                if (activeRenderedDocs[docIdx]) {
+                    activeRenderedDocs[docIdx].data = { ...meta.originalData };
+                }
 
-                meta.keys.forEach((_, fieldIdx) => {
-                    const el = document.getElementById(`field_${docIdx}_${fieldIdx}`);
-                    const penBtn = document.getElementById(`pen_${docIdx}_${fieldIdx}`);
-                    if (el) el.setAttribute("readonly", "readonly");
-                    if (penBtn) {
-                        penBtn.classList.remove("editing");
-                        penBtn.title = "تعديل الحقل";
-                    }
-                });
-
-                showToast("تم حفظ جميع الحقول المعدّلة بنجاح في قاعدة البيانات.");
+                renderEmployeeDocuments(activeRenderedDocs);
+                showToast("تم حفظ وإكمال جميع الحقول بنجاح في قاعدة البيانات.");
             } catch (err) {
-                console.error("Update error:", err);
+                console.error("Save error:", err);
                 showToast("تعذر حفظ التعديلات. تحقق من صلاحيات التعديل.", true);
             }
         };
