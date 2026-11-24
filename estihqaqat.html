@@ -522,7 +522,7 @@
             border-right: 4px solid #1e3a8a;
             border-radius: 10px;
             padding: 11px 15px;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
             gap: 8px 14px;
@@ -534,6 +534,26 @@
         }
         .report-official-banner div strong {
             color: #0f172a;
+            font-weight: 800;
+        }
+
+        .report-title-subbox {
+            text-align: center;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 14px;
+        }
+        .report-title-main {
+            font-size: 15.5px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .report-title-subline {
+            font-size: 12.5px;
+            color: #1e3a8a;
             font-weight: 800;
         }
 
@@ -1310,7 +1330,6 @@
                     <td>${i + 1}</td>
                     <td>${escapeHtmlCell(r.empName || "-")}</td>
                     <td style="mso-number-format:'\\@';">${escapeHtmlCell(r.nationalId || "-")}</td>
-                    <td>${escapeHtmlCell(r.jobCategory || "-")}</td>
                     <td>${escapeHtmlCell(r.casual ?? 0)}</td>
                     <td>${escapeHtmlCell(r.annual ?? 0)}</td>
                     <td>${escapeHtmlCell(r.sick ?? 0)}</td>
@@ -1320,6 +1339,8 @@
                 </tr>
             `;
         });
+
+        const metaTitleLine = `تقرير تجميعي لبيانات الإجازات — الفئة: ${currentViewerMetaInfo.specialty || "التخصصية"} — عن الفترة: ${currentViewerMetaInfo.periodDisplay || "-"}`;
 
         const htmlWorkbook = `
             <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1344,10 +1365,12 @@
                 <table border="1" cellspacing="0" cellpadding="6">
                     <thead>
                         <tr>
+                            <th colspan="9">${escapeHtmlCell(metaTitleLine)}</th>
+                        </tr>
+                        <tr>
                             <th>م</th>
                             <th>اسم الموظف</th>
                             <th>الرقم القومي</th>
-                            <th>الفئة الوظيفية</th>
                             <th>إجازة عارضة</th>
                             <th>إجازة اعتيادية</th>
                             <th>إجازة مرضية</th>
@@ -1359,7 +1382,7 @@
                     <tbody>
                         ${summaryRowsHtml}
                         <tr>
-                            <td colspan="4">الإجمالي العام</td>
+                            <td colspan="3">الإجمالي العام</td>
                             <td>${totals.casual}</td>
                             <td>${totals.annual}</td>
                             <td>${totals.sick}</td>
@@ -1593,7 +1616,21 @@
             const dt = val.toDate();
             return isNaN(dt.getTime()) ? null : dt;
         }
-        const dt = new Date(val);
+        const str = String(val).trim();
+        const monthMap = {
+            jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+            jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
+        };
+        const ddMonYyyy = str.match(/^(\d{1,2})[-/\s]([A-Za-z]{3})[-/\s](\d{4})$/i);
+        if (ddMonYyyy) {
+            const m = monthMap[ddMonYyyy[2].toLowerCase()];
+            if (m) {
+                const iso = `${ddMonYyyy[3]}-${m}-${ddMonYyyy[1].padStart(2, "0")}`;
+                const dt = new Date(iso);
+                return isNaN(dt.getTime()) ? null : dt;
+            }
+        }
+        const dt = new Date(str);
         return isNaN(dt.getTime()) ? null : dt;
     }
 
@@ -1621,10 +1658,23 @@
         return nameVal || codeVal || "غير محدد";
     }
 
+    function extractSpecialtyFromDoc(d) {
+        const raw = String(
+            d.specialty || d.functionalCategory || d.jobCategory || d.empCategory ||
+            d.category || d.leaveCategory || d.section || d.subDepartment || ""
+        ).trim();
+        if (raw) return raw;
+
+        const combined = `${d.title || ""} ${d.subject || ""}`;
+        if (normalizeArabic(combined).includes(normalizeArabic("تخصص"))) return "التخصصية";
+        if (normalizeArabic(combined).includes(normalizeArabic("إدار"))) return "الإدارية";
+        return "التخصصية";
+    }
+
     function extractReportPeriodFromDoc(d) {
         const explicitText = String(
-            d.period || d.periodLabel || d.reportPeriod || d.selectedPeriod ||
-            d.periodText || d.dateRangeText || d.dateRange || d.reportPeriodText || ""
+            d.period || d.periodText || d.periodLabel || d.reportPeriod ||
+            d.selectedPeriod || d.dateRangeText || d.dateRange || d.reportPeriodText || ""
         ).trim();
 
         let fromVal = String(
@@ -1704,8 +1754,9 @@
                 <div class="notif-meta-grid">
                     <div><span>الجهة:</span> <strong>${escapeHtmlCell(deptTag)}</strong></div>
                     <div><span>الفترة:</span> <strong>${escapeHtmlCell(n.periodDisplay)}</strong></div>
-                    <div><span>الموظف المختص:</span> <strong>${escapeHtmlCell(n.specialistLabel)}</strong></div>
+                    <div><span>الفئة:</span> <strong>${escapeHtmlCell(n.specialty)}</strong></div>
                     <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(n.sentDateStr)}</strong></div>
+                    <div style="grid-column: 1 / -1;"><span>الموظف المختص:</span> <strong>${escapeHtmlCell(n.specialistLabel)}</strong></div>
                 </div>
                 <div class="notif-actions-row">
                     <button type="button" class="notif-action-btn notif-btn-open" onclick="openLeaveNotificationFile(${idx})">
@@ -1758,6 +1809,7 @@
                     fromDate: periodInfo.fromDate,
                     toDate: periodInfo.toDate,
                     periodDisplay: periodInfo.displayText,
+                    specialty: extractSpecialtyFromDoc(d),
                     reportNumber: d.reportNumber || d.reportCode || d.code || "",
                     category: d.category || d.leaveCategory || "",
                     senderDepartment: d.senderDepartment || d.department || d.fromDept || "",
@@ -1828,6 +1880,7 @@
                 fromDate: notif.fromDate,
                 toDate: notif.toDate,
                 periodDisplay: notif.periodDisplay,
+                specialty: notif.specialty,
                 reportNumber: notif.reportNumber,
                 category: notif.category,
                 senderDepartment: notif.senderDepartment,
@@ -1890,6 +1943,7 @@
                 fromDate: notif.fromDate,
                 toDate: notif.toDate,
                 periodDisplay: notif.periodDisplay,
+                specialty: notif.specialty,
                 reportNumber: notif.reportNumber,
                 category: notif.category,
                 senderDepartment: notif.senderDepartment,
@@ -1933,6 +1987,7 @@
                     fileType: d.fileType || "excel",
                     fileUrl: d.fileUrl || "",
                     periodDisplay: d.periodDisplay || periodInfo.displayText,
+                    specialty: d.specialty || extractSpecialtyFromDoc(d),
                     reportNumber: d.reportNumber || "-",
                     senderDepartment: d.senderDepartment || "-",
                     specialistLabel: d.specialistLabel || extractSpecialistLabel(d),
@@ -1963,6 +2018,7 @@
                                 <th>م</th>
                                 <th>عنوان التبليغ</th>
                                 <th>الفترة الزمنية</th>
+                                <th>الفئة</th>
                                 <th>الجهة المرسلة</th>
                                 <th>الموظف المختص</th>
                                 <th>تاريخ الإرسال</th>
@@ -1978,6 +2034,7 @@
                         <td>${idx + 1}</td>
                         <td class="align-right"><strong>${escapeHtmlCell(item.title)}</strong></td>
                         <td><strong>${escapeHtmlCell(item.periodDisplay)}</strong></td>
+                        <td>${escapeHtmlCell(item.specialty)}</td>
                         <td>${escapeHtmlCell(item.senderDepartment)}</td>
                         <td>${escapeHtmlCell(item.specialistLabel)}</td>
                         <td>${escapeHtmlCell(item.sentDateStr)}</td>
@@ -2007,13 +2064,14 @@
 
         const fmtUpper = String(notif.fileType || "excel").toUpperCase();
         titleEl.innerText = `تقرير تجميعي لبيانات الإجازات (${fmtUpper}) — ${notif.periodDisplay}`;
-        metaEl.innerText = `الفترة: ${notif.periodDisplay} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
+        metaEl.innerText = `الفترة: ${notif.periodDisplay} | الفئة: ${notif.specialty} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
         currentViewerFileName = `تقرير_تجميعي_إجازات_${notif.fromDate || "من"}_${notif.toDate || "إلى"}`;
         currentViewerMetaInfo = {
             title: notif.title,
             fromDate: notif.fromDate,
             toDate: notif.toDate,
             periodDisplay: notif.periodDisplay,
+            specialty: notif.specialty,
             specialist: notif.specialistLabel,
             sentDateStr: notif.sentDateStr,
             department: notif.senderDepartment || "إدارة الإجازات"
@@ -2049,14 +2107,45 @@
             });
 
             const snap = await getDocs(collection(firestoreDb, "leaves"));
-            const fromDt = parseDateSafe(notif.fromDate);
-            const toDt = parseDateSafe(notif.toDate);
+            let effectivePeriodDisplay = notif.periodDisplay;
+            let effectiveFromDate = notif.fromDate;
+            let effectiveToDate = notif.toDate;
+            let effectiveSpecialty = notif.specialty;
+
+            const allLeavesDocs = [];
+            snap.forEach((docSnap) => {
+                allLeavesDocs.push(docSnap.data() || {});
+            });
+
+            if (effectivePeriodDisplay === "-" || !effectiveFromDate || !effectiveToDate) {
+                const candidate = allLeavesDocs.find(l => {
+                    const p = extractReportPeriodFromDoc(l);
+                    return p.fromDate || p.toDate || p.displayText !== "-";
+                });
+                if (candidate) {
+                    const p = extractReportPeriodFromDoc(candidate);
+                    effectiveFromDate = effectiveFromDate || p.fromDate;
+                    effectiveToDate = effectiveToDate || p.toDate;
+                    if (effectivePeriodDisplay === "-" && p.displayText !== "-") {
+                        effectivePeriodDisplay = p.displayText;
+                    }
+                    if (!effectiveSpecialty || effectiveSpecialty === "التخصصية") {
+                        effectiveSpecialty = extractSpecialtyFromDoc(candidate);
+                    }
+                }
+            }
+
+            currentViewerMetaInfo.periodDisplay = effectivePeriodDisplay;
+            currentViewerMetaInfo.specialty = effectiveSpecialty;
+            metaEl.innerText = `الفترة: ${effectivePeriodDisplay} | الفئة: ${effectiveSpecialty} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
+
+            const fromDt = parseDateSafe(effectiveFromDate);
+            const toDt = parseDateSafe(effectiveToDate);
             if (toDt) toDt.setHours(23, 59, 59, 999);
 
             const summaryMap = new Map();
 
-            snap.forEach((docSnap) => {
-                const l = docSnap.data() || {};
+            allLeavesDocs.forEach((l) => {
                 const startVal = l.fromDate || l.startDate || l.dateFrom || "";
                 const endVal = l.toDate || l.endDate || l.dateTo || startVal;
                 const lStart = parseDateSafe(startVal);
@@ -2086,11 +2175,6 @@
 
                     const empName = directLeaveEmpName || (matchedUser && matchedUser.name) || rawCode || "-";
                     const nationalId = rawNatId || (matchedUser && matchedUser.nationalId) || "-";
-                    const jobCategory = String(
-                        l.jobCategory || l.empCategory || l.functionalCategory || l.category ||
-                        (matchedUser && (matchedUser.jobCategory || matchedUser.category)) || "-"
-                    ).trim() || "-";
-
                     const leaveType = l.leaveType || l.type || "إجازة اعتيادية";
                     const daysNum = Number(l.days ?? l.daysCount ?? 0) || 0;
                     const key = `${normalizeArabic(empName)}__${nationalId}`;
@@ -2099,7 +2183,6 @@
                         summaryMap.set(key, {
                             empName,
                             nationalId,
-                            jobCategory,
                             casual: 0,
                             annual: 0,
                             sick: 0,
@@ -2110,9 +2193,6 @@
                     }
 
                     const entry = summaryMap.get(key);
-                    if (entry.jobCategory === "-" && jobCategory !== "-") {
-                        entry.jobCategory = jobCategory;
-                    }
                     const cat = classifyLeaveCategory(leaveType);
                     if (cat === "casual") entry.casual += daysNum;
                     else if (cat === "sick") entry.sick += daysNum;
@@ -2139,17 +2219,24 @@
                         </div>
                     </div>
                     <div style="text-align:center;font-size:15px;font-weight:900;color:#0f172a;">
-                        تقرير تجميعي لبيانات الإجازات — عن الفترة: ${escapeHtmlCell(notif.periodDisplay)}
+                        تقرير تجميعي لبيانات الإجازات — الفئة: ${escapeHtmlCell(effectiveSpecialty)} — عن الفترة: ${escapeHtmlCell(effectivePeriodDisplay)}
                     </div>
                 </div>
             `;
 
             const bannerHtml = `
                 <div class="report-official-banner">
-                    <div><span>الفترة الزمنية:</span> <strong>${escapeHtmlCell(notif.periodDisplay)}</strong></div>
+                    <div><span>الفترة الزمنية:</span> <strong>${escapeHtmlCell(effectivePeriodDisplay)}</strong></div>
                     <div><span>الجهة المرسلة:</span> <strong>${escapeHtmlCell(notif.senderDepartment || "إدارة الإجازات")}</strong></div>
                     <div><span>الموظف المختص:</span> <strong>${escapeHtmlCell(notif.specialistLabel)}</strong></div>
                     <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(notif.sentDateStr)}</strong></div>
+                </div>
+            `;
+
+            const titleSubboxHtml = `
+                <div class="report-title-subbox">
+                    <div class="report-title-main">تقرير تجميعي لبيانات الإجازات</div>
+                    <div class="report-title-subline">الفئة: ${escapeHtmlCell(effectiveSpecialty)} &nbsp;|&nbsp; عن الفترة: ${escapeHtmlCell(effectivePeriodDisplay)}</div>
                 </div>
             `;
 
@@ -2157,9 +2244,10 @@
                 bodyEl.innerHTML = `
                     ${officialPrintHeaderHtml}
                     ${bannerHtml}
+                    ${titleSubboxHtml}
                     <div style="text-align:center;padding:30px;background:#f8fafc;border-radius:12px;border:1px dashed #cbd5e1;color:#64748b;">
                         <i class="fas fa-folder-open" style="font-size:28px;color:#94a3b8;display:block;margin-bottom:8px;"></i>
-                        لا توجد بيانات إجازات مسجلة ضمن الفترة (${escapeHtmlCell(notif.periodDisplay)}).
+                        لا توجد بيانات إجازات مسجلة ضمن الفترة (${escapeHtmlCell(effectivePeriodDisplay)}).
                     </div>
                 `;
                 return;
@@ -2181,7 +2269,6 @@
                         <td>${i + 1}</td>
                         <td class="align-right"><strong>${escapeHtmlCell(r.empName)}</strong></td>
                         <td>${escapeHtmlCell(r.nationalId)}</td>
-                        <td>${escapeHtmlCell(r.jobCategory)}</td>
                         <td>${r.casual}</td>
                         <td>${r.annual}</td>
                         <td>${r.sick}</td>
@@ -2195,10 +2282,7 @@
             bodyEl.innerHTML = `
                 ${officialPrintHeaderHtml}
                 ${bannerHtml}
-                <div style="text-align:center;margin-bottom:10px;">
-                    <div style="font-size:15px;font-weight:900;color:#0f172a;">تقرير تجميعي لبيانات الإجازات</div>
-                    <div style="font-size:12px;color:#475569;font-weight:700;">عن الفترة: ${escapeHtmlCell(notif.periodDisplay)}</div>
-                </div>
+                ${titleSubboxHtml}
                 <div class="data-table-wrapper">
                     <table class="leaves-summary-table">
                         <thead>
@@ -2206,7 +2290,6 @@
                                 <th>م</th>
                                 <th>اسم الموظف</th>
                                 <th>الرقم القومي</th>
-                                <th>الفئة الوظيفية</th>
                                 <th>إجازة عارضة</th>
                                 <th>إجازة اعتيادية</th>
                                 <th>إجازة مرضية</th>
@@ -2218,7 +2301,7 @@
                         <tbody>
                             ${summaryRowsHtml}
                             <tr class="grand-total-row">
-                                <td colspan="4">الإجمالي العام</td>
+                                <td colspan="3">الإجمالي العام</td>
                                 <td>${totals.casual}</td>
                                 <td>${totals.annual}</td>
                                 <td>${totals.sick}</td>
