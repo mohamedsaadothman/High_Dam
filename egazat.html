@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -752,7 +751,8 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <button class="act-btn btn-ex" onclick="generateSummaryReport()" style="padding: 8px; font-size: 12px;"><i class="fas fa-calculator"></i> عرض التقرير</button>
                     <button class="act-btn btn-pd" onclick="downloadExcelSummary()" style="padding: 8px; font-size: 12px;"><i class="fas fa-download"></i> تحميل إكسل</button>
-                    <button class="act-btn btn-warning" onclick="printSummaryReportPDF()" style="padding: 8px; font-size: 12px; color:#000; grid-column: span 2;"><i class="fas fa-print"></i> طباعة / حفظ PDF للتقرير</button>
+                    <button class="act-btn btn-warning" onclick="printSummaryReportPDF()" style="padding: 8px; font-size: 12px; color:#000;"><i class="fas fa-print"></i> طباعة / حفظ PDF للتقرير</button>
+                    <button id="sendToEntitlementsBtn" class="act-btn hidden" onclick="sendSummaryToEntitlements()" style="background: #6f42c1; padding: 8px; font-size: 12px;"><i class="fas fa-paper-plane"></i> إرسال للاستحقاقات</button>
                 </div>
             </div>
 
@@ -1030,6 +1030,8 @@
         selectedLeaveIds.clear();
         document.getElementById("bulkPrintArea").classList.add("hidden");
         document.getElementById("printableSummaryArea").style.display = "none"; 
+        let sendEntBtn = document.getElementById("sendToEntitlementsBtn");
+        if (sendEntBtn) sendEntBtn.classList.add("hidden");
         document.getElementById("inquiryResultBox").classList.add("hidden");
         document.getElementById("inquiryErrorBox").classList.add("hidden");
         document.getElementById("inquiryUsername").value = "";
@@ -1888,6 +1890,15 @@
             
             document.getElementById("managerLoginSection").classList.add("hidden");
             document.getElementById("managerDashboardSection").classList.remove("hidden");
+
+            let sendEntBtn = document.getElementById("sendToEntitlementsBtn");
+            if (sendEntBtn) {
+                if (roleType === "hr_specialist") {
+                    sendEntBtn.classList.remove("hidden");
+                } else {
+                    sendEntBtn.classList.add("hidden");
+                }
+            }
             
             if (roleType === "hr_specialist") {
                 document.getElementById("dashboardTitle").innerText = "طلبات الإجازات - المختص (" + (category || targetRole) + ")";
@@ -1926,7 +1937,6 @@
                                 currentLeavesData.push(data);
                             }
                         } else if (data.leaveType === "طلب عودة من انقطاع") {
-                            // يظهر للمختص فقط للمتابعة أو الأرشيف بعد انتهائه أو رفضه
                             if (hrStat === "أرشفة نهائية" || (data.hrReturnStatus || "").includes("مرفوض")) {
                                 currentLeavesData.push(data);
                             }
@@ -1940,18 +1950,15 @@
                     }
                 } 
                 else {
-                    // التحقق هل المدير الحالي هو مدير عام الموارد البشرية أم المدير العام التابع
                     let isHRManager = deptName.includes("الموارد البشرية") || deptName.includes("موارد بشرية");
                     let isTargetManager = (data.targetManager === deptName);
 
                     if (data.leaveType === "طلب عودة من انقطاع") {
                         let hrReturnStat = data.hrReturnStatus || "قيد الانتظار";
 
-                        // المرحلة الأولى: يصل مباشرة لمدير عام الموارد البشرية بصفة ثابتة
                         if (isHRManager) {
                             currentLeavesData.push(data);
                         }
-                        // المرحلة الثانية: يصل للمدير العام التابع بعد اعتماد مدير عام الموارد البشرية
                         else if (isTargetManager) {
                             if (hrReturnStat === "معتمد من مدير الموارد البشرية") {
                                 currentLeavesData.push(data);
@@ -2178,14 +2185,12 @@
                 let hrReturnStat = item.hrReturnStatus || "قيد الانتظار";
                 let mgrReturnStat = item.managerReturnStatus || "قيد الانتظار";
 
-                // 1. أزرار مدير عام الموارد البشرية (المرحلة الأولى)
                 if (isHRManager && hrReturnStat === "قيد الانتظار") {
                     html += `
                         <button class="act-btn btn-ex" onclick="processHrReturnApproval('${item.docId}')">اعتماد العودة وتفعيل الحساب وتحويل للمدير التابع</button>
                         <button class="act-btn btn-danger" onclick="promptHrReturnReject('${item.docId}')">رفض الطلب</button>
                     `;
                 }
-                // 2. أزرار المدير العام التابع (المرحلة الثانية بعد اعتماد الموارد البشرية)
                 else if (isTargetManager && hrReturnStat === "معتمد من مدير الموارد البشرية" && mgrReturnStat === "قيد الانتظار") {
                     html += `
                         <button class="act-btn btn-ex" onclick="processManagerReturnAcknowledge('${item.docId}')">اطلاع وعلم، وتسليم العمل وأرشفة نهائية</button>
@@ -2211,7 +2216,6 @@
         return html;
     }
 
-    // اعتماد مدير عام الموارد البشرية + تحويل الموظف إلى نشط فوراً + تسوية الرصيد + الترحيل للمدير التابع
     function processHrReturnApproval(docId) {
         db.collection("leaves").doc(docId).get().then(doc => {
             if (!doc.exists) return;
@@ -2227,7 +2231,6 @@
 
                 let userDoc = userQuery.docs[0];
                 let userData = userDoc.data();
-                // تغيير حالة الموظف إلى نشط فوراً بمجرد اعتماد مدير عام الموارد البشرية
                 let updates = { status: "active" };
 
                 if (returnCalcType === "مرضية بقرار 259") {
@@ -2248,7 +2251,6 @@
                     updates.prevBal = Math.max(0, curPrev - daysCount);
                 }
 
-                // تحديث حساب الموظف إلى نشط وخصم الرصيد ثم ترحيل الطلب للمدير العام التابع
                 userDoc.ref.update(updates).then(() => {
                     db.collection("leaves").doc(docId).update({
                         hrReturnStatus: "معتمد من مدير الموارد البشرية"
@@ -2286,7 +2288,6 @@
         };
     }
 
-    // اعتماد المدير العام التابع (العلم وتسليم العمل والأرشفة النهائية)
     function processManagerReturnAcknowledge(docId) {
         db.collection("leaves").doc(docId).update({
             managerReturnStatus: "تم الاطلاع والعلم وتسليم العمل",
@@ -2748,6 +2749,147 @@
         document.getElementById("printableSummaryArea").style.display = "block";
     }
 
+    function buildSummaryPayload(sDate, eDate) {
+        let reportLeaves = currentLeavesData.filter(item => {
+            return item.startDate <= eDate && (!item.endDate || item.endDate >= sDate);
+        });
+
+        if (reportLeaves.length === 0) return null;
+
+        let aggregated = {};
+        reportLeaves.forEach(item => {
+            let nid = item.nationalId;
+            if (!aggregated[nid]) {
+                aggregated[nid] = {
+                    empName: item.empName,
+                    nationalId: nid,
+                    jobCategory: item.jobCategory || currentCategoryName || "غير محدد",
+                    casual: 0,
+                    annual: 0,
+                    sick: 0,
+                    sick259: "لا",
+                    prevBalUsed: 0
+                };
+            }
+
+            let days = getDaysInPeriod(item.startDate, item.endDate, sDate, eDate);
+
+            if (item.leaveType === "عارضة") aggregated[nid].casual += days;
+            else if (item.leaveType === "اعتيادية" || item.leaveType === "تصريح نصف يوم") aggregated[nid].annual += days;
+            else if (item.leaveType === "رصيد سنوات سابقة") aggregated[nid].prevBalUsed += days;
+            else if (item.leaveType === "مرضية") aggregated[nid].sick += days;
+            else if (item.leaveType === "اعتيادية + رصيد سنوات سابقة") aggregated[nid].annual += days;
+            else if (item.leaveType === "طلب عودة من انقطاع") {
+                if (item.absenceCalcType === "مرضية بقرار 259") aggregated[nid].sick259 = "نعم";
+                else if (item.absenceCalcType === "اعتيادية") aggregated[nid].annual += days;
+                else if (item.absenceCalcType === "رصيد سنوات سابقة") aggregated[nid].prevBalUsed += days;
+            }
+        });
+
+        let rows = Object.values(aggregated).map((emp, index) => {
+            let total = emp.casual + emp.annual + emp.sick + emp.prevBalUsed;
+            return {
+                seq: index + 1,
+                empName: emp.empName,
+                nationalId: emp.nationalId,
+                jobCategory: emp.jobCategory,
+                casual: emp.casual,
+                annual: emp.annual,
+                sick: emp.sick,
+                sick259: emp.sick259,
+                prevBalUsed: emp.prevBalUsed,
+                total: total
+            };
+        });
+
+        let totals = rows.reduce((acc, r) => {
+            acc.casual += r.casual;
+            acc.annual += r.annual;
+            acc.sick += r.sick;
+            acc.prevBalUsed += r.prevBalUsed;
+            acc.total += r.total;
+            if (r.sick259 === "نعم") acc.hasSick259 = true;
+            return acc;
+        }, { casual: 0, annual: 0, sick: 0, prevBalUsed: 0, total: 0, hasSick259: false });
+
+        return { rows, totals };
+    }
+
+    function sendSummaryToEntitlements() {
+        if (loggedInRole !== "hr_specialist") {
+            showCustomAlert("غير مسموح", "هذا الإجراء مخصص للموظف المختص فقط.");
+            return;
+        }
+
+        let sDate = document.getElementById("summaryStartDate").value;
+        let eDate = document.getElementById("summaryEndDate").value;
+
+        if (!sDate || !eDate) {
+            showCustomAlert("تنبيه", "يرجى اختيار المدة الزمنية (من تاريخ - إلى تاريخ) أولاً قبل الإرسال.");
+            return;
+        }
+
+        if (eDate < sDate) {
+            showCustomAlert("خطأ في الفترة", "تاريخ النهاية يجب أن يكون أكبر من أو يساوي تاريخ البداية.");
+            return;
+        }
+
+        let payloadData = buildSummaryPayload(sDate, eDate);
+        if (!payloadData || payloadData.rows.length === 0) {
+            showCustomAlert("لا توجد بيانات", "لا توجد طلبات إجازة ضمن الفترة الزمنية المحددة لإرسالها.");
+            return;
+        }
+
+        let btn = document.getElementById("sendToEntitlementsBtn");
+        let originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+        btn.disabled = true;
+
+        let categoryLabel = currentCategoryName || currentDeptOrCat || "غير محدد";
+        let reportId = "ENT-LR-" + Math.floor(100000 + Math.random() * 900000);
+
+        let reportDoc = {
+            reportId: reportId,
+            sourceModule: "إدارة الإجازات",
+            targetDepartment: "إدارة الاستحقاقات والمزايا",
+            specialistName: currentManagerName || currentDeptOrCat,
+            specialistRole: currentDeptOrCat,
+            requestCategory: categoryLabel,
+            periodStart: sDate,
+            periodEnd: eDate,
+            employeesCount: payloadData.rows.length,
+            rows: payloadData.rows,
+            totals: {
+                casual: payloadData.totals.casual,
+                annual: payloadData.totals.annual,
+                sick: payloadData.totals.sick,
+                sick259: payloadData.totals.hasSick259 ? "نعم" : "لا",
+                prevBalUsed: payloadData.totals.prevBalUsed,
+                total: payloadData.totals.total
+            },
+            status: "مرسل للاستحقاقات",
+            sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+            sentDate: new Date().toISOString().split('T')[0]
+        };
+
+        db.collection("entitlements_leave_reports").add(reportDoc).then(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            showCustomAlert(
+                "تم الإرسال بنجاح",
+                `تم إرسال التقرير التجميعي رقم (<b>${reportId}</b>) إلى إدارة الاستحقاقات والمزايا.<br>
+                <b>المختص:</b> ${reportDoc.specialistName}<br>
+                <b>الفئة:</b> ${reportDoc.requestCategory}<br>
+                <b>الفترة:</b> من ${formatDateToAr(sDate)} إلى ${formatDateToAr(eDate)}`
+            );
+        }).catch((err) => {
+            console.error(err);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            showCustomAlert("خطأ في الإرسال", "تعذر إرسال التقرير إلى قاعدة البيانات. يرجى المحاولة مرة أخرى.");
+        });
+    }
+
     function downloadExcelSummary() {
         let wb = XLSX.utils.book_new();
         let ws = XLSX.utils.table_to_sheet(document.getElementById("summaryReportTable"));
@@ -3184,4 +3326,3 @@
 </script>
 </body>
 </html>
-
