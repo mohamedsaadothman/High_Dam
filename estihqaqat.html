@@ -894,7 +894,7 @@
         </div>
     </div>
 
-    <!-- صفحة إنشاء استمارة 132 ع.ح (وتحتوي على التبليغات وأرشيف التبليغات للموظفين المعتمدين فقط) -->
+    <!-- صفحة إنشاء استمارة 132 ع.ح -->
     <section id="form132Section" class="form132-workspace hidden">
         <div class="form132-topbar">
             <div class="form132-topbar-title">
@@ -1665,15 +1665,49 @@
         return nameVal || codeVal || "غير محدد";
     }
 
+    function computeMinMaxRangeFromList(list) {
+        let minStr = "";
+        let maxStr = "";
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+
+        (list || []).forEach(item => {
+            const f = String(item.fromDate || item.startDate || item.dateFrom || "").trim();
+            const t = String(item.toDate || item.endDate || item.dateTo || f).trim();
+            const df = parseDateSafe(f);
+            const dt = parseDateSafe(t);
+
+            if (df) {
+                const tm = df.getTime();
+                if (tm < minTime) { minTime = tm; minStr = f; }
+                if (tm > maxTime) { maxTime = tm; maxStr = f; }
+            }
+            if (dt) {
+                const tm = dt.getTime();
+                if (tm < minTime) { minTime = tm; minStr = t; }
+                if (tm > maxTime) { maxTime = tm; maxStr = t; }
+            }
+        });
+
+        return { fromDate: minStr, toDate: maxStr };
+    }
+
     function extractPeriodFromDoc(d) {
-        let fromVal = d.fromDate || d.startDate || d.dateFrom || d.periodFrom || d.rangeFrom || d.selectedFromDate || "";
-        let toVal = d.toDate || d.endDate || d.dateTo || d.periodTo || d.rangeTo || d.selectedToDate || "";
+        let fromVal = String(d.fromDate || d.startDate || d.dateFrom || d.periodFrom || d.rangeFrom || d.selectedFromDate || d.from || "").trim();
+        let toVal = String(d.toDate || d.endDate || d.dateTo || d.periodTo || d.rangeTo || d.selectedToDate || d.to || "").trim();
         const rawPeriod = String(d.periodLabel || d.period || d.dateRange || "").trim();
 
         if ((!fromVal || !toVal) && rawPeriod) {
             const parts = rawPeriod.split(/\s*(?:إلى|الى|-|–|—|to)\s*/i);
             if (!fromVal && parts[0]) fromVal = parts[0].trim();
             if (!toVal && parts[1]) toVal = parts[1].trim();
+        }
+
+        const rawRows = Array.isArray(d.rows) ? d.rows : (Array.isArray(d.items) ? d.items : (Array.isArray(d.reportRows) ? d.reportRows : []));
+        if ((!fromVal || !toVal) && rawRows.length > 0) {
+            const inferred = computeMinMaxRangeFromList(rawRows);
+            if (!fromVal && inferred.fromDate) fromVal = inferred.fromDate;
+            if (!toVal && inferred.toDate) toVal = inferred.toDate;
         }
 
         const displayText = (fromVal || toVal)
@@ -2030,23 +2064,12 @@
         const bodyEl = document.getElementById("notifViewerBody");
 
         const fmtUpper = String(notif.fileType || "excel").toUpperCase();
-        titleEl.innerText = `تقرير تجميعي لبيانات الإجازات (${fmtUpper}) — ${notif.periodDisplay}`;
-        metaEl.innerText = `الفترة: ${notif.periodDisplay} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
-        currentViewerFileName = `تقرير_تجميعي_إجازات_${notif.fromDate || "من"}_${notif.toDate || "إلى"}`;
-        currentViewerMetaInfo = {
-            title: notif.title,
-            fromDate: notif.fromDate,
-            toDate: notif.toDate,
-            periodDisplay: notif.periodDisplay,
-            specialist: notif.specialistLabel,
-            sentDateStr: notif.sentDateStr,
-            department: notif.senderDepartment || "إدارة الإجازات"
-        };
-
         modal.classList.remove("hidden");
         bodyEl.innerHTML = `<div style="text-align:center;padding:30px;color:#1d4ed8;font-weight:800;"><i class="fas fa-spinner fa-spin"></i> جاري تحميل التقرير التجميعي لبيانات الإجازات...</div>`;
 
         if (notif.fileUrl && /^https?:\/\//i.test(notif.fileUrl)) {
+            titleEl.innerText = `تقرير تجميعي لبيانات الإجازات (${fmtUpper}) — ${notif.periodDisplay}`;
+            metaEl.innerText = `الفترة: ${notif.periodDisplay} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
             bodyEl.innerHTML = `
                 <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:10px;border:1px solid #bfdbfe;flex-wrap:wrap;gap:8px;">
                     <span style="font-size:12.5px;font-weight:800;color:#1e3a8a;">الفترة: ${escapeHtmlCell(notif.periodDisplay)} — رابط الملف المرفق (${fmtUpper}):</span>
@@ -2059,15 +2082,52 @@
 
         try {
             const snap = await getDocs(collection(firestoreDb, "leaves"));
-            const fromDt = parseDateSafe(notif.fromDate);
-            const toDt = parseDateSafe(notif.toDate);
+            const allLeavesDocs = [];
+            snap.forEach((docSnap) => {
+                allLeavesDocs.push(docSnap.data() || {});
+            });
+
+            let effectiveFrom = notif.fromDate;
+            let effectiveTo = notif.toDate;
+
+            if (!effectiveFrom || !effectiveTo) {
+                const byReport = notif.reportNumber
+                    ? allLeavesDocs.filter(l => String(l.reportNumber || l.reportCode || "").trim() === String(notif.reportNumber).trim())
+                    : allLeavesDocs;
+                const rangeFromDocs = computeMinMaxRangeFromList(byReport);
+                if (!effectiveFrom && rangeFromDocs.fromDate) effectiveFrom = rangeFromDocs.fromDate;
+                if (!effectiveTo && rangeFromDocs.toDate) effectiveTo = rangeFromDocs.toDate;
+            }
+
+            const effectivePeriodDisplay = (effectiveFrom || effectiveTo)
+                ? `من ${effectiveFrom || "-"} إلى ${effectiveTo || "-"}`
+                : (notif.periodDisplay || "-");
+
+            notif.fromDate = effectiveFrom;
+            notif.toDate = effectiveTo;
+            notif.periodDisplay = effectivePeriodDisplay;
+
+            titleEl.innerText = `تقرير تجميعي لبيانات الإجازات (${fmtUpper}) — ${effectivePeriodDisplay}`;
+            metaEl.innerText = `الفترة: ${effectivePeriodDisplay} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
+            currentViewerFileName = `تقرير_تجميعي_إجازات_${effectiveFrom || "من"}_${effectiveTo || "إلى"}`;
+            currentViewerMetaInfo = {
+                title: notif.title,
+                fromDate: effectiveFrom,
+                toDate: effectiveTo,
+                periodDisplay: effectivePeriodDisplay,
+                specialist: notif.specialistLabel,
+                sentDateStr: notif.sentDateStr,
+                department: notif.senderDepartment || "إدارة الإجازات"
+            };
+
+            const fromDt = parseDateSafe(effectiveFrom);
+            const toDt = parseDateSafe(effectiveTo);
             if (toDt) toDt.setHours(23, 59, 59, 999);
 
             const summaryMap = new Map();
             const detailRows = [];
 
-            snap.forEach((docSnap) => {
-                const l = docSnap.data() || {};
+            allLeavesDocs.forEach((l) => {
                 const startVal = l.fromDate || l.startDate || l.dateFrom || "";
                 const endVal = l.toDate || l.endDate || l.dateTo || startVal;
                 const lStart = parseDateSafe(startVal);
@@ -2140,14 +2200,14 @@
                         </div>
                     </div>
                     <div style="text-align:center;font-size:15px;font-weight:900;color:#0f172a;">
-                        تقرير تجميعي لبيانات الإجازات — عن الفترة: ${escapeHtmlCell(notif.periodDisplay)}
+                        تقرير تجميعي لبيانات الإجازات — عن الفترة: ${escapeHtmlCell(effectivePeriodDisplay)}
                     </div>
                 </div>
             `;
 
             const bannerHtml = `
                 <div class="report-official-banner">
-                    <div><span>الفترة الزمنية:</span> <strong>${escapeHtmlCell(notif.periodDisplay)}</strong></div>
+                    <div><span>الفترة الزمنية:</span> <strong>${escapeHtmlCell(effectivePeriodDisplay)}</strong></div>
                     <div><span>الجهة المرسلة:</span> <strong>${escapeHtmlCell(notif.senderDepartment || "إدارة الإجازات")}</strong></div>
                     <div><span>الموظف المختص:</span> <strong>${escapeHtmlCell(notif.specialistLabel)}</strong></div>
                     <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(notif.sentDateStr)}</strong></div>
@@ -2160,7 +2220,7 @@
                     ${bannerHtml}
                     <div style="text-align:center;padding:30px;background:#f8fafc;border-radius:12px;border:1px dashed #cbd5e1;color:#64748b;">
                         <i class="fas fa-folder-open" style="font-size:28px;color:#94a3b8;display:block;margin-bottom:8px;"></i>
-                        لا توجد بيانات إجازات مسجلة ضمن الفترة (${escapeHtmlCell(notif.periodDisplay)}).
+                        لا توجد بيانات إجازات مسجلة ضمن الفترة (${escapeHtmlCell(effectivePeriodDisplay)}).
                     </div>
                 `;
                 return;
@@ -2211,7 +2271,7 @@
                 detailTableHtml = `
                     <div style="margin-top:16px;">
                         <div style="font-size:13px;font-weight:900;color:#1e3a8a;margin-bottom:8px;">
-                            <i class="fas fa-list-alt"></i> تفاصيل أنواع الإجازات والفترات داخل الفترة (${escapeHtmlCell(notif.periodDisplay)})
+                            <i class="fas fa-list-alt"></i> تفاصيل أنواع الإجازات والفترات داخل الفترة (${escapeHtmlCell(effectivePeriodDisplay)})
                         </div>
                         <div class="data-table-wrapper">
                             <table class="leaves-summary-table">
@@ -2238,7 +2298,7 @@
                 ${bannerHtml}
                 <div style="text-align:center;margin-bottom:10px;">
                     <div style="font-size:15px;font-weight:900;color:#0f172a;">تقرير تجميعي لبيانات الإجازات</div>
-                    <div style="font-size:12px;color:#475569;font-weight:700;">عن الفترة: ${escapeHtmlCell(notif.periodDisplay)}</div>
+                    <div style="font-size:12px;color:#475569;font-weight:700;">عن الفترة: ${escapeHtmlCell(effectivePeriodDisplay)}</div>
                 </div>
                 <div class="data-table-wrapper">
                     <table class="leaves-summary-table">
