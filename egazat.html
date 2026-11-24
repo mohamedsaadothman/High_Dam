@@ -2751,6 +2751,7 @@
 
     function buildSummaryPayload(sDate, eDate) {
         let reportLeaves = currentLeavesData.filter(item => {
+            if (!item.startDate) return false;
             return item.startDate <= eDate && (!item.endDate || item.endDate >= sDate);
         });
 
@@ -2758,12 +2759,13 @@
 
         let aggregated = {};
         reportLeaves.forEach(item => {
-            let nid = item.nationalId;
+            let nid = String(item.nationalId || "").trim();
+            if (!nid) return;
             if (!aggregated[nid]) {
                 aggregated[nid] = {
-                    empName: item.empName,
+                    empName: item.empName || "",
                     nationalId: nid,
-                    jobCategory: item.jobCategory || currentCategoryName || "غير محدد",
+                    jobCategory: item.jobCategory || currentCategoryName || "",
                     casual: 0,
                     annual: 0,
                     sick: 0,
@@ -2786,10 +2788,21 @@
             }
         });
 
-        let rows = Object.values(aggregated).map((emp, index) => {
+        let rows = [];
+        let totals = { casual: 0, annual: 0, sick: 0, sick259: "لا", prevBalUsed: 0, total: 0 };
+
+        Object.values(aggregated).forEach((emp, idx) => {
             let total = emp.casual + emp.annual + emp.sick + emp.prevBalUsed;
-            return {
-                seq: index + 1,
+            if (emp.sick259 === "نعم") totals.sick259 = "نعم";
+
+            totals.casual += emp.casual;
+            totals.annual += emp.annual;
+            totals.sick += emp.sick;
+            totals.prevBalUsed += emp.prevBalUsed;
+            totals.total += total;
+
+            rows.push({
+                seq: idx + 1,
                 empName: emp.empName,
                 nationalId: emp.nationalId,
                 jobCategory: emp.jobCategory,
@@ -2799,19 +2812,10 @@
                 sick259: emp.sick259,
                 prevBalUsed: emp.prevBalUsed,
                 total: total
-            };
+            });
         });
 
-        let totals = rows.reduce((acc, r) => {
-            acc.casual += r.casual;
-            acc.annual += r.annual;
-            acc.sick += r.sick;
-            acc.prevBalUsed += r.prevBalUsed;
-            acc.total += r.total;
-            if (r.sick259 === "نعم") acc.hasSick259 = true;
-            return acc;
-        }, { casual: 0, annual: 0, sick: 0, prevBalUsed: 0, total: 0, hasSick259: false });
-
+        if (rows.length === 0) return null;
         return { rows, totals };
     }
 
@@ -2850,6 +2854,7 @@
 
         let reportDoc = {
             reportId: reportId,
+            reportTitle: document.getElementById("dashboardTitle").innerText || "",
             sourceModule: "إدارة الإجازات",
             targetDepartment: "إدارة الاستحقاقات والمزايا",
             specialistName: currentManagerName || currentDeptOrCat,
@@ -2859,14 +2864,7 @@
             periodEnd: eDate,
             employeesCount: payloadData.rows.length,
             rows: payloadData.rows,
-            totals: {
-                casual: payloadData.totals.casual,
-                annual: payloadData.totals.annual,
-                sick: payloadData.totals.sick,
-                sick259: payloadData.totals.hasSick259 ? "نعم" : "لا",
-                prevBalUsed: payloadData.totals.prevBalUsed,
-                total: payloadData.totals.total
-            },
+            totals: payloadData.totals,
             status: "مرسل للاستحقاقات",
             sentAt: firebase.firestore.FieldValue.serverTimestamp(),
             sentDate: new Date().toISOString().split('T')[0]
