@@ -1259,7 +1259,7 @@
     }
 </script>
 
-<!-- ربط Firestore (Dam-purchases-App / users, leave_notifications, archived_notifications, rejected_notifications, leaves) -->
+<!-- ربط Firestore (Dam-purchases-App / users, entitlements_leave_reports, archived_notifications, rejected_notifications, leaves) -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import {
@@ -1270,8 +1270,6 @@
         deleteDoc,
         doc,
         updateDoc,
-        query,
-        where,
         serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -1286,6 +1284,8 @@
 
     const appPurchases = initializeApp(damPurchasesConfig, "damPurchasesEstihqaqatApp");
     const firestoreDb = getFirestore(appPurchases);
+
+    const NOTIFICATIONS_COLLECTION = "entitlements_leave_reports";
 
     let cachedEmployees = [];
     let eligibleBenefitsStaff = [];
@@ -1382,41 +1382,50 @@
         if (listEl) {
             listEl.innerHTML = `<div style="text-align:center;color:#1d4ed8;font-size:11.5px;padding:14px;"><i class="fas fa-spinner fa-spin"></i> جاري جلب التبليغات...</div>`;
         }
+
         try {
-            const snap = await getDocs(collection(firestoreDb, "leave_notifications"));
+            const snap = await getDocs(collection(firestoreDb, NOTIFICATIONS_COLLECTION));
             const items = [];
+
             snap.forEach((docSnap) => {
                 const d = docSnap.data() || {};
                 const statusNorm = normalizeArabic(d.status || "");
-                if (statusNorm === normalizeArabic("مقبول") || statusNorm === normalizeArabic("مرفوض")) {
+                if (
+                    d.archived === true ||
+                    statusNorm === normalizeArabic("مقبول") ||
+                    statusNorm === normalizeArabic("مرفوض") ||
+                    statusNorm === normalizeArabic("مؤرشف")
+                ) {
                     return;
                 }
+
                 items.push({
                     id: docSnap.id,
-                    title: d.title || "تبليغ وارد",
-                    fileType: d.fileType || d.format || "excel",
-                    fileUrl: d.fileUrl || d.url || "",
-                    fromDate: d.fromDate || "",
-                    toDate: d.toDate || "",
-                    periodLabel: d.periodLabel || "",
-                    reportNumber: d.reportNumber || d.reportCode || "",
+                    title: d.title || d.subject || d.reportTitle || (d.reportNumber ? `تقرير ${d.reportNumber}` : "تبليغ وارد"),
+                    fileType: d.fileType || d.format || d.docType || "excel",
+                    fileUrl: d.fileUrl || d.url || d.fileLink || "",
+                    fromDate: d.fromDate || d.startDate || "",
+                    toDate: d.toDate || d.endDate || "",
+                    periodLabel: d.periodLabel || d.period || "",
+                    reportNumber: d.reportNumber || d.reportCode || d.code || "",
                     category: d.category || d.leaveCategory || "",
-                    senderDepartment: d.senderDepartment || d.department || "",
-                    sentBy: d.sentBy || d.senderName || "",
+                    senderDepartment: d.senderDepartment || d.department || d.fromDept || "",
+                    sentBy: d.sentBy || d.senderName || d.createdBy || "",
                     status: d.status || "مرسل للاستحقاقات",
+                    rows: Array.isArray(d.rows) ? d.rows : (Array.isArray(d.items) ? d.items : []),
                     createdAt: d.createdAt || ""
                 });
             });
+
             cachedNotifications = items;
             renderNotificationsUI(cachedNotifications);
         } catch (err) {
-            console.error("Error loading notifications:", err);
+            console.error(`Error loading ${NOTIFICATIONS_COLLECTION}:`, err);
             cachedNotifications = [];
             renderNotificationsUI([]);
         }
     };
 
-    // تحديث حالة التقرير/الفترة في Firestore عند القبول أو الرفض لتجنب التداخل الزمني الخاطئ بعد الرفض
     async function syncRelatedReportsStatus(notif, newStatus, rejectReason = "") {
         try {
             const leavesSnap = await getDocs(collection(firestoreDb, "leaves"));
@@ -1447,7 +1456,7 @@
         }
     }
 
-    // الزر الثاني: قبول -> يؤرشف في صفحة أرشيف التبليغات (archived_notifications) ويزال من التبليغات المعلقة
+    // الزر الثاني: قبول -> يؤرشف في صفحة أرشيف التبليغات
     window.acceptNotification = async function(index, btnEl) {
         const notif = cachedNotifications[index];
         if (!notif) return;
@@ -1461,6 +1470,7 @@
 
             await addDoc(collection(firestoreDb, "archived_notifications"), {
                 originalNotificationId: notif.id,
+                sourceCollection: NOTIFICATIONS_COLLECTION,
                 title: notif.title,
                 fileType: notif.fileType,
                 fileUrl: notif.fileUrl,
@@ -1476,7 +1486,7 @@
                 archivedAt: serverTimestamp()
             });
 
-            await updateDoc(doc(firestoreDb, "leave_notifications", notif.id), {
+            await updateDoc(doc(firestoreDb, NOTIFICATIONS_COLLECTION, notif.id), {
                 status: "مقبول",
                 archived: true,
                 acceptedBy: reviewerName,
@@ -1512,6 +1522,7 @@
 
             await addDoc(collection(firestoreDb, "rejected_notifications"), {
                 originalNotificationId: notif.id,
+                sourceCollection: NOTIFICATIONS_COLLECTION,
                 title: notif.title,
                 fileType: notif.fileType,
                 fromDate: notif.fromDate,
@@ -1530,7 +1541,7 @@
             await syncRelatedReportsStatus(notif, "مرفوض", reason.trim());
 
             // حذف التبليغ من قاعدة بيانات الفايربيز ليختفي تماماً
-            await deleteDoc(doc(firestoreDb, "leave_notifications", notif.id));
+            await deleteDoc(doc(firestoreDb, NOTIFICATIONS_COLLECTION, notif.id));
 
             cachedNotifications = cachedNotifications.filter(item => item.id !== notif.id);
             renderNotificationsUI(cachedNotifications);
@@ -1542,7 +1553,6 @@
         }
     };
 
-    // عرض صفحة أرشيف التبليغات
     window.refreshArchivedNotifications = async function() {
         const bodyEl = document.getElementById("notificationsArchiveBody");
         if (!bodyEl) return;
