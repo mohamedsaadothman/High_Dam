@@ -1308,6 +1308,17 @@
             .replace(/"/g, "&quot;");
     }
 
+    function formatArabicMonthYear(dateObj) {
+        const arabicMonths = [
+            "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+            "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+        ];
+        if (!dateObj || isNaN(dateObj.getTime())) return "";
+        const monthName = arabicMonths[dateObj.getMonth()] || "";
+        const yearTwoDigits = String(dateObj.getFullYear()).slice(-2);
+        return `${monthName}${yearTwoDigits}`;
+    }
+
     function exportNotifLeavesToExcel() {
         if (!currentViewerSummaryRows || currentViewerSummaryRows.length === 0) {
             alert("لا توجد بيانات لتصديرها.");
@@ -1692,10 +1703,10 @@
         const searchSource = explicitText || String(d.subject || d.title || "").trim();
 
         if ((!fromVal || !toVal) && searchSource) {
-            const match = searchSource.match(/(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})\s*(?:إلى|الى|-|–|—|to)\s*(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})/i);
+            const match = searchSource.match(/(\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})\s*(?:إلى|الى|-|–|—|to)\s*(\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})/i);
             if (match) {
-                if (!fromVal) fromVal = match[1].trim();
-                if (!toVal) toVal = match[2].trim();
+                if (!fromVal) fromVal = match[1].replace(/\s+/g, "").trim();
+                if (!toVal) toVal = match[2].replace(/\s+/g, "").trim();
             }
         }
 
@@ -2062,34 +2073,8 @@
         const metaEl = document.getElementById("notifViewerMeta");
         const bodyEl = document.getElementById("notifViewerBody");
 
-        const fmtUpper = String(notif.fileType || "excel").toUpperCase();
-        titleEl.innerText = `تقرير تجميعي لبيانات الإجازات (${fmtUpper}) — ${notif.periodDisplay}`;
-        metaEl.innerText = `الفترة: ${notif.periodDisplay} | الفئة: ${notif.specialty} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
-        currentViewerFileName = `تقرير_تجميعي_إجازات_${notif.fromDate || "من"}_${notif.toDate || "إلى"}`;
-        currentViewerMetaInfo = {
-            title: notif.title,
-            fromDate: notif.fromDate,
-            toDate: notif.toDate,
-            periodDisplay: notif.periodDisplay,
-            specialty: notif.specialty,
-            specialist: notif.specialistLabel,
-            sentDateStr: notif.sentDateStr,
-            department: notif.senderDepartment || "إدارة الإجازات"
-        };
-
         modal.classList.remove("hidden");
         bodyEl.innerHTML = `<div style="text-align:center;padding:30px;color:#1d4ed8;font-weight:800;"><i class="fas fa-spinner fa-spin"></i> جاري تحميل التقرير التجميعي لبيانات الإجازات...</div>`;
-
-        if (notif.fileUrl && /^https?:\/\//i.test(notif.fileUrl)) {
-            bodyEl.innerHTML = `
-                <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:10px;border:1px solid #bfdbfe;flex-wrap:wrap;gap:8px;">
-                    <span style="font-size:12.5px;font-weight:800;color:#1e3a8a;">الفترة: ${escapeHtmlCell(notif.periodDisplay)} — رابط الملف المرفق (${fmtUpper}):</span>
-                    <a href="${notif.fileUrl}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;font-weight:800;font-size:12.5px;">فتح في تبويب جديد <i class="fas fa-up-right-from-square"></i></a>
-                </div>
-                <iframe src="${notif.fileUrl}" style="width:100%;height:440px;border:1px solid #cbd5e1;border-radius:10px;"></iframe>
-            `;
-            return;
-        }
 
         try {
             if (!isLoaded) {
@@ -2107,37 +2092,66 @@
             });
 
             const snap = await getDocs(collection(firestoreDb, "leaves"));
-            let effectivePeriodDisplay = notif.periodDisplay;
-            let effectiveFromDate = notif.fromDate;
-            let effectiveToDate = notif.toDate;
-            let effectiveSpecialty = notif.specialty;
-
             const allLeavesDocs = [];
             snap.forEach((docSnap) => {
                 allLeavesDocs.push(docSnap.data() || {});
             });
 
+            let effectivePeriodDisplay = notif.periodDisplay;
+            let effectiveFromDate = notif.fromDate;
+            let effectiveToDate = notif.toDate;
+            let effectiveSpecialty = notif.specialty;
+
             if (effectivePeriodDisplay === "-" || !effectiveFromDate || !effectiveToDate) {
-                const candidate = allLeavesDocs.find(l => {
+                const matchedReportLeave = allLeavesDocs.find(l => {
+                    const sameNum = notif.reportNumber && String(l.reportNumber || l.reportCode || "").trim() === String(notif.reportNumber).trim();
+                    const sameCat = notif.category && normalizeArabic(l.category || l.leaveCategory || "") === normalizeArabic(notif.category);
                     const p = extractReportPeriodFromDoc(l);
-                    return p.fromDate || p.toDate || p.displayText !== "-";
+                    return (sameNum || sameCat) && (p.fromDate || p.toDate || p.displayText !== "-");
                 });
-                if (candidate) {
-                    const p = extractReportPeriodFromDoc(candidate);
+                if (matchedReportLeave) {
+                    const p = extractReportPeriodFromDoc(matchedReportLeave);
                     effectiveFromDate = effectiveFromDate || p.fromDate;
                     effectiveToDate = effectiveToDate || p.toDate;
                     if (effectivePeriodDisplay === "-" && p.displayText !== "-") {
                         effectivePeriodDisplay = p.displayText;
                     }
                     if (!effectiveSpecialty || effectiveSpecialty === "التخصصية") {
-                        effectiveSpecialty = extractSpecialtyFromDoc(candidate);
+                        effectiveSpecialty = extractSpecialtyFromDoc(matchedReportLeave);
                     }
                 }
             }
 
-            currentViewerMetaInfo.periodDisplay = effectivePeriodDisplay;
-            currentViewerMetaInfo.specialty = effectiveSpecialty;
+            const refDateForMonth = parseDateSafe(effectiveFromDate) || parseDateSafe(effectiveToDate) || parseDateSafe(notif.sentDateStr);
+            const monthYearLabel = formatArabicMonthYear(refDateForMonth);
+
+            titleEl.innerText = monthYearLabel
+                ? `تقرير تجميعي لبيانات الإجازات — ${monthYearLabel}`
+                : `تقرير تجميعي لبيانات الإجازات`;
+
             metaEl.innerText = `الفترة: ${effectivePeriodDisplay} | الفئة: ${effectiveSpecialty} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
+            currentViewerFileName = `تقرير_تجميعي_إجازات_${monthYearLabel || "التقرير"}`;
+            currentViewerMetaInfo = {
+                title: notif.title,
+                fromDate: effectiveFromDate,
+                toDate: effectiveToDate,
+                periodDisplay: effectivePeriodDisplay,
+                specialty: effectiveSpecialty,
+                specialist: notif.specialistLabel,
+                sentDateStr: notif.sentDateStr,
+                department: notif.senderDepartment || "إدارة الإجازات"
+            };
+
+            if (notif.fileUrl && /^https?:\/\//i.test(notif.fileUrl)) {
+                bodyEl.innerHTML = `
+                    <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:10px;border:1px solid #bfdbfe;flex-wrap:wrap;gap:8px;">
+                        <span style="font-size:12.5px;font-weight:800;color:#1e3a8a;">الفترة: ${escapeHtmlCell(effectivePeriodDisplay)} — رابط الملف المرفق:</span>
+                        <a href="${notif.fileUrl}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;font-weight:800;font-size:12.5px;">فتح في تبويب جديد <i class="fas fa-up-right-from-square"></i></a>
+                    </div>
+                    <iframe src="${notif.fileUrl}" style="width:100%;height:440px;border:1px solid #cbd5e1;border-radius:10px;"></iframe>
+                `;
+                return;
+            }
 
             const fromDt = parseDateSafe(effectiveFromDate);
             const toDt = parseDateSafe(effectiveToDate);
