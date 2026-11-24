@@ -2819,6 +2819,22 @@
         return { rows, totals };
     }
 
+    function isEntitlementsReportRejected(reportData) {
+        if (!reportData) return false;
+        if (reportData.isRejectedFromEntitlements === true) return true;
+        let combinedStatus = [
+            reportData.status || "",
+            reportData.entitlementsStatus || "",
+            reportData.reviewStatus || ""
+        ].join(" ").toLowerCase();
+        return combinedStatus.includes("مرفوض") || combinedStatus.includes("reject");
+    }
+
+    function doPeriodsOverlap(startA, endA, startB, endB) {
+        if (!startA || !endA || !startB || !endB) return false;
+        return (startA <= endB) && (endA >= startB);
+    }
+
     function sendSummaryToEntitlements() {
         if (loggedInRole !== "hr_specialist") {
             showCustomAlert("غير مسموح", "هذا الإجراء مخصص للموظف المختص فقط.");
@@ -2846,37 +2862,50 @@
 
         let btn = document.getElementById("sendToEntitlementsBtn");
         let originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق والإرسال...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحقق من الفترات والإرسال...';
         btn.disabled = true;
 
         let categoryLabel = currentCategoryName || currentDeptOrCat || "غير محدد";
 
-        // التحقق من عدم إرسال تقرير لنفس الفترة الزمنية لنفس الفئة/المختص مسبقاً
         db.collection("entitlements_leave_reports")
-            .where("periodStart", "==", sDate)
-            .where("periodEnd", "==", eDate)
             .get()
             .then((existingSnapshot) => {
-                let duplicateDoc = null;
+                let blockingReport = null;
+                let rejectedReportToResubmit = null;
+
                 existingSnapshot.forEach((doc) => {
                     let d = doc.data();
-                    let sameCategory = (d.requestCategory === categoryLabel) || (d.specialistRole === currentDeptOrCat);
-                    if (sameCategory) {
-                        duplicateDoc = d;
+                    let sameCategory = (d.requestCategory === categoryLabel) ||
+                                       (currentDeptOrCat && d.specialistRole === currentDeptOrCat);
+
+                    if (!sameCategory) return;
+
+                    let overlaps = doPeriodsOverlap(sDate, eDate, d.periodStart, d.periodEnd);
+                    if (!overlaps) return;
+
+                    if (isEntitlementsReportRejected(d)) {
+                        rejectedReportToResubmit = d;
+                    } else {
+                        if (!blockingReport) {
+                            blockingReport = d;
+                        }
                     }
                 });
 
-                if (duplicateDoc) {
+                if (blockingReport) {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                     showCustomAlert(
-                        "فترة مكررة - غير مسموح بالإرسال",
-                        `تم إرسال تقرير لهذه الفترة الزمنية (من <b>${formatDateToAr(sDate)}</b> إلى <b>${formatDateToAr(eDate)}</b>) لفئة (<b>${categoryLabel}</b>) مسبقاً برقم (<b>${duplicateDoc.reportId || "-"}</b>).<br>لا يجوز إرسال تقرير لنفس الفترة الزمنية أكثر من مرة.`
+                        "تداخل في الفترة الزمنية - غير مسموح بالإرسال",
+                        `توجد فترة زمنية متداخلة مسبقاً لفئة (<b>${categoryLabel}</b>) من <b>${formatDateToAr(blockingReport.periodStart)}</b> إلى <b>${formatDateToAr(blockingReport.periodEnd)}</b> برقم تقرير (<b>${blockingReport.reportId || "-"}</b>) وحالته (<b>${blockingReport.status || "قيد المراجعة"}</b>).<br>
+                        لا يجوز إرسال تقرير يتداخل زمنياً مع فترة سابقة لنفس الفئة إلا إذا تم رفضه من إدارة الاستحقاقات والمزايا.`
                     );
                     return;
                 }
 
                 let reportId = "ENT-LR-" + Math.floor(100000 + Math.random() * 900000);
+                let isResubmissionAfterRejection = Boolean(rejectedReportToResubmit);
+
                 let reportDoc = {
                     reportId: reportId,
                     reportTitle: document.getElementById("dashboardTitle").innerText || "",
@@ -2890,7 +2919,11 @@
                     employeesCount: payloadData.rows.length,
                     rows: payloadData.rows,
                     totals: payloadData.totals,
-                    status: "مرسل للاستحقاقات",
+                    status: isResubmissionAfterRejection ? "معاد إرساله للاستحقاقات" : "مرسل للاستحقاقات",
+                    entitlementsStatus: "بانتظار مراجعة الاستحقاقات",
+                    isRejectedFromEntitlements: false,
+                    isResubmission: isResubmissionAfterRejection,
+                    previousRejectedReportId: rejectedReportToResubmit ? (rejectedReportToResubmit.reportId || null) : null,
                     sentAt: firebase.firestore.FieldValue.serverTimestamp(),
                     sentDate: new Date().toISOString().split('T')[0]
                 };
@@ -2898,12 +2931,17 @@
                 return db.collection("entitlements_leave_reports").add(reportDoc).then(() => {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
+
+                    let resubmitNote = isResubmissionAfterRejection
+                        ? `<br><span style="color:#198754;">(تم فك الحظر وإعادة الإرسال بعد رفض التقرير السابق رقم <b>${rejectedReportToResubmit.reportId || "-"}</b>)</span>`
+                        : "";
+
                     showCustomAlert(
                         "تم الإرسال بنجاح",
                         `تم إرسال التقرير التجميعي رقم (<b>${reportId}</b>) إلى إدارة الاستحقاقات والمزايا.<br>
                         <b>المختص:</b> ${reportDoc.specialistName}<br>
                         <b>الفئة:</b> ${reportDoc.requestCategory}<br>
-                        <b>الفترة:</b> من ${formatDateToAr(sDate)} إلى ${formatDateToAr(eDate)}`
+                        <b>الفترة:</b> من ${formatDateToAr(sDate)} إلى ${formatDateToAr(eDate)}${resubmitNote}`
                     );
                 });
             })
@@ -2911,7 +2949,7 @@
                 console.error(err);
                 btn.innerHTML = originalText;
                 btn.disabled = false;
-                showCustomAlert("خطأ في الإرسال", "تعذر التحقق أو إرسال التقرير إلى قاعدة البيانات. يرجى المحاولة مرة أخرى.");
+                showCustomAlert("خطأ في الإرسال", "تعذر التحقق من الفترات الزمنية أو إرسال التقرير. يرجى المحاولة مرة أخرى.");
             });
     }
 
