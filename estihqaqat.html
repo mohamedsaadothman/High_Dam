@@ -1802,9 +1802,7 @@
         { key: "cashTicketsCount", label: "عدد تذاكر النقدي", type: "text", source: "entitlements" },
         { key: "cashAllowanceValue", label: "قيمة بدل النقدي", type: "number", source: "entitlements" },
         { key: "birthDate", label: "تاريخ الميلاد", type: "text", source: "entitlements" },
-        { key: "retirementDate", label: "تاريخ الإحالة للمعاش", type: "text", source: "entitlements" },
-        { key: "lastIncentiveRaise", label: "آخر علاوة تشجيعية", type: "text", source: "entitlements" },
-        { key: "lastPromotionRaise", label: "آخر علاوة ترقية", type: "text", source: "entitlements" }
+        { key: "retirementDate", label: "تاريخ الإحالة للمعاش", type: "text", source: "entitlements" }
     ];
 
     function normalizeArabic(text) {
@@ -1815,6 +1813,22 @@
             .replace(/ى/g, "ي")
             .replace(/\s+/g, " ")
             .toLowerCase()
+            .trim();
+    }
+
+    function normalizeDateValueForSheet(val) {
+        if (val === null || val === undefined) return "";
+        if (val && typeof val.toDate === "function") {
+            const dt = val.toDate();
+            if (!isNaN(dt.getTime())) {
+                const dd = String(dt.getDate()).padStart(2, "0");
+                const mm = String(dt.getMonth() + 1).padStart(2, "0");
+                const yyyy = dt.getFullYear();
+                return `${dd}/${mm}/${yyyy}`;
+            }
+        }
+        return String(val)
+            .replace(/[٠-٩]/g, d => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)])
             .trim();
     }
 
@@ -2768,6 +2782,13 @@
                 const cleanNid = String(d.nationalId || docSnap.id || "").replace(/\s+/g, "").trim();
                 const ent = /^\d{14}$/.test(cleanNid) ? (entitlementsByNatId.get(cleanNid) || {}) : {};
 
+                const rawRetirement =
+                    ent.retirementDate ??
+                    ent.pensionDate ??
+                    d.retirementDate ??
+                    d.pensionDate ??
+                    "";
+
                 const record = {
                     docId: docSnap.id,
                     uid: d.uid || docSnap.id,
@@ -2807,10 +2828,8 @@
                     employeeShare: ent.employeeShare ?? "",
                     government: ent.government ?? ent.governmentShare ?? "",
                     groubCode: ent.groubCode ?? ent.groupCode ?? "",
-                    birthDate: ent.birthDate ?? "",
-                    retirementDate: ent.retirementDate ?? d.pensionDate ?? "",
-                    lastIncentiveRaise: ent.lastIncentiveRaise ?? "",
-                    lastPromotionRaise: ent.lastPromotionRaise ?? "",
+                    birthDate: normalizeDateValueForSheet(ent.birthDate ?? d.birthDate ?? ""),
+                    retirementDate: normalizeDateValueForSheet(rawRetirement),
                     cashTicketsCount: ent.cashTicketsCount ?? "",
                     cashAllowanceValue: ent.cashAllowanceValue ?? 0,
                     comprehensiveInsuranceRate: ent.comprehensiveInsuranceRate ?? ent.comprehensiveHealthInsurance ?? ""
@@ -2942,8 +2961,6 @@
             groubCode: "",
             birthDate: "",
             retirementDate: "",
-            lastIncentiveRaise: "",
-            lastPromotionRaise: "",
             cashTicketsCount: "",
             cashAllowanceValue: 0,
             comprehensiveInsuranceRate: ""
@@ -3247,6 +3264,7 @@
             return isNaN(n) ? 0 : n;
         };
         const toStr = (v) => String(v ?? "").trim();
+        const retirementClean = normalizeDateValueForSheet(draftEmployeeValues.retirementDate);
 
         const entitlementsPayload = {
             nationalId: cleanNid,
@@ -3267,10 +3285,9 @@
             employeeShare: toStr(draftEmployeeValues.employeeShare),
             government: toStr(draftEmployeeValues.government),
             groubCode: toStr(draftEmployeeValues.groubCode),
-            birthDate: toStr(draftEmployeeValues.birthDate),
-            retirementDate: toStr(draftEmployeeValues.retirementDate),
-            lastIncentiveRaise: toStr(draftEmployeeValues.lastIncentiveRaise),
-            lastPromotionRaise: toStr(draftEmployeeValues.lastPromotionRaise),
+            birthDate: normalizeDateValueForSheet(draftEmployeeValues.birthDate),
+            retirementDate: retirementClean,
+            pensionDate: retirementClean,
             cashTicketsCount: toStr(draftEmployeeValues.cashTicketsCount),
             cashAllowanceValue: toNum(draftEmployeeValues.cashAllowanceValue),
             comprehensiveInsuranceRate: toStr(draftEmployeeValues.comprehensiveInsuranceRate),
@@ -3282,6 +3299,7 @@
             nationalId: cleanNid,
             jobCategory: toStr(draftEmployeeValues.jobCategory),
             department: toStr(draftEmployeeValues.department),
+            pensionDate: retirementClean,
             updatedAt: serverTimestamp()
         };
 
@@ -3310,6 +3328,7 @@
                 ...entitlementsPayload,
                 ...usersPayload,
                 nationalId: cleanNid,
+                retirementDate: retirementClean,
                 hasEntitlementRecord: true,
                 isNewEmployee: false
             });
