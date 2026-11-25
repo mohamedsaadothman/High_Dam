@@ -3240,32 +3240,76 @@
         const absenceByName = new Map();
         let refDate = new Date();
 
+        const addAbsenceEntry = (codeRaw, natIdRaw, nameRaw, daysVal) => {
+            const days = Number(daysVal) || 0;
+            if (days <= 0) return;
+
+            const c = normalizeArabic(String(codeRaw || "").trim());
+            const nid = String(natIdRaw || "").replace(/\s+/g, "").trim();
+            const nm = normalizeArabic(String(nameRaw || "").trim());
+
+            if (c) absenceByCode.set(c, (absenceByCode.get(c) || 0) + days);
+            if (nid) absenceByNatId.set(nid, (absenceByNatId.get(nid) || 0) + days);
+            if (nm) absenceByName.set(nm, (absenceByName.get(nm) || 0) + days);
+        };
+
         if (selectedReportId && selectedReportId !== "external") {
-            const leavesSnap = await getDocs(collection(firestoreDb, "leaves"));
             const notif = cachedNotifications.find(n => n.id === selectedReportId) || null;
             const fromDt = notif?.fromDate ? parseDateSafe(notif.fromDate) : null;
             const toDt = notif?.toDate ? parseDateSafe(notif.toDate) : null;
             if (fromDt) refDate = fromDt;
             if (toDt) toDt.setHours(23, 59, 59, 999);
 
-            leavesSnap.forEach(docSnap => {
-                const l = docSnap.data() || {};
-                const lStart = parseDateSafe(l.fromDate || l.startDate || "");
-                const lEnd = parseDateSafe(l.toDate || l.endDate || l.fromDate || "");
-                let inRange = true;
-                if (fromDt && toDt && lStart && lEnd) {
-                    inRange = (lStart <= toDt) && (lEnd >= fromDt);
-                }
-                if (inRange) {
-                    const days = Number(l.days ?? l.daysCount ?? 0) || 0;
-                    const c = normalizeArabic(l.empCode || l.employeeCode || l.username || "");
-                    const nid = normalizeArabic(l.nationalId || "");
-                    const nm = normalizeArabic(l.employeeName || l.empName || l.name || "");
-                    if (c) absenceByCode.set(c, (absenceByCode.get(c) || 0) + days);
-                    if (nid) absenceByNatId.set(nid, (absenceByNatId.get(nid) || 0) + days);
-                    if (nm) absenceByName.set(nm, (absenceByName.get(nm) || 0) + days);
-                }
-            });
+            // 1. القراءة أولاً من الصفوف المرفقة داخل التبليغ نفسه (إن وجدت)
+            if (notif && Array.isArray(notif.rows) && notif.rows.length > 0) {
+                notif.rows.forEach(r => {
+                    const rowDays = Number(
+                        r.total ?? r.totalDays ?? r.days ?? r.absenceDays ??
+                        ((Number(r.casual) || 0) + (Number(r.annual) || 0) + (Number(r.sick) || 0) + (Number(r.prev) || 0))
+                    ) || 0;
+
+                    addAbsenceEntry(
+                        r.empCode || r.employeeCode || r.code || r.username,
+                        r.nationalId || r.natId || r.nid,
+                        r.empName || r.employeeName || r.name,
+                        rowDays
+                    );
+                });
+            }
+
+            // 2. إذا لم تكن الصفوف مضمنة داخل التبليغ، يتم الجلب من جدول leaves
+            if (absenceByCode.size === 0 && absenceByNatId.size === 0 && absenceByName.size === 0) {
+                const leavesSnap = await getDocs(collection(firestoreDb, "leaves"));
+                const notifRepNum = String(notif?.reportNumber || "").trim();
+
+                leavesSnap.forEach(docSnap => {
+                    const l = docSnap.data() || {};
+                    const docRepNum = String(l.reportNumber || l.reportCode || "").trim();
+                    const sameReportNum = notifRepNum && docRepNum && (notifRepNum === docRepNum);
+
+                    const lStart = parseDateSafe(l.fromDate || l.startDate || l.dateFrom || "");
+                    const lEnd = parseDateSafe(l.toDate || l.endDate || l.dateTo || l.fromDate || l.startDate || "");
+                    let inRange = true;
+
+                    if (!sameReportNum && fromDt && toDt && lStart && lEnd) {
+                        inRange = (lStart <= toDt) && (lEnd >= fromDt);
+                    } else if (!sameReportNum && fromDt && lStart) {
+                        inRange = lStart >= fromDt;
+                    } else if (!sameReportNum && toDt && lStart) {
+                        inRange = lStart <= toDt;
+                    }
+
+                    if (sameReportNum || inRange) {
+                        const days = Number(l.days ?? l.daysCount ?? l.totalDays ?? l.total ?? 0) || 0;
+                        addAbsenceEntry(
+                            l.empCode || l.employeeCode || l.code || l.username || l.userId || l.uid,
+                            l.nationalId || l.natId || l.nid || l.idNumber,
+                            l.employeeName || l.empName || l.userName || l.fullName || l.name,
+                            days
+                        );
+                    }
+                });
+            }
         } else {
             uploadedAbsenceMap.forEach((days, code) => {
                 absenceByCode.set(code, days);
@@ -3276,14 +3320,14 @@
         const computed = activeEmps.map(emp => {
             const c1 = normalizeArabic(emp.employeeCode);
             const c2 = normalizeArabic(emp.username);
-            const nid = normalizeArabic(emp.nationalId);
+            const nid = String(emp.nationalId || "").replace(/\s+/g, "").trim();
             const nm = normalizeArabic(emp.name);
 
             const rawAbsence =
-                absenceByCode.get(c1) ??
-                absenceByCode.get(c2) ??
-                absenceByNatId.get(nid) ??
-                absenceByName.get(nm) ??
+                (c1 && absenceByCode.get(c1)) ||
+                (c2 && absenceByCode.get(c2)) ||
+                (nid && absenceByNatId.get(nid)) ||
+                (nm && absenceByName.get(nm)) ||
                 0;
 
             const pensionInfo = getPensionAdjustedDays(emp, totalDays, refDate);
@@ -5039,42 +5083,25 @@
     };
 
     window.handleFieldKeydown = function(ev, key) {
-        if (isCurrentEmployeeLocked()) {
-            ev.preventDefault();
-            return;
-        }
         if (ev.key === "Enter") {
             ev.preventDefault();
             window.commitFieldEdit(key);
         } else if (ev.key === "Escape") {
             ev.preventDefault();
-            draftEmployeeValues[key] = activeEmployeeRecord ? (activeEmployeeRecord[key] ?? "") : "";
+            draftEmployeeValues[key] = activeEmployeeRecord[key] ?? "";
             draftEmployeeValues.__editingKey = null;
             refreshEmployeeHeaderSummary();
             renderEmployeeFieldsGrid();
         }
     };
 
-    function parseNumericIfNeeded(key, rawVal) {
-        const numericKeys = new Set([
-            "basicSalary", "functionalWage", "grossWage", "housingAllowance",
-            "feloniesCount", "revenueFeloniesCount", "cashAllowanceValue"
-        ]);
-        if (!numericKeys.has(key)) return String(rawVal ?? "").trim();
-        const trimmed = String(rawVal ?? "").trim();
-        if (trimmed === "") return 0;
-        const num = Number(trimmed);
-        return isNaN(num) ? trimmed : num;
-    }
-
     window.saveSelectedEmployeeEdits = async function() {
         if (!activeEmployeeRecord) return;
-
         if (isCurrentEmployeeLocked()) {
             const feedbackEl = document.getElementById("empSaveFeedback");
             if (feedbackEl) {
                 feedbackEl.style.color = "#b91c1c";
-                feedbackEl.innerText = "هذا الموظف غير نشط ولا يُسمح بتعديل بياناته.";
+                feedbackEl.innerText = "هذا الموظف غير نشط ولا يمكن حفظ تعديلات له.";
             }
             return;
         }
@@ -5096,89 +5123,68 @@
         }
 
         try {
-            const cleanedData = {};
+            const updates = {};
             EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
-                cleanedData[f.key] = parseNumericIfNeeded(f.key, draftEmployeeValues[f.key]);
+                const rawVal = draftEmployeeValues[f.key];
+                if (f.type === "number") {
+                    const strVal = String(rawVal ?? "").trim();
+                    updates[f.key] = strVal === "" ? 0 : (isNaN(Number(strVal)) ? strVal : Number(strVal));
+                } else {
+                    updates[f.key] = String(rawVal ?? "").trim();
+                }
             });
 
-            const cleanNid = String(cleanedData.nationalId || activeEmployeeRecord.nationalId || "").replace(/\s+/g, "").trim();
-            const cleanCode = String(cleanedData.employeeCode || activeEmployeeRecord.employeeCode || activeEmployeeRecord.username || "").trim();
-            const cleanName = String(cleanedData.name || "").trim();
-            const cleanRetirementDate = normalizeDateValueForSheet(cleanedData.retirementDate || "");
+            const cleanNatId = String(updates.nationalId || "").replace(/\s+/g, "").trim();
+            const cleanCode = String(updates.employeeCode || "").trim();
+            const entDocId = (/^\d{14}$/.test(cleanNatId))
+                ? cleanNatId
+                : (cleanCode || activeEmployeeRecord.docId || `emp_${Date.now()}`);
 
-            if (!cleanName && !cleanCode && !cleanNid) {
-                throw new Error("الرجاء إدخال اسم الموظف أو الكود أو الرقم القومي قبل الحفظ.");
-            }
+            updates.nationalId = cleanNatId;
+            updates.employeeCode = cleanCode;
+            updates.updatedAt = serverTimestamp();
 
-            const targetDocId = (/^\d{14}$/.test(cleanNid))
-                ? cleanNid
-                : (activeEmployeeRecord.docId || cleanCode || `emp_${Date.now()}`);
+            await setDoc(doc(firestoreDb, "entitlements_employees", entDocId), updates, { merge: true });
 
-            const entitlementPayload = {
-                ...cleanedData,
-                nationalId: cleanNid,
-                employeeCode: cleanCode,
-                retirementDate: cleanRetirementDate,
-                pensionDate: cleanRetirementDate,
-                updatedAt: serverTimestamp(),
-                updatedBy: authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "إدارة الاستحقاقات والمزايا"
-            };
-
-            await setDoc(doc(firestoreDb, "entitlements_employees", targetDocId), entitlementPayload, { merge: true });
-
-            if (activeEmployeeRecord.docId) {
-                const userUpdatePayload = {
-                    name: cleanName || activeEmployeeRecord.name,
-                    nationalId: cleanNid || activeEmployeeRecord.nationalId,
-                    department: cleanedData.department ?? activeEmployeeRecord.department,
-                    jobCategory: cleanedData.jobCategory ?? activeEmployeeRecord.jobCategory,
-                    pensionDate: cleanRetirementDate,
-                    retirementDate: cleanRetirementDate,
+            if (!activeEmployeeRecord.isNewEmployee && activeEmployeeRecord.docId) {
+                await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), {
+                    name: updates.name,
+                    nationalId: cleanNatId,
+                    department: updates.department,
+                    jobCategory: updates.jobCategory,
+                    retirementDate: updates.retirementDate,
+                    birthDate: updates.birthDate,
                     updatedAt: serverTimestamp()
-                };
-                await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), userUpdatePayload, { merge: true });
+                }, { merge: true });
             }
 
-            const updatedLocal = {
-                ...activeEmployeeRecord,
-                ...cleanedData,
-                nationalId: cleanNid,
-                employeeCode: cleanCode,
-                retirementDate: cleanRetirementDate,
-                pensionDate: cleanRetirementDate,
+            Object.assign(activeEmployeeRecord, updates, {
+                isNewEmployee: false,
                 hasEntitlementRecord: true,
-                isNewEmployee: false
-            };
+                pensionDate: updates.retirementDate,
+                docId: activeEmployeeRecord.docId || entDocId
+            });
 
-            const existingIdx = cachedEmployees.findIndex(item =>
-                (activeEmployeeRecord.docId && item.docId === activeEmployeeRecord.docId) ||
-                (cleanNid && item.nationalId === cleanNid)
-            );
-            if (existingIdx >= 0) {
-                cachedEmployees[existingIdx] = updatedLocal;
-            } else {
-                cachedEmployees.push(updatedLocal);
+            if (!cachedEmployees.includes(activeEmployeeRecord)) {
+                cachedEmployees.unshift(activeEmployeeRecord);
             }
-
-            activeEmployeeRecord = updatedLocal;
-            renderEmployeeFieldsGrid();
-            refreshEmployeeHeaderSummary();
 
             if (feedbackEl) {
                 feedbackEl.style.color = "#15803d";
-                feedbackEl.innerText = "تم حفظ التعديلات بنجاح في قاعدة البيانات.";
+                feedbackEl.innerText = "تم حفظ التعديلات بنجاح.";
             }
+            refreshEmployeeHeaderSummary();
+            renderEmployeeFieldsGrid();
         } catch (err) {
-            console.error("Error saving employee edits:", err);
+            console.error("Save employee edits failed:", err);
             if (feedbackEl) {
                 feedbackEl.style.color = "#dc2626";
-                feedbackEl.innerText = err.message || "حدث خطأ أثناء حفظ التعديلات.";
+                feedbackEl.innerText = "حدث خطأ أثناء الحفظ في قاعدة البيانات.";
             }
         } finally {
             if (saveBtn) saveBtn.disabled = false;
         }
     };
 </script>
-
 </body>
 </html>
