@@ -2835,6 +2835,23 @@
         return (startA <= endB) && (endA >= startB);
     }
 
+    function getArabicMonthYearLabel(dateStr) {
+        if (!dateStr) return "";
+        const parts = String(dateStr).split("-");
+        let dt = null;
+        if (parts.length === 3) {
+            dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        } else {
+            dt = new Date(dateStr);
+        }
+        if (!dt || isNaN(dt.getTime())) return "";
+        const months = [
+            "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+            "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+        ];
+        return `${months[dt.getMonth()]}${String(dt.getFullYear()).slice(-2)}`;
+    }
+
     function sendSummaryToEntitlements() {
         if (loggedInRole !== "hr_specialist") {
             showCustomAlert("غير مسموح", "هذا الإجراء مخصص للموظف المختص فقط.");
@@ -2905,6 +2922,8 @@
 
                 let reportId = "ENT-LR-" + Math.floor(100000 + Math.random() * 900000);
                 let isResubmissionAfterRejection = Boolean(rejectedReportToResubmit);
+                let periodDisplayText = `من ${formatDateToAr(sDate)} إلى ${formatDateToAr(eDate)}`;
+                let monthYearLabel = getArabicMonthYearLabel(sDate) || getArabicMonthYearLabel(eDate);
 
                 let reportDoc = {
                     reportId: reportId,
@@ -2916,6 +2935,8 @@
                     requestCategory: categoryLabel,
                     periodStart: sDate,
                     periodEnd: eDate,
+                    periodDisplay: periodDisplayText,
+                    reportMonthLabel: monthYearLabel,
                     employeesCount: payloadData.rows.length,
                     rows: payloadData.rows,
                     totals: payloadData.totals,
@@ -2941,7 +2962,7 @@
                         `تم إرسال التقرير التجميعي رقم (<b>${reportId}</b>) إلى إدارة الاستحقاقات والمزايا.<br>
                         <b>المختص:</b> ${reportDoc.specialistName}<br>
                         <b>الفئة:</b> ${reportDoc.requestCategory}<br>
-                        <b>الفترة:</b> من ${formatDateToAr(sDate)} إلى ${formatDateToAr(eDate)}${resubmitNote}`
+                        <b>الفترة:</b> ${periodDisplayText} (${monthYearLabel})${resubmitNote}`
                     );
                 });
             })
