@@ -216,35 +216,8 @@
         .notif-btn-open:hover:not(:disabled) { background: #1e40af; }
         .notif-btn-accept { background: #15803d; color: #ffffff; }
         .notif-btn-accept:hover:not(:disabled) { background: #166534; }
-        .notif-btn-archive { background: #0f766e; color: #ffffff; }
-        .notif-btn-archive:hover:not(:disabled) { background: #115e59; }
-        .notif-btn-restore { background: #1d4ed8; color: #ffffff; }
-        .notif-btn-restore:hover:not(:disabled) { background: #1e40af; }
-        .notif-btn-home-show { background: #b45309; color: #ffffff; }
-        .notif-btn-home-show:hover:not(:disabled) { background: #92400e; }
         .notif-btn-reject { background: #dc2626; color: #ffffff; }
         .notif-btn-reject:hover:not(:disabled) { background: #b91c1c; }
-
-        .page-pinned-reports-box {
-            background: #fffbeb;
-            border: 1.5px solid #f59e0b;
-            border-right: 5px solid #b45309;
-            border-radius: 12px;
-            padding: 12px 14px;
-            margin-bottom: 14px;
-        }
-        .pinned-report-strip {
-            background: #ffffff;
-            border: 1px solid #fde68a;
-            border-radius: 9px;
-            padding: 9px 12px;
-            margin-top: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
 
         .back-home-btn {
             background: rgba(255, 255, 255, 0.1); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2);
@@ -732,17 +705,6 @@
         }
         .report-official-banner div span { color: #64748b; font-weight: 700; }
         .report-official-banner div strong { color: #0f172a; font-weight: 900; }
-
-        .report-title-subbox {
-            text-align: center;
-            background: #f1f5f9;
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            padding: 10px 14px;
-            margin-bottom: 14px;
-        }
-        .report-title-main { font-size: 15.5px; font-weight: 900; color: #0f172a; margin-bottom: 4px; }
-        .report-title-subline { font-size: 12.5px; color: #0f172a; font-weight: 900; }
 
         .leaves-summary-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
         .leaves-summary-table th { background: #e2e8f0; color: #0f172a; padding: 10px 9px; text-align: center; font-weight: 900; border: 1px solid #94a3b8; white-space: nowrap; }
@@ -1287,7 +1249,7 @@
             <div class="notif-viewer-head">
                 <div>
                     <div style="font-size:15.5px;font-weight:900;"><i class="fas fa-archive" style="color:#fbbf24;"></i> أرشيف التبليغات</div>
-                    <div style="font-size:11.5px;color:#cbd5e1;">التبليغات المؤرشفة لدى إدارة الاستحقاقات والمزايا مع إمكانية إظهارها في الصفحة الرئيسية للاستمارة الحالية</div>
+                    <div style="font-size:11.5px;color:#cbd5e1;">التبليغات المعتمدة لدى إدارة الاستحقاقات والمزايا</div>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
                     <button type="button" class="act-btn btn-ex" onclick="window.refreshArchivedNotifications()">
@@ -1449,7 +1411,6 @@
 
                     <h3><i class="fas fa-file-alt" style="color:#c59b27;"></i> <span id="selectedFormTitle">استمارة بدل غذاء</span></h3>
 
-                    <div id="currentPagePinnedReportsArea"></div>
                     <div id="form132DynamicEngineArea"></div>
                 </div>
 
@@ -2440,10 +2401,8 @@
     let activeEmployeeRecord = null;
     let draftEmployeeValues = {};
 
-    // حالة منفصلة تماماً لكل استمارة 132 (تشمل التبليغات المظهورة في الصفحة الرئيسية لتلك الاستمارة فقط)
     const form132StateByForm = new Map();
     let currentForm132Rows = [];
-    let currentForm132PinnedReports = [];
     let form132TableSearchQuery = "";
     let currentForm132Meta = {
         formTitle: "استمارة بدل غذاء",
@@ -2729,7 +2688,6 @@
         form132StateByForm.set(key, {
             formTitle: formTitle || activeForm132Title,
             rows: currentForm132Rows.map(r => ({ ...r })),
-            pinnedReports: currentForm132PinnedReports.map(p => ({ ...p })),
             searchQuery: form132TableSearchQuery,
             recordTitle: currentForm132Meta.recordTitle || ""
         });
@@ -2740,7 +2698,6 @@
         const st = form132StateByForm.get(key);
         if (st) {
             currentForm132Rows = Array.isArray(st.rows) ? st.rows.map(r => ({ ...r })) : [];
-            currentForm132PinnedReports = Array.isArray(st.pinnedReports) ? st.pinnedReports.map(p => ({ ...p })) : [];
             form132TableSearchQuery = st.searchQuery || "";
             currentForm132Meta = {
                 formTitle: formTitle || activeForm132Title,
@@ -2749,7 +2706,6 @@
             };
         } else {
             currentForm132Rows = [];
-            currentForm132PinnedReports = [];
             form132TableSearchQuery = "";
             currentForm132Meta = {
                 formTitle: formTitle || activeForm132Title,
@@ -2758,187 +2714,6 @@
             };
         }
     }
-
-    function renderCurrentPagePinnedReports() {
-        const box = document.getElementById("currentPagePinnedReportsArea");
-        if (!box) return;
-
-        if (!currentForm132PinnedReports || currentForm132PinnedReports.length === 0) {
-            box.innerHTML = "";
-            return;
-        }
-
-        const itemsHtml = currentForm132PinnedReports.map((rep, idx) => `
-            <div class="pinned-report-strip">
-                <div>
-                    <strong style="color:#0f172a; font-size:12.5px;">${escapeHtmlCell(rep.title || "تقرير تجميعي لبيانات الإجازات")}</strong>
-                    <span style="color:#475569; font-size:11.5px;"> | الأخصائي: ${escapeHtmlCell(rep.specialist || "-")} | الفئة: ${escapeHtmlCell(rep.specialty || "-")} | الفترة: ${escapeHtmlCell(rep.periodText || "-")}</span>
-                </div>
-                <div style="display:flex; gap:6px;">
-                    <button type="button" class="notif-action-btn notif-btn-open" onclick="openPinnedReportInViewer(${idx})">
-                        <i class="fas fa-eye"></i> معاينة التقرير
-                    </button>
-                    <button type="button" class="notif-action-btn notif-btn-reject" onclick="removePinnedReportFromCurrentPage(${idx})">
-                        <i class="fas fa-times"></i> إخفاء من هذه الصفحة
-                    </button>
-                </div>
-            </div>
-        `).join("");
-
-        box.innerHTML = `
-            <div class="page-pinned-reports-box">
-                <div style="font-size:12.5px; font-weight:900; color:#92400e;">
-                    <i class="fas fa-thumbtack"></i> التبليغات المؤرشفة المظهورة في (${escapeHtmlCell(activeForm132Title)}) فقط:
-                </div>
-                ${itemsHtml}
-            </div>
-        `;
-    }
-
-    window.showArchivedReportInCurrentHomePage = function(archiveIndex, btnEl) {
-        const item = cachedArchivedNotifications[archiveIndex];
-        if (!item) return;
-        const d = item.data || {};
-        const targetFormTitle = activeForm132Title;
-        const targetFormKey = normalizeArabic(targetFormTitle);
-
-        const existingSt = form132StateByForm.get(targetFormKey) || {
-            formTitle: targetFormTitle,
-            rows: [],
-            pinnedReports: [],
-            searchQuery: "",
-            recordTitle: ""
-        };
-
-        const alreadyShown = existingSt.pinnedReports.some(p => p.id === item.id);
-        if (!alreadyShown) {
-            const periodInfo = extractReportPeriodFromDoc(d);
-            existingSt.pinnedReports.push({
-                id: item.id,
-                title: d.title || "تقرير تجميعي لبيانات الإجازات",
-                specialist: extractSpecialistLabel(d),
-                specialty: extractSpecialtyFromDoc(d),
-                periodText: periodInfo.displayText,
-                rawData: d
-            });
-            form132StateByForm.set(targetFormKey, existingSt);
-        }
-
-        if (normalizeArabic(activeForm132Title) === targetFormKey) {
-            currentForm132PinnedReports = existingSt.pinnedReports.map(p => ({ ...p }));
-            renderCurrentPagePinnedReports();
-        }
-
-        closeNotificationsArchiveModal();
-        document.getElementById("inputEditsWorkspace")?.classList.add("hidden");
-        document.getElementById("selectedFormWorkspace")?.classList.remove("hidden");
-    };
-
-    window.removePinnedReportFromCurrentPage = function(idx) {
-        currentForm132PinnedReports.splice(idx, 1);
-        syncForm132State(activeForm132Title);
-        renderCurrentPagePinnedReports();
-    };
-
-    window.openPinnedReportInViewer = function(idx) {
-        const pinned = currentForm132PinnedReports[idx];
-        if (!pinned || !pinned.rawData) return;
-        const d = pinned.rawData;
-
-        const title = d.title || "تقرير تجميعي لبيانات الإجازات";
-        const specialist = extractSpecialistLabel(d);
-        const specialty = extractSpecialtyFromDoc(d);
-        const periodInfo = extractReportPeriodFromDoc(d);
-        const sentAtText = formatSentDate(d);
-        const refDate = parseDateSafe(periodInfo.fromDate) || parseDateSafe(d.sentAt || d.createdAt) || new Date();
-        const monthYearLabel = formatArabicMonthYear(refDate);
-
-        currentViewerMetaInfo = {
-            title,
-            specialist,
-            specialty,
-            fromDate: periodInfo.fromDate || "-",
-            toDate: periodInfo.toDate || "-",
-            periodDisplay: periodInfo.displayText,
-            monthYearLabel,
-            sentAtText,
-            reviewerName: authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "مدخل / مراجع استحقاقات"
-        };
-
-        let summaryRows = [];
-        if (Array.isArray(d.summaryRows) && d.summaryRows.length > 0) summaryRows = d.summaryRows;
-        else if (Array.isArray(d.rows) && d.rows.length > 0) summaryRows = d.rows;
-        else if (Array.isArray(d.leaves) && d.leaves.length > 0) summaryRows = d.leaves;
-        else if (Array.isArray(d.dataRows) && d.dataRows.length > 0) summaryRows = d.dataRows;
-        else if (Array.isArray(d.employees) && d.employees.length > 0) summaryRows = d.employees;
-
-        currentViewerSummaryRows = summaryRows;
-        document.getElementById("notifViewerTitle").innerText = title;
-        document.getElementById("notifViewerMeta").innerText = `الأخصائي: ${specialist} | الفئة: ${specialty} | الفترة: ${periodInfo.displayText}`;
-
-        const totals = summaryRows.reduce((acc, r) => {
-            acc.casual += Number(r.casual) || 0;
-            acc.annual += Number(r.annual) || 0;
-            acc.sick += Number(r.sick) || 0;
-            acc.prev += Number(r.prev) || 0;
-            acc.total += Number(r.total) || 0;
-            return acc;
-        }, { casual: 0, annual: 0, sick: 0, prev: 0, total: 0 });
-
-        const rowsHtml = summaryRows.map((r, i) => `
-            <tr>
-                <td>${i + 1}</td>
-                <td class="align-right">${escapeHtmlCell(r.empName || r.employeeName || r.name || "-")}</td>
-                <td>${escapeHtmlCell(r.nationalId || r.natId || r.nid || "-")}</td>
-                <td>${escapeHtmlCell(r.casual ?? 0)}</td>
-                <td>${escapeHtmlCell(r.annual ?? 0)}</td>
-                <td>${escapeHtmlCell(r.sick ?? 0)}</td>
-                <td>${escapeHtmlCell(r.sick259 || "لا")}</td>
-                <td>${escapeHtmlCell(r.prev ?? 0)}</td>
-                <td>${escapeHtmlCell(r.total ?? 0)}</td>
-            </tr>
-        `).join("");
-
-        document.getElementById("notifViewerBody").innerHTML = `
-            <div class="report-official-banner">
-                <div><span>الجهة المرسلة:</span> <strong>إدارة الإجازات</strong></div>
-                <div><span>الأخصائي المرسل:</span> <strong>${escapeHtmlCell(specialist)}</strong></div>
-                <div><span>الفئة الوظيفية:</span> <strong>${escapeHtmlCell(specialty)}</strong></div>
-                <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(sentAtText)}</strong></div>
-                <div><span>الفترة:</span> <strong>${escapeHtmlCell(periodInfo.displayText)}</strong></div>
-            </div>
-            <div class="data-table-wrapper">
-                <table class="leaves-summary-table">
-                    <thead>
-                        <tr>
-                            <th>م</th>
-                            <th>اسم الموظف</th>
-                            <th>الرقم القومي</th>
-                            <th>إجازة عارضة</th>
-                            <th>إجازة اعتيادية</th>
-                            <th>إجازة مرضية</th>
-                            <th>مرضية 259</th>
-                            <th>سنوات سابقة</th>
-                            <th>المجموع</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml || `<tr><td colspan="9">لا توجد تفاصيل إجازات مسجلة.</td></tr>`}
-                        <tr class="grand-total-row">
-                            <td colspan="3">الإجمالي العام</td>
-                            <td>${totals.casual}</td>
-                            <td>${totals.annual}</td>
-                            <td>${totals.sick}</td>
-                            <td>لا</td>
-                            <td>${totals.prev}</td>
-                            <td>${totals.total}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        `;
-        document.getElementById("notifViewerModal").classList.remove("hidden");
-    };
 
     function getFilteredAndGroupedRows() {
         const q = normalizeArabic(form132TableSearchQuery);
@@ -4061,7 +3836,6 @@
     window.initForm132Workspace = async function(formTitle) {
         activeForm132Title = formTitle || activeForm132Title;
         loadForm132State(activeForm132Title);
-        renderCurrentPagePinnedReports();
 
         const engineArea = document.getElementById("form132DynamicEngineArea");
         if (!engineArea) return;
@@ -4643,6 +4417,10 @@
         return nameVal || codeVal || "غير محدد";
     }
 
+    function extractApproverLabel(d) {
+        return d.reviewedBy || d.approvedBy || d.acceptedBy || d.archivedBy || "-";
+    }
+
     function extractSpecialtyFromDoc(d) {
         const raw = String(
             d.specialty || d.functionalCategory || d.jobCategory || d.empCategory ||
@@ -4680,6 +4458,7 @@
         return { label: "PDF", cls: "pdf" };
     }
 
+    // التبليغات الواردة: قبول ورفض فقط (وعند القبول يتم أرشفته في أرشيف التبليغات)
     function renderNotificationsUI() {
         const countBadge = document.getElementById("leavesNotifCount");
         const listEl = document.getElementById("leavesNotifList");
@@ -4704,11 +4483,6 @@
             const fmt = detectNotificationFormat(d);
             const status = d.status || "pending";
 
-            let statusText = "قيد المراجعة";
-            let statusColor = "#b45309";
-            if (status === "accepted") { statusText = "تم القبول"; statusColor = "#15803d"; }
-            else if (status === "rejected") { statusText = "مرفوض"; statusColor = "#b91c1c"; }
-
             return `
                 <div class="notif-item-card" id="notif-card-${origIdx}">
                     <div class="notif-item-top">
@@ -4716,21 +4490,14 @@
                         <span class="notif-format-tag ${fmt.cls}">${fmt.label}</span>
                     </div>
                     <div class="notif-meta-grid">
-                        <div><span>الأخصائي المرسل:</span> <strong>${escapeHtmlCell(specialist)}</strong></div>
+                        <div><span>المرسل من إدارة الإجازات:</span> <strong>${escapeHtmlCell(specialist)}</strong></div>
                         <div><span>الفئة الوظيفية:</span> <strong>${escapeHtmlCell(specialty)}</strong></div>
                         <div><span>الفترة:</span> <strong>${escapeHtmlCell(periodInfo.displayText)}</strong></div>
                         <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(sentAtText)}</strong></div>
-                        <div><span>الحالة:</span> <strong style="color:${statusColor};">${escapeHtmlCell(statusText)}</strong></div>
                     </div>
                     <div class="notif-actions-row">
-                        <button type="button" class="notif-action-btn notif-btn-open" onclick="openNotificationDetails(${origIdx})">
-                            <i class="fas fa-folder-open"></i> فتح التقرير
-                        </button>
-                        <button type="button" class="notif-action-btn notif-btn-accept" ${status === "accepted" ? "disabled" : ""} onclick="acceptNotification(${origIdx}, this)">
+                        <button type="button" class="notif-action-btn notif-btn-accept" onclick="acceptNotification(${origIdx}, this)">
                             <i class="fas fa-check"></i> قبول
-                        </button>
-                        <button type="button" class="notif-action-btn notif-btn-archive" onclick="archiveNotification(${origIdx}, this)">
-                            <i class="fas fa-archive"></i> أرشفة
                         </button>
                         <button type="button" class="notif-action-btn notif-btn-reject" ${status === "rejected" ? "disabled" : ""} onclick="openRejectReasonModal(${origIdx}, this)">
                             <i class="fas fa-times"></i> رفض
@@ -4741,6 +4508,7 @@
         }).join("");
     }
 
+    // أرشيف التبليغات: يعرض اسم التقرير + مين اللي بعته من إدارة الإجازات + مين اللي اعتمده من الاستحقاقات
     function renderArchivedNotificationsUI() {
         const bodyEl = document.getElementById("notificationsArchiveBody");
         if (!bodyEl) return;
@@ -4753,37 +4521,27 @@
         bodyEl.innerHTML = cachedArchivedNotifications.map((item, idx) => {
             const d = item.data || {};
             const title = d.title || "تقرير تجميعي لبيانات الإجازات";
-            const specialist = extractSpecialistLabel(d);
+            const senderFromLeaves = extractSpecialistLabel(d);
+            const approvedByBenefits = extractApproverLabel(d);
             const specialty = extractSpecialtyFromDoc(d);
             const periodInfo = extractReportPeriodFromDoc(d);
-            const sentAtText = formatSentDate(d);
             const fmt = detectNotificationFormat(d);
 
             return `
                 <div class="notif-item-card" id="archived-notif-card-${idx}">
                     <div class="notif-item-top">
-                        <div style="font-size:13px;font-weight:900;color:#0f172a;line-height:1.35;">${escapeHtmlCell(title)}</div>
+                        <div style="font-size:13.5px;font-weight:900;color:#0f172a;line-height:1.35;">${escapeHtmlCell(title)}</div>
                         <span class="notif-format-tag ${fmt.cls}">${fmt.label}</span>
                     </div>
                     <div class="notif-meta-grid">
-                        <div><span>الأخصائي المرسل:</span> <strong>${escapeHtmlCell(specialist)}</strong></div>
+                        <div><span>المرسل (إدارة الإجازات):</span> <strong>${escapeHtmlCell(senderFromLeaves)}</strong></div>
+                        <div><span>المعتمد (إدارة الاستحقاقات):</span> <strong style="color:#15803d;">${escapeHtmlCell(approvedByBenefits)}</strong></div>
                         <div><span>الفئة الوظيفية:</span> <strong>${escapeHtmlCell(specialty)}</strong></div>
                         <div><span>الفترة:</span> <strong>${escapeHtmlCell(periodInfo.displayText)}</strong></div>
-                        <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(sentAtText)}</strong></div>
-                        <div><span>الحالة:</span> <strong style="color:#0f766e;">مؤرشف</strong></div>
                     </div>
                     <div class="notif-actions-row">
-                        <button type="button" class="notif-action-btn notif-btn-home-show" onclick="showArchivedReportInCurrentHomePage(${idx}, this)">
-                            <i class="fas fa-home"></i> إظهار في الصفحة الرئيسية
-                        </button>
                         <button type="button" class="notif-action-btn notif-btn-open" onclick="openArchivedNotificationDetails(${idx})">
                             <i class="fas fa-folder-open"></i> فتح التقرير
-                        </button>
-                        <button type="button" class="notif-action-btn notif-btn-restore" onclick="restoreArchivedNotification(${idx}, this)">
-                            <i class="fas fa-undo"></i> استعادة للتبليغات
-                        </button>
-                        <button type="button" class="notif-action-btn notif-btn-reject" onclick="deleteArchivedNotificationPermanent(${idx}, this)">
-                            <i class="fas fa-trash-alt"></i> حذف نهائي
                         </button>
                     </div>
                 </div>
@@ -4816,6 +4574,7 @@
     function openReportModalFromData(d, isArchived = false) {
         const title = d.title || "تقرير تجميعي لبيانات الإجازات";
         const specialist = extractSpecialistLabel(d);
+        const approvedBy = extractApproverLabel(d);
         const specialty = extractSpecialtyFromDoc(d);
         const periodInfo = extractReportPeriodFromDoc(d);
         const sentAtText = formatSentDate(d);
@@ -4831,7 +4590,7 @@
             periodDisplay: periodInfo.displayText,
             monthYearLabel,
             sentAtText,
-            reviewerName: authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "مدخل / مراجع استحقاقات"
+            reviewerName: approvedBy !== "-" ? approvedBy : (authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "مدخل / مراجع استحقاقات")
         };
 
         let summaryRows = [];
@@ -4843,7 +4602,7 @@
 
         currentViewerSummaryRows = summaryRows;
         document.getElementById("notifViewerTitle").innerText = title;
-        document.getElementById("notifViewerMeta").innerText = `الأخصائي: ${specialist} | الفئة: ${specialty} | الفترة: ${periodInfo.displayText}`;
+        document.getElementById("notifViewerMeta").innerText = `إدارة الإجازات: ${specialist} | اعتماد الاستحقاقات: ${approvedBy} | الفترة: ${periodInfo.displayText}`;
 
         const totals = summaryRows.reduce((acc, r) => {
             acc.casual += Number(r.casual) || 0;
@@ -4870,8 +4629,8 @@
 
         document.getElementById("notifViewerBody").innerHTML = `
             <div class="report-official-banner">
-                <div><span>الجهة المرسلة:</span> <strong>إدارة الإجازات</strong></div>
-                <div><span>الأخصائي المرسل:</span> <strong>${escapeHtmlCell(specialist)}</strong></div>
+                <div><span>المرسل (إدارة الإجازات):</span> <strong>${escapeHtmlCell(specialist)}</strong></div>
+                <div><span>المعتمد (إدارة الاستحقاقات):</span> <strong>${escapeHtmlCell(approvedBy)}</strong></div>
                 <div><span>الفئة الوظيفية:</span> <strong>${escapeHtmlCell(specialty)}</strong></div>
                 <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(sentAtText)}</strong></div>
                 <div><span>الفترة:</span> <strong>${escapeHtmlCell(periodInfo.displayText)}</strong></div>
@@ -4907,307 +4666,237 @@
                 </table>
             </div>
         `;
+
         document.getElementById("notifViewerModal").classList.remove("hidden");
     }
 
-    window.openNotificationDetails = function(index) {
-        const item = cachedNotifications[index];
-        if (!item) return;
-        openReportModalFromData(item.data || {}, false);
+    window.openArchivedNotificationDetails = function(idx) {
+        const item = cachedArchivedNotifications[idx];
+        if (!item || !item.data) return;
+        openReportModalFromData(item.data, true);
     };
 
-    window.openArchivedNotificationDetails = function(index) {
-        const item = cachedArchivedNotifications[index];
-        if (!item) return;
-        openReportModalFromData(item.data || {}, true);
-    };
-
+    // عند القبول (الموافقة): يُحفظ في أرشيف التبليغات ويُحذف من التبليغات الواردة
     window.acceptNotification = async function(index, btnEl) {
+        if (!authenticatedBenefitsStaff) return;
         const item = cachedNotifications[index];
-        if (!item || !authenticatedBenefitsStaff) return;
-        if (btnEl) btnEl.disabled = true;
+        if (!item) return;
 
-        const reviewerName = authenticatedBenefitsStaff.name || authenticatedBenefitsStaff.username || "مدخل / مراجع استحقاقات";
-        const reviewerRole = authenticatedBenefitsStaff.role || "";
+        if (btnEl) btnEl.disabled = true;
+        const approverName = authenticatedBenefitsStaff.name || authenticatedBenefitsStaff.username || "مدخل / مراجع استحقاقات";
 
         try {
-            await setDoc(doc(firestoreDb, NOTIFICATIONS_COLLECTION, item.id), {
+            const payload = {
+                ...item.data,
+                sourceDocId: item.id,
                 status: "accepted",
-                reviewedBy: reviewerName,
-                reviewerRole,
+                reviewedBy: approverName,
+                approvedBy: approverName,
+                archivedAt: serverTimestamp(),
                 reviewedAt: serverTimestamp()
-            }, { merge: true });
-
-            item.data = { ...(item.data || {}), status: "accepted", reviewedBy: reviewerName };
-            renderNotificationsUI();
-        } catch (err) {
-            console.error("Error accepting notification:", err);
-            if (btnEl) btnEl.disabled = false;
-            alert("تعذر اعتماد قبول التبليغ، حاول مرة أخرى.");
-        }
-    };
-
-    window.archiveNotification = async function(index, btnEl) {
-        const item = cachedNotifications[index];
-        if (!item || !authenticatedBenefitsStaff) return;
-        if (btnEl) btnEl.disabled = true;
-
-        const reviewerName = authenticatedBenefitsStaff.name || authenticatedBenefitsStaff.username || "مدخل / مراجع استحقاقات";
-        const reviewerRole = authenticatedBenefitsStaff.role || "";
-        const sourceData = item.data || {};
-
-        try {
-            const archivePayload = {
-                ...sourceData,
-                originalNotificationId: item.id,
-                status: "archived",
-                archivedBy: reviewerName,
-                archivedRole: reviewerRole,
-                archivedAt: serverTimestamp()
             };
 
-            await setDoc(doc(firestoreDb, ARCHIVED_NOTIFICATIONS_COLLECTION, item.id), archivePayload, { merge: true });
+            await addDoc(collection(firestoreDb, ARCHIVED_NOTIFICATIONS_COLLECTION), payload);
             await deleteDoc(doc(firestoreDb, NOTIFICATIONS_COLLECTION, item.id));
 
             cachedNotifications.splice(index, 1);
-            cachedArchivedNotifications.unshift({ id: item.id, data: archivePayload });
-
             renderNotificationsUI();
-            if (!document.getElementById("notificationsArchiveModal").classList.contains("hidden")) {
-                renderArchivedNotificationsUI();
-            }
+            await fetchArchivedNotifications();
         } catch (err) {
-            console.error("Error archiving notification:", err);
+            console.error("Error accepting & archiving notification:", err);
             if (btnEl) btnEl.disabled = false;
-            alert("تعذر أرشفة التبليغ، حاول مرة أخرى.");
-        }
-    };
-
-    window.restoreArchivedNotification = async function(index, btnEl) {
-        const item = cachedArchivedNotifications[index];
-        if (!item || !authenticatedBenefitsStaff) return;
-        if (btnEl) btnEl.disabled = true;
-
-        const sourceData = item.data || {};
-        const targetId = sourceData.originalNotificationId || item.id;
-        const restoredStatus = sourceData.reviewedBy ? "accepted" : "pending";
-
-        try {
-            const restoredPayload = {
-                ...sourceData,
-                status: restoredStatus,
-                restoredAt: serverTimestamp()
-            };
-            delete restoredPayload.archivedAt;
-
-            await setDoc(doc(firestoreDb, NOTIFICATIONS_COLLECTION, targetId), restoredPayload, { merge: true });
-            await deleteDoc(doc(firestoreDb, ARCHIVED_NOTIFICATIONS_COLLECTION, item.id));
-
-            cachedArchivedNotifications.splice(index, 1);
-            cachedNotifications.unshift({ id: targetId, data: restoredPayload });
-
-            renderArchivedNotificationsUI();
-            renderNotificationsUI();
-        } catch (err) {
-            console.error("Error restoring archived notification:", err);
-            if (btnEl) btnEl.disabled = false;
-            alert("تعذر استعادة التبليغ، حاول مرة أخرى.");
-        }
-    };
-
-    window.deleteArchivedNotificationPermanent = async function(index, btnEl) {
-        const item = cachedArchivedNotifications[index];
-        if (!item) return;
-        if (btnEl) btnEl.disabled = true;
-
-        try {
-            await deleteDoc(doc(firestoreDb, ARCHIVED_NOTIFICATIONS_COLLECTION, item.id));
-            cachedArchivedNotifications.splice(index, 1);
-            renderArchivedNotificationsUI();
-        } catch (err) {
-            console.error("Error deleting archived notification:", err);
-            if (btnEl) btnEl.disabled = false;
-            alert("تعذر حذف التبليغ من الأرشيف.");
+            alert("حدث خطأ أثناء قبول وأرشفة التبليغ.");
         }
     };
 
     window.prepareRejectNotification = function(index, btnEl) {
+        if (!authenticatedBenefitsStaff) return;
         const item = cachedNotifications[index];
         if (!item) return;
+
         pendingRejectIndex = index;
         pendingRejectBtnEl = btnEl || null;
-        if (btnEl) btnEl.disabled = true;
+        if (pendingRejectBtnEl) pendingRejectBtnEl.disabled = true;
 
-        const d = item.data || {};
-        const title = d.title || "تقرير تجميعي لبيانات الإجازات";
-        const specialist = extractSpecialistLabel(d);
-        const periodInfo = extractReportPeriodFromDoc(d);
-
-        const targetEl = document.getElementById("rejectTargetTitle");
-        if (targetEl) {
-            targetEl.innerText = `${title} — الأخصائي: ${specialist} — الفترة: ${periodInfo.displayText}`;
+        const title = item.data?.title || "تقرير تجميعي لبيانات الإجازات";
+        const specialist = extractSpecialistLabel(item.data || {});
+        const targetLabel = document.getElementById("rejectTargetTitle");
+        if (targetLabel) {
+            targetLabel.innerText = `${title} — المرسل: ${specialist}`;
         }
-        const reasonInput = document.getElementById("rejectReasonInput");
-        if (reasonInput) reasonInput.value = "";
+        document.getElementById("rejectReasonInput").value = "";
         document.querySelectorAll(".reject-chip-btn").forEach(b => b.classList.remove("active"));
-
         document.getElementById("rejectReasonModal").classList.remove("hidden");
-        setTimeout(() => reasonInput && reasonInput.focus(), 50);
     };
 
     window.executeRejectNotification = async function(index, reasonText, btnEl) {
+        if (!authenticatedBenefitsStaff) return;
         const item = cachedNotifications[index];
-        if (!item || !authenticatedBenefitsStaff) return;
+        if (!item) return;
 
         const reviewerName = authenticatedBenefitsStaff.name || authenticatedBenefitsStaff.username || "مدخل / مراجع استحقاقات";
-        const reviewerRole = authenticatedBenefitsStaff.role || "";
         const finalReason = reasonText || "تم رفض التبليغ من قِبل إدارة الاستحقاقات والمزايا";
 
         try {
             await setDoc(doc(firestoreDb, NOTIFICATIONS_COLLECTION, item.id), {
                 status: "rejected",
                 rejectionReason: finalReason,
-                rejectedBy: reviewerName,
-                rejectedRole: reviewerRole,
-                rejectedAt: serverTimestamp(),
                 reviewedBy: reviewerName,
-                reviewedRole: reviewerRole,
+                rejectedBy: reviewerName,
                 reviewedAt: serverTimestamp()
             }, { merge: true });
 
-            item.data = {
-                ...(item.data || {}),
-                status: "rejected",
-                rejectionReason: finalReason,
-                rejectedBy: reviewerName
-            };
+            try {
+                await addDoc(collection(firestoreDb, "leave_notifications_responses"), {
+                    notificationId: item.id,
+                    reportTitle: item.data?.title || "تقرير تجميعي لبيانات الإجازات",
+                    targetSpecialist: item.data?.specialistCode || item.data?.senderCode || item.data?.sentBy || "",
+                    targetSpecialistName: item.data?.specialistName || item.data?.senderName || "",
+                    status: "rejected",
+                    rejectionReason: finalReason,
+                    reviewedBy: reviewerName,
+                    respondedAt: serverTimestamp()
+                });
+            } catch (respErr) {
+                console.warn("Secondary response log failed:", respErr);
+            }
+
+            cachedNotifications.splice(index, 1);
             renderNotificationsUI();
         } catch (err) {
             console.error("Error rejecting notification:", err);
             if (btnEl) btnEl.disabled = false;
-            alert("تعذر إرسال رفض التبليغ، حاول مرة أخرى.");
+            alert("حدث خطأ أثناء رفض التبليغ.");
         }
     };
 
     async function fetchLeaveNotifications() {
-        const listEl = document.getElementById("leavesNotifList");
-        if (!listEl) return;
-        listEl.innerHTML = `<div style="text-align:center;color:#64748b;font-size:12px;padding:16px;"><i class="fas fa-spinner fa-spin"></i> جاري تحميل التبليغات...</div>`;
-
         try {
             const snap = await getDocs(collection(firestoreDb, NOTIFICATIONS_COLLECTION));
             const list = [];
             snap.forEach(docSnap => {
-                list.push({ id: docSnap.id, data: docSnap.data() || {} });
+                const d = docSnap.data() || {};
+                if (d.status === "accepted" || d.status === "rejected" || d.status === "archived") return;
+                list.push({ id: docSnap.id, data: d });
             });
             cachedNotifications = list;
             renderNotificationsUI();
         } catch (err) {
             console.error("Error fetching leave notifications:", err);
-            listEl.innerHTML = `<div style="text-align:center;color:#dc2626;font-size:12px;padding:14px;">تعذر تحميل التبليغات من قاعدة البيانات.</div>`;
+            const listEl = document.getElementById("leavesNotifList");
+            if (listEl) {
+                listEl.innerHTML = `<div style="text-align:center;color:#dc2626;font-size:12px;padding:16px;">تعذر جلب التبليغات من قاعدة البيانات.</div>`;
+            }
         }
     }
 
     window.refreshLeaveNotifications = async function() {
         await fetchLeaveNotifications();
-        await fetchArchivedNotifications();
     };
 
-    function mapDocToEmployee(docId, d = {}) {
-        const ent = (d.entitlements && typeof d.entitlements === "object") ? d.entitlements : {};
-        return {
-            docId,
-            entDocId: d.entDocId || normalizeNatId(d.nationalId || ent.nationalId) || "",
-            name: d.name || d.fullName || d.displayName || d.employeeName || d.username || "-",
-            username: d.username || d.user || d.employeeCode || d.code || "",
-            role: d.role || d.userRole || d.jobRole || d.position || "",
-            password: d.password || d.pass || "",
-            status: d.status || ent.status || "",
-            nationalId: ent.nationalId || d.nationalId || d.nid || d.idNumber || "",
-            employeeCode: ent.employeeCode || d.employeeCode || d.code || d.empCode || d.username || "",
-            jobCategory: ent.jobCategory || d.jobCategory || d.category || d.department || "",
-            currentGrade: ent.currentGrade || d.currentGrade || d.grade || d.degree || "",
-            currentJobTitle: ent.currentJobTitle || d.currentJobTitle || d.jobTitle || d.title || d.role || "",
-            employmentStatus: ent.employmentStatus || d.employmentStatus || d.employmentType || d.type || "",
-            seniorManagement: ent.seniorManagement || d.seniorManagement || d.topManagement || d.management || "",
-            bonusType: ent.bonusType || d.bonusType || d.rewardType || "",
-            groubCode: ent.groubCode || d.groubCode || d.groupCode || d.group || "",
-            basicSalary: ent.basicSalary ?? d.basicSalary ?? "",
-            functionalWage: ent.functionalWage ?? d.functionalWage ?? "",
-            grossWage: ent.grossWage ?? d.grossWage ?? "",
-            housingAllowance: ent.housingAllowance ?? d.housingAllowance ?? "",
-            riskPercentage: ent.riskPercentage ?? d.riskPercentage ?? "",
-            zamrPerecent: ent.zamrPerecent ?? d.zamrPerecent ?? "",
-            feloniesCount: ent.feloniesCount ?? d.feloniesCount ?? "",
-            revenueFeloniesCount: ent.revenueFeloniesCount ?? d.revenueFeloniesCount ?? "",
-            employeeShare: ent.employeeShare ?? d.employeeShare ?? "",
-            government: ent.government ?? d.government ?? "",
-            comprehensiveInsuranceRate: ent.comprehensiveInsuranceRate ?? d.comprehensiveInsuranceRate ?? d.comprehensiveInsurance ?? "",
-            cashTicketsCount: ent.cashTicketsCount ?? d.cashTicketsCount ?? "",
-            cashAllowanceValue: ent.cashAllowanceValue ?? d.cashAllowanceValue ?? "",
-            birthDate: normalizeDateValueForSheet(ent.birthDate ?? d.birthDate ?? ""),
-            retirementDate: pickRetirementDateValue(ent, d)
-        };
-    }
-
-    function populateCustomRoleDropdown(staffList) {
+    function renderBenefitsRoleDropdown() {
         const menu = document.getElementById("customRoleSelectMenu");
         const placeholder = document.getElementById("customRolePlaceholder");
         if (!menu || !placeholder) return;
 
         menu.innerHTML = "";
-        if (!staffList || staffList.length === 0) {
-            placeholder.innerText = "لا يوجد موظفون بصلاحية استحقاقات";
+        if (!eligibleBenefitsStaff || eligibleBenefitsStaff.length === 0) {
+            placeholder.innerText = "-- لا يوجد موظفون بصلاحية استحقاقات --";
             return;
         }
+
         placeholder.innerText = "-- اختر الموظف --";
 
-        staffList.forEach((emp, idx) => {
-            const empName = emp.name || emp.username || "موظف";
-            const empRole = emp.role || "صلاحية استحقاقات";
-
+        eligibleBenefitsStaff.forEach((emp, idx) => {
             const item = document.createElement("div");
             item.className = "custom-option-item";
             item.dataset.index = String(idx);
+            const displayName = emp.name || emp.username || "موظف";
+            const roleText = emp.role || "مدخل إستحقاقات";
+
             item.innerHTML = `
-                <span class="custom-option-name">${escapeHtmlCell(empName)}</span>
-                <span class="custom-option-badge">${escapeHtmlCell(empRole)}</span>
+                <span class="custom-option-name">${escapeHtmlCell(displayName)}</span>
+                <span class="custom-option-badge">${escapeHtmlCell(roleText)}</span>
             `;
-            item.onclick = function(e) {
-                e.stopPropagation();
-                selectCustomRoleOption(idx, empName, empRole);
+
+            item.onclick = function(ev) {
+                ev.stopPropagation();
+                selectBenefitsStaffOption(idx);
             };
             menu.appendChild(item);
         });
     }
 
-    function selectCustomRoleOption(idx, empName, empRole) {
-        const hiddenInput = document.getElementById("benefitsRoleSelectedIndex");
-        const display = document.getElementById("customRoleSelectDisplay");
-        const menu = document.getElementById("customRoleSelectMenu");
-        const trigger = document.getElementById("customRoleSelectTrigger");
+    function selectBenefitsStaffOption(idx) {
+        const emp = eligibleBenefitsStaff[idx];
+        if (!emp) return;
 
-        if (hiddenInput) hiddenInput.value = String(idx);
-        if (display) {
-            display.innerHTML = `
-                <span class="custom-select-main-text">${escapeHtmlCell(empName)}</span>
-                <span class="custom-select-role-tag">${escapeHtmlCell(empRole)}</span>
+        document.getElementById("benefitsRoleSelectedIndex").value = String(idx);
+        const displayBox = document.getElementById("customRoleSelectDisplay");
+        if (displayBox) {
+            displayBox.innerHTML = `
+                <span class="custom-select-main-text">${escapeHtmlCell(emp.name || emp.username || "موظف")}</span>
+                <span class="custom-select-role-tag">${escapeHtmlCell(emp.role || "مدخل إستحقاقات")}</span>
             `;
         }
-        if (menu) {
-            menu.querySelectorAll(".custom-option-item").forEach(el => {
-                el.classList.toggle("selected", el.dataset.index === String(idx));
-            });
-            menu.classList.add("hidden");
-        }
+
+        document.querySelectorAll("#customRoleSelectMenu .custom-option-item").forEach(el => {
+            el.classList.toggle("selected", el.dataset.index === String(idx));
+        });
+
+        const menu = document.getElementById("customRoleSelectMenu");
+        const trigger = document.getElementById("customRoleSelectTrigger");
+        if (menu) menu.classList.add("hidden");
         if (trigger) trigger.classList.remove("open");
         setLoginErrorMsg("");
     }
 
-    async function fetchAllEmployeesFromFirestore(forceRefresh = false) {
-        if (isLoaded && !forceRefresh) {
-            return cachedEmployees;
+    function mapEmployeeRecord(docId, d, entData = null, entDocId = null) {
+        const ent = entData || {};
+        const pickedRetirement = pickRetirementDateValue(ent, d);
+        return {
+            docId,
+            entDocId: entDocId || normalizeNatId(ent.nationalId || d.nationalId) || null,
+            name: ent.name || d.name || d.fullName || d.employeeName || d.username || "",
+            nationalId: ent.nationalId || d.nationalId || d.nid || "",
+            employeeCode: ent.employeeCode || d.employeeCode || d.code || d.empCode || d.username || "",
+            jobCategory: ent.jobCategory || d.jobCategory || d.category || d.jobType || "",
+            currentGrade: ent.currentGrade || d.currentGrade || d.grade || d.degree || "",
+            currentJobTitle: ent.currentJobTitle || d.currentJobTitle || d.jobTitle || d.position || "",
+            employmentStatus: ent.employmentStatus || d.employmentStatus || d.appointmentType || d.contractType || "",
+            seniorManagement: ent.seniorManagement || d.seniorManagement || d.topManagement || "",
+            bonusType: ent.bonusType || d.bonusType || d.rewardType || "",
+            groubCode: ent.groubCode || d.groubCode || d.groupCode || d.group || "",
+            basicSalary: ent.basicSalary ?? d.basicSalary ?? d.basic ?? d.salary ?? "",
+            functionalWage: ent.functionalWage ?? d.functionalWage ?? d.functionalSalary ?? "",
+            grossWage: ent.grossWage ?? d.grossWage ?? d.totalSalary ?? "",
+            housingAllowance: ent.housingAllowance ?? d.housingAllowance ?? d.housing ?? "",
+            riskPercentage: ent.riskPercentage ?? d.riskPercentage ?? d.riskRate ?? d.risk ?? "",
+            zamrPerecent: ent.zamrPerecent ?? ent.zamrPercent ?? d.zamrPerecent ?? d.zamrPercent ?? "",
+            feloniesCount: ent.feloniesCount ?? d.feloniesCount ?? d.felonies ?? "",
+            revenueFeloniesCount: ent.revenueFeloniesCount ?? d.revenueFeloniesCount ?? d.revenueFelonies ?? "",
+            employeeShare: ent.employeeShare ?? d.employeeShare ?? "",
+            government: ent.government ?? d.government ?? "",
+            comprehensiveInsuranceRate: ent.comprehensiveInsuranceRate ?? d.comprehensiveInsuranceRate ?? "",
+            cashTicketsCount: ent.cashTicketsCount ?? d.cashTicketsCount ?? "",
+            cashAllowanceValue: ent.cashAllowanceValue ?? d.cashAllowanceValue ?? "",
+            birthDate: normalizeDateValueForSheet(ent.birthDate ?? d.birthDate ?? ""),
+            retirementDate: pickedRetirement,
+            username: d.username || d.user || d.employeeCode || "",
+            password: String(d.password ?? d.pass ?? ""),
+            role: d.role || "",
+            status: ent.status || d.status || ""
+        };
+    }
+
+    async function fetchAllEmployeesFromFirestore(showLoadingStatus = true) {
+        const statusEl = document.getElementById("empLoadingStatus");
+        if (showLoadingStatus && statusEl) {
+            statusEl.classList.remove("hidden");
+            statusEl.style.color = "#0056b3";
+            statusEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> جاري جلب بيانات الموظفين من قاعدة البيانات...`;
         }
+
         try {
             const [usersSnap, entSnap] = await Promise.all([
                 getDocs(collection(firestoreDb, "users")),
@@ -5216,128 +4905,193 @@
 
             const entByNatId = new Map();
             const entByCode = new Map();
-            const entList = [];
+            const allEntDocs = [];
 
             if (entSnap && !entSnap.empty) {
-                entSnap.forEach(docSnap => {
-                    const ed = docSnap.data() || {};
-                    const rec = { id: docSnap.id, ...ed };
-                    entList.push(rec);
-                    const nid = normalizeNatId(ed.nationalId || docSnap.id);
-                    if (nid) entByNatId.set(nid, rec);
-                    const code = normalizeArabic(ed.employeeCode || ed.code || ed.empCode || "");
-                    if (code) entByCode.set(code, rec);
+                entSnap.forEach(eDoc => {
+                    const eData = eDoc.data() || {};
+                    const rec = { id: eDoc.id, data: eData };
+                    allEntDocs.push(rec);
+                    const nidKey = normalizeNatId(eData.nationalId || eDoc.id);
+                    if (nidKey) entByNatId.set(nidKey, rec);
+                    const codeKey = normalizeArabic(eData.employeeCode || eData.code || "");
+                    if (codeKey) entByCode.set(codeKey, rec);
                 });
             }
 
             const list = [];
+            const roleStaff = [];
             const matchedEntIds = new Set();
 
-            usersSnap.forEach(docSnap => {
-                const ud = docSnap.data() || {};
-                const nid = normalizeNatId(ud.nationalId || ud.nid || ud.idNumber);
-                const code = normalizeArabic(ud.employeeCode || ud.code || ud.empCode || ud.username);
+            usersSnap.forEach((docSnap) => {
+                const d = docSnap.data() || {};
+                const nidKey = normalizeNatId(d.nationalId || d.nid);
+                const codeKey = normalizeArabic(d.employeeCode || d.code || d.empCode || d.username || "");
 
-                let matchedEnt = null;
-                if (nid && entByNatId.has(nid)) matchedEnt = entByNatId.get(nid);
-                else if (code && entByCode.has(code)) matchedEnt = entByCode.get(code);
-
-                if (matchedEnt) {
-                    matchedEntIds.add(matchedEnt.id);
+                let entMatch = null;
+                if (nidKey && entByNatId.has(nidKey)) {
+                    entMatch = entByNatId.get(nidKey);
+                } else if (codeKey && entByCode.has(codeKey)) {
+                    entMatch = entByCode.get(codeKey);
                 }
+                if (entMatch) matchedEntIds.add(entMatch.id);
 
-                const mergedRaw = {
-                    ...ud,
-                    ...(matchedEnt || {}),
-                    entDocId: matchedEnt ? matchedEnt.id : "",
-                    role: ud.role || ud.userRole || ud.jobRole || ud.position || (matchedEnt ? matchedEnt.role : "")
-                };
-                list.push(mapDocToEmployee(docSnap.id, mergedRaw));
+                const mapped = mapEmployeeRecord(
+                    docSnap.id,
+                    d,
+                    entMatch ? entMatch.data : null,
+                    entMatch ? entMatch.id : null
+                );
+                list.push(mapped);
+
+                if (isAllowedBenefitsRole(mapped.role)) {
+                    roleStaff.push(mapped);
+                }
             });
 
-            entList.forEach(ed => {
-                if (!matchedEntIds.has(ed.id)) {
-                    list.push(mapDocToEmployee("", { ...ed, entDocId: ed.id }));
+            allEntDocs.forEach(eRec => {
+                if (!matchedEntIds.has(eRec.id)) {
+                    const mapped = mapEmployeeRecord(null, {}, eRec.data, eRec.id);
+                    list.push(mapped);
                 }
             });
 
             cachedEmployees = list;
-            eligibleBenefitsStaff = list.filter(emp => isAllowedBenefitsRole(emp.role));
+            eligibleBenefitsStaff = roleStaff;
             isLoaded = true;
 
-            populateCustomRoleDropdown(eligibleBenefitsStaff);
-            return cachedEmployees;
+            renderBenefitsRoleDropdown();
+
+            if (showLoadingStatus && statusEl) {
+                statusEl.style.color = "#15803d";
+                statusEl.innerHTML = `<i class="fas fa-check-circle"></i> تم تحميل (${list.length}) سجل بنجاح.`;
+                setTimeout(() => { statusEl.classList.add("hidden"); }, 1800);
+            }
         } catch (err) {
-            console.error("Firestore read error:", err);
+            console.error("Firestore Error:", err);
+            if (statusEl) {
+                statusEl.classList.remove("hidden");
+                statusEl.style.color = "#dc2626";
+                statusEl.innerHTML = `<i class="fas fa-exclamation-triangle"></i> تعذر جلب البيانات من قاعدة البيانات.`;
+            }
             const placeholder = document.getElementById("customRolePlaceholder");
-            if (placeholder) placeholder.innerText = "تعذر تحميل قائمة الموظفين";
-            return [];
+            if (placeholder) placeholder.innerText = "-- تعذر تحميل الموظفين --";
         }
     }
 
-    window.ensureEmployeesLoaded = async function() {
-        await fetchAllEmployeesFromFirestore(false);
-    };
-
-    window.verifyBenefitsRoleLogin = async function(event) {
-        event.preventDefault();
+    window.verifyBenefitsRoleLogin = async function(e) {
+        e.preventDefault();
         setLoginErrorMsg("");
 
         if (!isLoaded) {
             await fetchAllEmployeesFromFirestore(false);
         }
 
-        const selectedIdxStr = document.getElementById("benefitsRoleSelectedIndex").value;
-        const enteredPass = document.getElementById("benefitsRolePassword").value.trim();
+        const idxStr = document.getElementById("benefitsRoleSelectedIndex").value;
+        const passInput = document.getElementById("benefitsRolePassword").value.trim();
+        const submitBtn = document.getElementById("benefitsRoleLoginBtn");
 
-        if (selectedIdxStr === "") {
-            setLoginErrorMsg("الرجاء اختيار الموظف أولاً.");
+        if (idxStr === "") {
+            setLoginErrorMsg("الرجاء اختيار الموظف من القائمة أولاً.");
             return;
         }
 
-        const selectedStaff = eligibleBenefitsStaff[Number(selectedIdxStr)];
-        if (!selectedStaff) {
-            setLoginErrorMsg("الموظف المختار غير متاح.");
+        const selectedEmp = eligibleBenefitsStaff[Number(idxStr)];
+        if (!selectedEmp) {
+            setLoginErrorMsg("الموظف المحدد غير موجود.");
             return;
         }
 
-        const expectedPass = String(selectedStaff.password || "").trim();
-        if (!expectedPass || enteredPass !== expectedPass) {
+        if (!isAllowedBenefitsRole(selectedEmp.role)) {
+            setLoginErrorMsg("هذا الحساب لا يملك صلاحية (مدخل إستحقاقات / مراجع استحقاقات).");
+            return;
+        }
+
+        if (!passInput || selectedEmp.password !== passInput) {
             setLoginErrorMsg("كلمة المرور غير صحيحة.");
             return;
         }
 
-        onBenefitsLoginSuccess(selectedStaff);
+        if (submitBtn) submitBtn.disabled = true;
+        onBenefitsLoginSuccess(selectedEmp);
+        if (submitBtn) submitBtn.disabled = false;
+    };
+
+    window.ensureEmployeesLoaded = async function() {
+        if (!isLoaded) {
+            await fetchAllEmployeesFromFirestore(true);
+        }
     };
 
     window.reloadFirestoreEmployees = async function() {
         await fetchAllEmployeesFromFirestore(true);
-        filterFirestoreEmployees();
+        const query = document.getElementById("empSearchInput")?.value.trim() || "";
+        if (query) {
+            window.filterFirestoreEmployees();
+        }
     };
+
+    function openNewEmployeeEditor(initialQuery = "") {
+        const detailsCard = document.getElementById("selectedEmployeeDetailsCard");
+        const feedbackEl = document.getElementById("empSaveFeedback");
+        if (feedbackEl) feedbackEl.innerText = "";
+
+        const cleanQuery = (initialQuery || "").trim();
+        const looksLikeNationalId = /^\d{10,16}$/.test(cleanQuery.replace(/\s+/g, ""));
+        const looksLikeCode = /^\d{1,9}$/.test(cleanQuery.replace(/\s+/g, ""));
+
+        activeEmployeeRecord = {
+            docId: null,
+            entDocId: null,
+            isNewEmployee: true,
+            status: "نشط",
+            name: (!looksLikeNationalId && !looksLikeCode) ? cleanQuery : "",
+            nationalId: looksLikeNationalId ? cleanQuery : "",
+            employeeCode: looksLikeCode ? cleanQuery : ""
+        };
+
+        draftEmployeeValues = { __editingKey: null };
+        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+            draftEmployeeValues[f.key] = activeEmployeeRecord[f.key] ?? "";
+        });
+
+        refreshEmployeeHeaderSummary();
+        renderEmployeeFieldsGrid();
+        if (detailsCard) detailsCard.classList.remove("hidden");
+    }
 
     window.filterFirestoreEmployees = function() {
         const inputEl = document.getElementById("empSearchInput");
         const resultsList = document.getElementById("empSearchResultsList");
         if (!inputEl || !resultsList) return;
 
-        const query = normalizeArabic(inputEl.value);
-        if (!query) {
+        const rawQuery = inputEl.value.trim();
+        const q = normalizeArabic(rawQuery);
+        if (!q) {
             resultsList.classList.add("hidden");
             resultsList.innerHTML = "";
             return;
         }
 
+        if (!isLoaded) {
+            fetchAllEmployeesFromFirestore(false).then(() => window.filterFirestoreEmployees());
+            return;
+        }
+
         const matches = cachedEmployees.filter(emp => {
-            const hay = normalizeArabic(`${emp.name} ${emp.nationalId} ${emp.employeeCode} ${emp.username}`);
-            return hay.includes(query);
+            const nameNorm = normalizeArabic(emp.name);
+            const codeNorm = normalizeArabic(emp.employeeCode);
+            const nidNorm = normalizeArabic(emp.nationalId);
+            const userNorm = normalizeArabic(emp.username);
+            return nameNorm.includes(q) || codeNorm.includes(q) || nidNorm.includes(q) || userNorm.includes(q);
         });
 
         resultsList.classList.remove("hidden");
         if (matches.length === 0) {
             resultsList.innerHTML = `
-                <li style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#fffbeb; cursor:default;">
-                    <span style="color:#92400e; font-weight:800;">لا توجد نتائج مطابقة للبحث "${escapeHtmlCell(inputEl.value.trim())}"</span>
-                    <button type="button" class="act-btn btn-ex" onclick="openNewEmployeeEditorFromSearch()">
+                <li style="justify-content:space-between; gap:10px; flex-wrap:wrap; background:#fffbeb; cursor:default;">
+                    <span style="color:#92400e; font-weight:800;">لا توجد نتائج مطابقة لـ "${escapeHtmlCell(rawQuery)}" في قاعدة البيانات.</span>
+                    <button type="button" class="act-btn btn-ex" onclick="createEmployeeFromSearch('${escapeHtmlCell(rawQuery)}')">
                         <i class="fas fa-user-plus"></i> إضافة موظف جديد
                     </button>
                 </li>
@@ -5346,124 +5100,57 @@
         }
 
         resultsList.innerHTML = matches.slice(0, 25).map((emp) => {
-            const realIdx = cachedEmployees.indexOf(emp);
+            const realIndex = cachedEmployees.indexOf(emp);
             const inactive = isInactiveEmployeeStatus(emp.status);
             const statusTag = inactive
-                ? `<span style="background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:800;margin-right:6px;">غير نشط</span>`
-                : "";
+                ? `<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;margin-right:6px;">غير نشط</span>`
+                : `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:800;margin-right:6px;">نشط</span>`;
             return `
-                <li onclick="selectEmployeeByIndex(${realIdx})">
+                <li onclick="selectEmployeeByIndex(${realIndex})">
                     <div>
-                        <strong>${escapeHtmlCell(emp.name)}</strong>
+                        <strong>${escapeHtmlCell(emp.name || "بدون اسم")}</strong>
                         ${statusTag}
-                        <span style="color:#64748b; font-size:11px;"> | كود: ${escapeHtmlCell(emp.employeeCode || "-")}</span>
+                        <span style="color:#64748b; font-size:11px;"> — كود: ${escapeHtmlCell(emp.employeeCode || "-")}</span>
                     </div>
-                    <span style="color:#0056b3; font-size:11px; font-weight:700;">${escapeHtmlCell(emp.nationalId || "-")}</span>
+                    <span style="color:#0056b3; font-size:11px; font-weight:700;">الرقم القومي: ${escapeHtmlCell(emp.nationalId || "-")}</span>
                 </li>
             `;
         }).join("");
     };
 
-    function openNewEmployeeEditor(initialQuery = "") {
-        const cleanQ = String(initialQuery || "").trim();
-        const isNumericOnly = /^\d+$/.test(cleanQ);
-        const looksLikeNationalId = isNumericOnly && cleanQ.length >= 10;
-
-        activeEmployeeRecord = {
-            docId: "",
-            entDocId: "",
-            isNewEmployee: true,
-            status: "نشط",
-            name: (!isNumericOnly && cleanQ) ? cleanQ : "",
-            nationalId: looksLikeNationalId ? cleanQ : "",
-            employeeCode: (isNumericOnly && !looksLikeNationalId) ? cleanQ : "",
-            jobCategory: "",
-            currentGrade: "",
-            currentJobTitle: "",
-            employmentStatus: "",
-            seniorManagement: "",
-            bonusType: "",
-            groubCode: "",
-            basicSalary: "",
-            functionalWage: "",
-            grossWage: "",
-            housingAllowance: "",
-            riskPercentage: "",
-            zamrPerecent: "",
-            feloniesCount: "",
-            revenueFeloniesCount: "",
-            employeeShare: "",
-            government: "",
-            comprehensiveInsuranceRate: "",
-            cashTicketsCount: "",
-            cashAllowanceValue: "",
-            birthDate: "",
-            retirementDate: ""
-        };
-
-        draftEmployeeValues = { __editingKey: null };
-        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
-            draftEmployeeValues[f.key] = activeEmployeeRecord[f.key] ?? "";
-        });
-
-        const card = document.getElementById("selectedEmployeeDetailsCard");
-        const feedbackEl = document.getElementById("empSaveFeedback");
-        if (feedbackEl) {
-            feedbackEl.style.color = "#1d4ed8";
-            feedbackEl.innerText = "وضع إضافة موظف جديد — املأ الحقول ثم اضغط حفظ";
-        }
-        refreshEmployeeHeaderSummary();
-        renderEmployeeFieldsGrid();
-        if (card) card.classList.remove("hidden");
-    }
-
-    window.openNewEmployeeEditorFromSearch = function() {
-        const q = document.getElementById("empSearchInput")?.value || "";
+    window.createEmployeeFromSearch = function(queryVal) {
         document.getElementById("empSearchResultsList")?.classList.add("hidden");
-        openNewEmployeeEditor(q);
-    };
-
-    window.selectEmployeeByIndex = function(idx) {
-        const emp = cachedEmployees[idx];
-        if (!emp) return;
-        activeEmployeeRecord = { ...emp, isNewEmployee: false };
-        draftEmployeeValues = { __editingKey: null };
-        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
-            draftEmployeeValues[f.key] = emp[f.key] ?? "";
-        });
-
-        document.getElementById("empSearchResultsList")?.classList.add("hidden");
-        const card = document.getElementById("selectedEmployeeDetailsCard");
-        const feedbackEl = document.getElementById("empSaveFeedback");
-        if (feedbackEl) feedbackEl.innerText = "";
-
-        refreshEmployeeHeaderSummary();
-        renderEmployeeFieldsGrid();
-        if (card) card.classList.remove("hidden");
+        openNewEmployeeEditor(queryVal || "");
     };
 
     function refreshEmployeeHeaderSummary() {
-        if (!activeEmployeeRecord) return;
-        const currentName = draftEmployeeValues.name || activeEmployeeRecord.name || (activeEmployeeRecord.isNewEmployee ? "موظف جديد" : "-");
-        document.getElementById("empDetailName").innerText = currentName;
-
-        const badge = document.getElementById("empDetailStatusBadge");
+        const nameEl = document.getElementById("empDetailName");
+        const badgeEl = document.getElementById("empDetailStatusBadge");
         const saveBtn = document.getElementById("saveEmployeeEditsBtn");
         const locked = isCurrentEmployeeLocked();
 
-        if (badge) {
-            if (activeEmployeeRecord.isNewEmployee) {
-                badge.innerText = "إضافة جديدة";
-                badge.style.background = "#dbeafe";
-                badge.style.color = "#1e40af";
-            } else if (locked) {
-                badge.innerText = "غير نشط (مغلق للتعديل)";
-                badge.style.background = "#fee2e2";
-                badge.style.color = "#b91c1c";
+        if (nameEl) {
+            const currentName = String(draftEmployeeValues.name || "").trim();
+            if (activeEmployeeRecord?.isNewEmployee) {
+                nameEl.innerText = currentName ? `${currentName} (موظف جديد)` : "إضافة موظف جديد";
             } else {
-                badge.innerText = "نشط";
-                badge.style.background = "#dcfce7";
-                badge.style.color = "#166534";
+                nameEl.innerText = currentName || activeEmployeeRecord?.name || activeEmployeeRecord?.username || "بيانات الموظف";
+            }
+        }
+
+        if (badgeEl) {
+            if (activeEmployeeRecord?.isNewEmployee) {
+                badgeEl.style.background = "#dbeafe";
+                badgeEl.style.color = "#1e40af";
+                badgeEl.innerText = "سجل جديد";
+            } else if (locked) {
+                badgeEl.style.background = "#fee2e2";
+                badgeEl.style.color = "#991b1b";
+                badgeEl.innerText = "غير نشط (مغلق للتعديل)";
+            } else {
+                badgeEl.style.background = "#dcfce7";
+                badgeEl.style.color = "#166534";
+                badgeEl.innerText = "نشط";
             }
         }
 
@@ -5471,67 +5158,63 @@
             saveBtn.disabled = locked;
             saveBtn.style.opacity = locked ? "0.5" : "1";
             saveBtn.style.cursor = locked ? "not-allowed" : "pointer";
+            saveBtn.innerHTML = activeEmployeeRecord?.isNewEmployee
+                ? `<i class="fas fa-user-plus"></i> حفظ الموظف الجديد في قاعدة البيانات`
+                : `<i class="fas fa-save"></i> حفظ التعديلات في قاعدة البيانات`;
         }
     }
 
     function renderEmployeeFieldsGrid() {
-        const grid = document.getElementById("empDetailsGrid");
-        if (!grid || !activeEmployeeRecord) return;
+        const gridEl = document.getElementById("empDetailsGrid");
+        if (!gridEl || !activeEmployeeRecord) return;
 
         const locked = isCurrentEmployeeLocked();
-        const currentlyEditingKey = locked ? null : draftEmployeeValues.__editingKey;
+        const editingKey = locked ? null : (draftEmployeeValues.__editingKey || null);
 
-        grid.innerHTML = EMPLOYEE_EDITABLE_FIELDS.map(f => {
+        gridEl.innerHTML = EMPLOYEE_EDITABLE_FIELDS.map(f => {
             const val = draftEmployeeValues[f.key];
             const displayVal = (val === "" || val === null || val === undefined) ? "-" : String(val);
-            const isEditingThis = !locked && currentlyEditingKey === f.key;
+            const isEditingThis = !locked && editingKey === f.key;
 
-            let actionControlHtml = "";
-            if (locked) {
-                actionControlHtml = `<span class="emp-lock-icon" title="السجل غير نشط ولا يمكن تعديله"><i class="fas fa-lock"></i></span>`;
-            } else if (isEditingThis) {
-                actionControlHtml = `
-                    <button type="button" class="emp-edit-pen-btn" title="تأكيد القيمة" onclick="commitFieldEdit('${f.key}')">
-                        <i class="fas fa-check" style="color:#15803d;"></i>
-                    </button>
-                `;
-            } else {
-                actionControlHtml = `
-                    <button type="button" class="emp-edit-pen-btn" title="تعديل ${escapeHtmlCell(f.label)}" onclick="startFieldEdit('${f.key}')">
-                        <i class="fas fa-pen"></i>
-                    </button>
+            const actionControlHtml = locked
+                ? `<span class="emp-lock-icon" title="السجل غير نشط ولا يمكن تعديله"><i class="fas fa-lock"></i></span>`
+                : `<button type="button" class="emp-edit-pen-btn" title="تعديل ${escapeHtmlCell(f.label)}" onclick="startEditingEmployeeField('${f.key}')"><i class="fas fa-pen"></i></button>`;
+
+            if (isEditingThis) {
+                return `
+                    <div class="emp-field-box editing-active">
+                        <div class="emp-field-header">
+                            <label for="emp-input-${f.key}">${escapeHtmlCell(f.label)}</label>
+                        </div>
+                        <input type="${f.type}" id="emp-input-${f.key}" class="emp-field-input" value="${escapeHtmlCell(val ?? "")}" onkeydown="handleEmployeeFieldKeydown(event, '${f.key}')" onblur="commitEmployeeFieldEdit('${f.key}')">
+                    </div>
                 `;
             }
 
-            const bodyHtml = isEditingThis
-                ? `<input type="${f.type === "number" ? "number" : "text"}" step="any" class="emp-field-input" id="emp-input-${f.key}" value="${escapeHtmlCell(val ?? "")}" onkeydown="handleFieldEditKeydown(event, '${f.key}')" onblur="commitFieldEdit('${f.key}')">`
-                : `<div class="val" id="emp-val-${f.key}" ${!locked ? `ondblclick="startFieldEdit('${f.key}')"` : ""}>${escapeHtmlCell(displayVal)}</div>`;
-
-            const boxClasses = ["emp-field-box"];
-            if (locked) boxClasses.push("locked-field");
-            if (isEditingThis) boxClasses.push("editing-active");
-
             return `
-                <div class="${boxClasses.join(" ")}">
+                <div class="emp-field-box ${locked ? "locked-field" : ""}">
                     <div class="emp-field-header">
                         <label>${escapeHtmlCell(f.label)}</label>
                         ${actionControlHtml}
                     </div>
-                    ${bodyHtml}
+                    <div class="val">${escapeHtmlCell(displayVal)}</div>
                 </div>
             `;
         }).join("");
 
-        if (currentlyEditingKey) {
-            const inp = document.getElementById(`emp-input-${currentlyEditingKey}`);
-            if (inp) {
-                inp.focus();
-                try { inp.select(); } catch (e) {}
+        if (editingKey) {
+            const activeInput = document.getElementById(`emp-input-${editingKey}`);
+            if (activeInput) {
+                activeInput.focus();
+                try {
+                    const len = activeInput.value.length;
+                    activeInput.setSelectionRange(len, len);
+                } catch (e) {}
             }
         }
     }
 
-    window.startFieldEdit = function(fieldKey) {
+    window.startEditingEmployeeField = function(fieldKey) {
         if (!activeEmployeeRecord || isCurrentEmployeeLocked()) return;
         if (draftEmployeeValues.__editingKey && draftEmployeeValues.__editingKey !== fieldKey) {
             const prevInput = document.getElementById(`emp-input-${draftEmployeeValues.__editingKey}`);
@@ -5543,7 +5226,7 @@
         renderEmployeeFieldsGrid();
     };
 
-    window.commitFieldEdit = function(fieldKey) {
+    window.commitEmployeeFieldEdit = function(fieldKey) {
         if (!activeEmployeeRecord) return;
         const inp = document.getElementById(`emp-input-${fieldKey}`);
         if (inp) {
@@ -5556,10 +5239,10 @@
         renderEmployeeFieldsGrid();
     };
 
-    window.handleFieldEditKeydown = function(event, fieldKey) {
+    window.handleEmployeeFieldKeydown = function(event, fieldKey) {
         if (event.key === "Enter") {
             event.preventDefault();
-            commitFieldEdit(fieldKey);
+            window.commitEmployeeFieldEdit(fieldKey);
         } else if (event.key === "Escape") {
             event.preventDefault();
             draftEmployeeValues.__editingKey = null;
@@ -5567,14 +5250,38 @@
         }
     };
 
+    window.selectEmployeeByIndex = function(idx) {
+        const emp = cachedEmployees[idx];
+        if (!emp) return;
+
+        activeEmployeeRecord = emp;
+        draftEmployeeValues = { __editingKey: null };
+        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+            draftEmployeeValues[f.key] = emp[f.key] ?? "";
+        });
+
+        document.getElementById("empSearchResultsList")?.classList.add("hidden");
+        const feedbackEl = document.getElementById("empSaveFeedback");
+        if (feedbackEl) {
+            feedbackEl.innerText = isCurrentEmployeeLocked()
+                ? "هذا الموظف غير نشط؛ التعديل مغلق."
+                : "";
+            feedbackEl.style.color = isCurrentEmployeeLocked() ? "#b91c1c" : "";
+        }
+
+        refreshEmployeeHeaderSummary();
+        renderEmployeeFieldsGrid();
+        document.getElementById("selectedEmployeeDetailsCard")?.classList.remove("hidden");
+    };
+
     window.saveSelectedEmployeeEdits = async function() {
-        if (!activeEmployeeRecord || !authenticatedBenefitsStaff) return;
+        if (!activeEmployeeRecord) return;
 
         if (isCurrentEmployeeLocked()) {
             const feedbackEl = document.getElementById("empSaveFeedback");
             if (feedbackEl) {
-                feedbackEl.style.color = "#b91c1c";
-                feedbackEl.innerText = "هذا الموظف غير نشط ولا يمكن تعديل بياناته.";
+                feedbackEl.style.color = "#dc2626";
+                feedbackEl.innerText = "لا يمكن تعديل سجل موظف غير نشط.";
             }
             return;
         }
@@ -5592,99 +5299,106 @@
         if (saveBtn) saveBtn.disabled = true;
         if (feedbackEl) {
             feedbackEl.style.color = "#1d4ed8";
-            feedbackEl.innerText = "جاري الحفظ...";
+            feedbackEl.innerText = "جاري الحفظ في قاعدة البيانات...";
         }
-
-        const payload = {};
-        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
-            let v = draftEmployeeValues[f.key];
-            if (v === undefined || v === null) v = "";
-            if (f.type === "number") {
-                const trimmed = String(v).trim();
-                payload[f.key] = trimmed === "" ? "" : (isNaN(Number(trimmed)) ? trimmed : Number(trimmed));
-            } else {
-                payload[f.key] = String(v).trim();
-            }
-        });
-
-        if (!payload.name) {
-            if (feedbackEl) {
-                feedbackEl.style.color = "#dc2626";
-                feedbackEl.innerText = "الرجاء إدخال اسم الموظف أولاً.";
-            }
-            if (saveBtn) saveBtn.disabled = false;
-            return;
-        }
-
-        const cleanNatId = normalizeNatId(payload.nationalId);
-        const editorName = authenticatedBenefitsStaff.name || authenticatedBenefitsStaff.username || "استحقاقات";
 
         try {
-            if (activeEmployeeRecord.isNewEmployee) {
-                const targetDocId = cleanNatId || (payload.employeeCode ? String(payload.employeeCode).trim() : "");
-                const newDocData = {
-                    ...payload,
-                    status: "نشط",
-                    createdAt: serverTimestamp(),
-                    createdBy: editorName,
-                    updatedAt: serverTimestamp(),
-                    updatedBy: editorName
-                };
-
-                if (targetDocId) {
-                    await setDoc(doc(firestoreDb, "entitlements_employees", targetDocId), newDocData, { merge: true });
-                    activeEmployeeRecord.entDocId = targetDocId;
+            const payload = {};
+            EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+                const rawVal = draftEmployeeValues[f.key];
+                if (f.type === "number") {
+                    const trimmed = String(rawVal ?? "").trim();
+                    payload[f.key] = trimmed === "" ? "" : Number(trimmed);
                 } else {
-                    const addedRef = await addDoc(collection(firestoreDb, "entitlements_employees"), newDocData);
-                    activeEmployeeRecord.entDocId = addedRef.id;
+                    payload[f.key] = String(rawVal ?? "").trim();
                 }
-                activeEmployeeRecord.isNewEmployee = false;
-            } else {
-                payload.updatedAt = serverTimestamp();
-                payload.updatedBy = editorName;
+            });
 
-                const targetEntId = activeEmployeeRecord.entDocId || cleanNatId;
+            payload.updatedAt = serverTimestamp();
+            payload.updatedBy = authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "استحقاقات";
+
+            const cleanNid = normalizeNatId(payload.nationalId || activeEmployeeRecord.nationalId);
+            const cleanCode = String(payload.employeeCode || activeEmployeeRecord.employeeCode || "").trim();
+
+            if (activeEmployeeRecord.isNewEmployee) {
+                if (!payload.name && !cleanNid && !cleanCode) {
+                    if (feedbackEl) {
+                        feedbackEl.style.color = "#dc2626";
+                        feedbackEl.innerText = "الرجاء إدخال اسم الموظف أو الرقم القومي أو الكود قبل الحفظ.";
+                    }
+                    if (saveBtn) saveBtn.disabled = false;
+                    return;
+                }
+
+                payload.status = payload.status || "نشط";
+                payload.createdAt = serverTimestamp();
+
+                const entDocId = cleanNid || (cleanCode ? `code_${cleanCode}` : `emp_${Date.now()}`);
+                await setDoc(doc(firestoreDb, "entitlements_employees", entDocId), payload, { merge: true });
+
+                const userDocRef = await addDoc(collection(firestoreDb, "users"), {
+                    ...payload,
+                    username: cleanCode || cleanNid || payload.name
+                });
+
+                activeEmployeeRecord = {
+                    ...activeEmployeeRecord,
+                    ...payload,
+                    docId: userDocRef.id,
+                    entDocId,
+                    isNewEmployee: false
+                };
+            } else {
+                const targetEntId = activeEmployeeRecord.entDocId || cleanNid || null;
                 if (targetEntId) {
                     await setDoc(doc(firestoreDb, "entitlements_employees", targetEntId), payload, { merge: true });
                     activeEmployeeRecord.entDocId = targetEntId;
-                } else {
-                    const addedRef = await addDoc(collection(firestoreDb, "entitlements_employees"), {
-                        ...payload,
-                        createdAt: serverTimestamp(),
-                        createdBy: editorName
-                    });
-                    activeEmployeeRecord.entDocId = addedRef.id;
+                } else if (cleanNid) {
+                    await setDoc(doc(firestoreDb, "entitlements_employees", cleanNid), payload, { merge: true });
+                    activeEmployeeRecord.entDocId = cleanNid;
                 }
 
                 if (activeEmployeeRecord.docId) {
                     await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), payload, { merge: true });
                 }
+
+                Object.assign(activeEmployeeRecord, payload);
             }
 
-            Object.assign(activeEmployeeRecord, payload);
-            await fetchAllEmployeesFromFirestore(true);
+            await fetchAllEmployeesFromFirestore(false);
+            const refreshedMatch = cachedEmployees.find(e =>
+                (activeEmployeeRecord.docId && e.docId === activeEmployeeRecord.docId) ||
+                (cleanNid && normalizeNatId(e.nationalId) === cleanNid) ||
+                (cleanCode && String(e.employeeCode || "").trim() === cleanCode)
+            );
+            if (refreshedMatch) {
+                activeEmployeeRecord = refreshedMatch;
+                EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+                    draftEmployeeValues[f.key] = refreshedMatch[f.key] ?? "";
+                });
+            }
+
             refreshEmployeeHeaderSummary();
             renderEmployeeFieldsGrid();
 
             if (feedbackEl) {
                 feedbackEl.style.color = "#15803d";
-                feedbackEl.innerText = "تم الحفظ بنجاح في قاعدة البيانات.";
+                feedbackEl.innerText = "تم حفظ البيانات في قاعدة البيانات بنجاح.";
             }
         } catch (err) {
-            console.error("Error saving employee edits:", err);
+            console.error("Save Employee Error:", err);
             if (feedbackEl) {
                 feedbackEl.style.color = "#dc2626";
-                feedbackEl.innerText = "حدث خطأ أثناء الحفظ.";
+                feedbackEl.innerText = "حدث خطأ أثناء حفظ البيانات.";
             }
         } finally {
-            if (saveBtn && !isCurrentEmployeeLocked()) {
-                saveBtn.disabled = false;
-            }
+            if (saveBtn && !isCurrentEmployeeLocked()) saveBtn.disabled = false;
         }
     };
 
     fetchAllEmployeesFromFirestore(false);
+    fetchLeaveNotifications();
+    fetchArchivedNotifications();
 </script>
-
 </body>
 </html>
