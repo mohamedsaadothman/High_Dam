@@ -478,7 +478,6 @@
         .workspace-card h3 { color: #1a365d; font-size: 17px; font-weight: 900; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .workspace-card p.sub-desc { color: #64748b; font-size: 12.5px; margin-bottom: 16px; }
 
-        /* تنسيق لوحة العمليات الحسابية والسجلات لاستمارة 132 */
         .calc-top-staff-bar {
             background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
             color: #ffffff;
@@ -505,6 +504,25 @@
             grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
             gap: 10px;
             margin-bottom: 12px;
+        }
+        .no-share-flags-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 9px;
+            padding: 9px 12px;
+            margin-bottom: 12px;
+        }
+        .no-share-flag-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #0f172a;
+            cursor: pointer;
         }
         .grades-checklist-box {
             display: flex;
@@ -616,6 +634,22 @@
             font-size: 11.5px;
             font-weight: 800;
             background: #ffffff;
+        }
+        .pension-cap-badge {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #f59e0b;
+            border-radius: 6px;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: 900;
+            margin-top: 2px;
+        }
+        .group-print-block {
+            margin-bottom: 14px;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         .notif-viewer-overlay {
@@ -799,7 +833,6 @@
         .print-header { display: none; width: 100%; margin-bottom: 8px; box-sizing: border-box; }
         .data-table-wrapper { overflow-x: auto; width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; }
 
-        /* تنسيق الترويسة الرسمية الموحدة لطباعة PDF */
         .official-pdf-banner {
             display: flex;
             align-items: center;
@@ -2453,8 +2486,8 @@
     let activeEmployeeRecord = null;
     let draftEmployeeValues = {};
 
-    // حالة المحرك الحسابي لاستمارات 132 ع.ح
     let currentForm132Rows = [];
+    let form132TableSearchQuery = "";
     let currentForm132Meta = {
         formTitle: "استمارة بدل غذاء",
         recordTitle: "",
@@ -2508,6 +2541,15 @@
             .trim();
     }
 
+    function normalizeGroupCode(val) {
+        const clean = normalizeArabic(val);
+        if (!clean || clean === "-") return "بدون مجموعة";
+        if (clean === "ا" || clean === "أ" || clean.includes("مجموعه ا") || clean.includes("مجموعه أ")) return "أ";
+        if (clean === "ب" || clean.includes("مجموعه ب")) return "ب";
+        if (clean === "ج" || clean.includes("مجموعه ج")) return "ج";
+        return String(val).trim();
+    }
+
     function round2(n) {
         return Math.round((Number(n) || 0) * 100) / 100;
     }
@@ -2548,10 +2590,40 @@
         return round2(taxableBase * rate);
     }
 
-    function build13ColRowFromEntitled(emp, entitledAmount, excludedAmount = 0) {
+    function getNoShareOptions() {
+        return {
+            omitGovShare: Boolean(document.getElementById("omitGovShareCheckbox")?.checked),
+            omitEmpShare: Boolean(document.getElementById("omitEmpShareCheckbox")?.checked)
+        };
+    }
+
+    function getPensionAdjustedDays(emp, baseDays, refDate = new Date()) {
+        const daysNum = Math.max(0, Number(baseDays) || 0);
+        const pensionDt = parseDateSafe(emp.retirementDate || emp.pensionDate);
+        if (!pensionDt) {
+            return { effectiveDays: daysNum, remainingDays: null, pensionNote: "" };
+        }
+        const startRef = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+        const pensionDay = new Date(pensionDt.getFullYear(), pensionDt.getMonth(), pensionDt.getDate());
+        const diffDays = Math.floor((pensionDay.getTime() - startRef.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diffDays <= 0) {
+            return { effectiveDays: 0, remainingDays: 0, pensionNote: "بلغ سن المعاش (0 يوم)" };
+        }
+        if (diffDays < daysNum) {
+            return {
+                effectiveDays: diffDays,
+                remainingDays: diffDays,
+                pensionNote: `متبقي ${diffDays} يوم على المعاش`
+            };
+        }
+        return { effectiveDays: daysNum, remainingDays: diffDays, pensionNote: "" };
+    }
+
+    function build13ColRowFromEntitled(emp, entitledAmount, excludedAmount = 0, pensionNote = "", opts = {}) {
         const entitled = round2(entitledAmount);
-        const subjectGov = isEmployeeSubjectToShare(emp.government);
-        const subjectEmp = isEmployeeSubjectToShare(emp.employeeShare);
+        const subjectGov = !opts.omitGovShare && isEmployeeSubjectToShare(emp.government);
+        const subjectEmp = !opts.omitEmpShare && isEmployeeSubjectToShare(emp.employeeShare);
 
         const govShare = subjectGov ? round2(entitled * 0.1725) : 0;
         const total = round2(entitled + govShare);
@@ -2566,6 +2638,7 @@
             name: String(emp.name || "-").trim(),
             code: String(emp.employeeCode || emp.username || "-").trim(),
             nationalId: String(emp.nationalId || "-").trim(),
+            groupCode: normalizeGroupCode(emp.groubCode),
             entitled,
             govShare,
             total,
@@ -2575,8 +2648,7 @@
             incomeStamp,
             totalDeductions,
             net,
-            subjectGov,
-            subjectEmp
+            pensionNote: pensionNote || ""
         };
     }
 
@@ -2592,20 +2664,37 @@
         return rows.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ar"));
     }
 
-    function renderForm132ResultTableAndActions() {
-        const container = document.getElementById("form132CalculatedTableArea");
-        if (!container) return;
+    function getFilteredAndGroupedRows() {
+        const q = normalizeArabic(form132TableSearchQuery);
+        const selectedGroup = document.getElementById("form132PrintGroupSelect")?.value || "all";
 
-        if (!currentForm132Rows || currentForm132Rows.length === 0) {
-            container.innerHTML = `
-                <div style="text-align:center; padding:22px; background:#f8fafc; border:1.5px dashed #cbd5e1; border-radius:10px; color:#64748b; font-size:12.5px;">
-                    لا توجد بيانات محسوبة معروضة حالياً. أدخل المعطيات واضغط <strong>"احتساب وعرض الاستمارة"</strong> أو اختر سجلاً محفوظاً.
-                </div>
-            `;
-            return;
+        const searchFiltered = currentForm132Rows.filter(r => {
+            if (!q) return true;
+            return (
+                normalizeArabic(r.name).includes(q) ||
+                normalizeArabic(r.code).includes(q) ||
+                normalizeArabic(r.nationalId).includes(q)
+            );
+        });
+
+        if (selectedGroup === "all") {
+            return { visibleRows: searchFiltered, groupsToRender: ["الكل"] };
+        }
+        if (selectedGroup === "split_abc") {
+            const groups = ["أ", "ب", "ج"].filter(g =>
+                searchFiltered.some(r => normalizeGroupCode(r.groupCode) === g)
+            );
+            const others = searchFiltered.filter(r => !["أ", "ب", "ج"].includes(normalizeGroupCode(r.groupCode)));
+            if (others.length > 0) groups.push("أخرى");
+            return { visibleRows: searchFiltered, groupsToRender: groups.length ? groups : [selectedGroup] };
         }
 
-        const totals = currentForm132Rows.reduce((acc, r) => {
+        const groupFiltered = searchFiltered.filter(r => normalizeGroupCode(r.groupCode) === selectedGroup);
+        return { visibleRows: groupFiltered, groupsToRender: [selectedGroup] };
+    }
+
+    function sumRowsArray(rows) {
+        return rows.reduce((acc, r) => {
             acc.entitled += r.entitled;
             acc.govShare += r.govShare;
             acc.total += r.total;
@@ -2620,87 +2709,175 @@
             entitled: 0, govShare: 0, total: 0, empShare: 0,
             excluded: 0, incomeTax: 0, incomeStamp: 0, totalDeductions: 0, net: 0
         });
+    }
 
-        const rowsHtml = currentForm132Rows.map((r, idx) => `
-            <tr>
-                <td>${idx + 1}</td>
-                <td style="text-align:right; font-weight:800;">${escapeHtmlCell(r.name)}</td>
-                <td>${escapeHtmlCell(r.code)}</td>
-                <td>${fmtMoney(r.entitled)}</td>
-                <td>${fmtMoney(r.govShare)}</td>
-                <td>${fmtMoney(r.total)}</td>
-                <td>${fmtMoney(r.govShare)}</td>
-                <td>${fmtMoney(r.empShare)}</td>
-                <td>
-                    <input type="number" step="any" class="excluded-inline-input" value="${r.excluded}" onchange="updateForm132ExcludedVal(${idx}, this.value)">
-                </td>
-                <td>${fmtMoney(r.incomeTax)}</td>
-                <td>${fmtMoney(r.incomeStamp)}</td>
-                <td>${fmtMoney(r.totalDeductions)}</td>
-                <td style="background:#ecfdf5; color:#065f46; font-weight:900;">${fmtMoney(r.net)}</td>
-            </tr>
-        `).join("");
+    function buildSingleGroupTableHtml(rows, groupLabel, isInteractive = true) {
+        if (!rows || rows.length === 0) {
+            return `
+                <div class="group-print-block">
+                    <div style="font-size:12px; font-weight:900; color:#1e3a8a; margin-bottom:4px;">المجموعة: ${escapeHtmlCell(groupLabel)}</div>
+                    <div style="text-align:center; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; color:#64748b; font-size:12px;">
+                        لا توجد بيانات ضمن هذه المجموعة.
+                    </div>
+                </div>
+            `;
+        }
+
+        const totals = sumRowsArray(rows);
+        const rowsHtml = rows.map((r, idx) => {
+            const origIdx = currentForm132Rows.indexOf(r);
+            const excludedCellHtml = isInteractive
+                ? `<input type="number" step="any" class="excluded-inline-input" value="${r.excluded}" onchange="updateForm132ExcludedVal(${origIdx}, this.value)">`
+                : `${fmtMoney(r.excluded)}`;
+
+            return `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td style="text-align:right; font-weight:800;">
+                        <div>${escapeHtmlCell(r.name)}</div>
+                        ${r.pensionNote ? `<span class="pension-cap-badge"><i class="fas fa-hourglass-half"></i> ${escapeHtmlCell(r.pensionNote)}</span>` : ""}
+                    </td>
+                    <td>${escapeHtmlCell(r.code)}</td>
+                    <td>${escapeHtmlCell(r.groupCode || "-")}</td>
+                    <td>${fmtMoney(r.entitled)}</td>
+                    <td>${fmtMoney(r.govShare)}</td>
+                    <td>${fmtMoney(r.total)}</td>
+                    <td>${fmtMoney(r.govShare)}</td>
+                    <td>${fmtMoney(r.empShare)}</td>
+                    <td>${excludedCellHtml}</td>
+                    <td>${fmtMoney(r.incomeTax)}</td>
+                    <td>${fmtMoney(r.incomeStamp)}</td>
+                    <td>${fmtMoney(r.totalDeductions)}</td>
+                    <td style="background:#ecfdf5; color:#065f46; font-weight:900;">${fmtMoney(r.net)}</td>
+                </tr>
+            `;
+        }).join("");
+
+        return `
+            <div class="group-print-block">
+                ${groupLabel !== "الكل" ? `<div style="font-size:12.5px; font-weight:900; color:#0f172a; background:#f1f5f9; border:1px solid #cbd5e1; border-right:4px solid #c59b27; padding:5px 10px; border-radius:7px; margin-bottom:6px;">المجموعة: ${escapeHtmlCell(groupLabel)} (العدد: ${rows.length})</div>` : ""}
+                <div class="data-table-wrapper">
+                    <table class="form132-calc-table">
+                        <thead>
+                            <tr>
+                                <th>مسلسل</th>
+                                <th>اسم الموظف</th>
+                                <th>كود الموظف</th>
+                                <th>المجموعة</th>
+                                <th>المستحق</th>
+                                <th>حصة حكومة 17.25%</th>
+                                <th>الإجمالي</th>
+                                <th>حصة حكومة 17.25%</th>
+                                <th>حصة الموظف 10%</th>
+                                <th>مستبعد</th>
+                                <th>ضريبة دخل</th>
+                                <th>دمغة دخل</th>
+                                <th>جملة الاستقطاعات</th>
+                                <th>الصافي</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                            <tr class="totals-footer-row">
+                                <td colspan="4">الإجمالي (${rows.length} موظف)</td>
+                                <td>${fmtMoney(totals.entitled)}</td>
+                                <td>${fmtMoney(totals.govShare)}</td>
+                                <td>${fmtMoney(totals.total)}</td>
+                                <td>${fmtMoney(totals.govShare)}</td>
+                                <td>${fmtMoney(totals.empShare)}</td>
+                                <td>${fmtMoney(totals.excluded)}</td>
+                                <td>${fmtMoney(totals.incomeTax)}</td>
+                                <td>${fmtMoney(totals.incomeStamp)}</td>
+                                <td>${fmtMoney(totals.totalDeductions)}</td>
+                                <td>${fmtMoney(totals.net)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderForm132ResultTableAndActions() {
+        const container = document.getElementById("form132CalculatedTableArea");
+        if (!container) return;
+
+        if (!currentForm132Rows || currentForm132Rows.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:22px; background:#f8fafc; border:1.5px dashed #cbd5e1; border-radius:10px; color:#64748b; font-size:12.5px;">
+                    لا توجد بيانات محسوبة معروضة حالياً. أدخل المعطيات واضغط <strong>"احتساب وعرض الاستمارة"</strong> أو اختر سجلاً محفوظاً.
+                </div>
+            `;
+            return;
+        }
+
+        const currentExportMode = document.getElementById("form132ExportModeSelect")?.value || "epay_pdf";
+        const currentGroupSel = document.getElementById("form132PrintGroupSelect")?.value || "all";
+
+        const { visibleRows, groupsToRender } = getFilteredAndGroupedRows();
+
+        let tablesHtml = "";
+        if (currentGroupSel === "split_abc") {
+            tablesHtml = groupsToRender.map(g => {
+                const gRows = g === "أخرى"
+                    ? visibleRows.filter(r => !["أ", "ب", "ج"].includes(normalizeGroupCode(r.groupCode)))
+                    : visibleRows.filter(r => normalizeGroupCode(r.groupCode) === g);
+                return buildSingleGroupTableHtml(gRows, g, true);
+            }).join("");
+        } else {
+            tablesHtml = buildSingleGroupTableHtml(visibleRows, currentGroupSel === "all" ? "الكل" : currentGroupSel, true);
+        }
 
         container.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 12px; margin-bottom:10px;">
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <label style="font-size:12px; font-weight:800; color:#1e3a8a;">صيغة استخراج التقرير:</label>
+                    <label style="font-size:12px; font-weight:800; color:#1e3a8a;">صيغة الاستخراج:</label>
                     <select id="form132ExportModeSelect" style="padding:6px 10px; border:1.5px solid #1d4ed8; border-radius:8px; font-size:12px; font-weight:800; background:#ffffff; color:#0f172a;">
-                        <option value="epay_pdf">دفع إلكتروني (PDF — 13 عمود)</option>
-                        <option value="payroll_excel">بيرول (Excel — 5 أعمدة)</option>
+                        <option value="epay_pdf" ${currentExportMode === "epay_pdf" ? "selected" : ""}>دفع إلكتروني</option>
+                        <option value="payroll_excel" ${currentExportMode === "payroll_excel" ? "selected" : ""}>بيرول</option>
                     </select>
+
+                    <label style="font-size:12px; font-weight:800; color:#1e3a8a;">المجموعة:</label>
+                    <select id="form132PrintGroupSelect" onchange="renderForm132ResultTableAndActions()" style="padding:6px 10px; border:1.5px solid #1d4ed8; border-radius:8px; font-size:12px; font-weight:800; background:#ffffff; color:#0f172a;">
+                        <option value="all" ${currentGroupSel === "all" ? "selected" : ""}>جميع المجموعات</option>
+                        <option value="أ" ${currentGroupSel === "أ" ? "selected" : ""}>مجموعة أ</option>
+                        <option value="ب" ${currentGroupSel === "ب" ? "selected" : ""}>مجموعة ب</option>
+                        <option value="ج" ${currentGroupSel === "ج" ? "selected" : ""}>مجموعة ج</option>
+                        <option value="split_abc" ${currentGroupSel === "split_abc" ? "selected" : ""}>تقسيم حسب المجموعة (أ، ب، ج)</option>
+                    </select>
+
                     <button type="button" class="act-btn btn-pd" onclick="exportForm132BySelectedMode()">
                         <i class="fas fa-file-export"></i> استخراج التقرير
                     </button>
                 </div>
 
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <input type="text" id="form132RecordNameInput" placeholder="اسم السجل للحفظ (مثلاً: نوفمبر 2026)" value="${escapeHtmlCell(currentForm132Meta.recordTitle || "")}" style="padding:6px 10px; border:1px solid #94a3b8; border-radius:8px; font-size:12px; min-width:200px;">
+                    <input type="text" id="form132RecordNameInput" placeholder="اسم السجل للحفظ (مثلاً: نوفمبر 2026)" value="${escapeHtmlCell(currentForm132Meta.recordTitle || "")}" style="padding:6px 10px; border:1px solid #94a3b8; border-radius:8px; font-size:12px; min-width:190px;">
                     <button type="button" class="act-btn btn-ex" onclick="saveCurrentForm132Record()">
                         <i class="fas fa-save"></i> حفظ في السجل
                     </button>
                 </div>
             </div>
 
-            <div class="data-table-wrapper">
-                <table class="form132-calc-table">
-                    <thead>
-                        <tr>
-                            <th>مسلسل</th>
-                            <th>اسم الموظف</th>
-                            <th>كود الموظف</th>
-                            <th>المستحق</th>
-                            <th>حصة حكومة 17.25%</th>
-                            <th>الإجمالي</th>
-                            <th>حصة حكومة 17.25%</th>
-                            <th>حصة الموظف 10%</th>
-                            <th>مستبعد</th>
-                            <th>ضريبة دخل</th>
-                            <th>دمغة دخل</th>
-                            <th>جملة الاستقطاعات</th>
-                            <th>الصافي</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                        <tr class="totals-footer-row">
-                            <td colspan="3">الإجمالي العام (${currentForm132Rows.length} موظف)</td>
-                            <td>${fmtMoney(totals.entitled)}</td>
-                            <td>${fmtMoney(totals.govShare)}</td>
-                            <td>${fmtMoney(totals.total)}</td>
-                            <td>${fmtMoney(totals.govShare)}</td>
-                            <td>${fmtMoney(totals.empShare)}</td>
-                            <td>${fmtMoney(totals.excluded)}</td>
-                            <td>${fmtMoney(totals.incomeTax)}</td>
-                            <td>${fmtMoney(totals.incomeStamp)}</td>
-                            <td>${fmtMoney(totals.totalDeductions)}</td>
-                            <td>${fmtMoney(totals.net)}</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div style="margin-bottom:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <input type="text" id="form132TableSearchInput" oninput="onForm132TableSearch(this.value)" value="${escapeHtmlCell(form132TableSearchQuery)}" placeholder="ابحث داخل السجل الحالي باسم الموظف أو الكود أو الرقم القومي..." style="flex:1; min-width:220px; padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:9px; font-size:12.5px; background:#f8fafc; color:#0f172a;">
+                ${form132TableSearchQuery ? `<button type="button" class="card-home-btn" onclick="onForm132TableSearch('')">مسح البحث</button>` : ""}
             </div>
+
+            ${tablesHtml}
         `;
     }
+
+    window.onForm132TableSearch = function(val) {
+        form132TableSearchQuery = val || "";
+        const cursorPos = document.getElementById("form132TableSearchInput")?.selectionStart ?? form132TableSearchQuery.length;
+        renderForm132ResultTableAndActions();
+        const inp = document.getElementById("form132TableSearchInput");
+        if (inp) {
+            inp.focus();
+            try { inp.setSelectionRange(cursorPos, cursorPos); } catch (e) {}
+        }
+    };
 
     window.updateForm132ExcludedVal = function(idx, val) {
         if (!currentForm132Rows[idx]) return;
@@ -2724,16 +2901,49 @@
     function exportForm132PayrollExcel() {
         const creatorName = authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "-";
         const formLabel = activeForm132Title.replace("استمارة ", "استمارة 132 ");
+        const { visibleRows, groupsToRender } = getFilteredAndGroupedRows();
+        const groupSel = document.getElementById("form132PrintGroupSelect")?.value || "all";
 
-        const rowsHtml = currentForm132Rows.map(r => `
-            <tr>
-                <td>${escapeHtmlCell(r.name)}</td>
-                <td style="mso-number-format:'\\@';">${escapeHtmlCell(r.code)}</td>
-                <td style="mso-number-format:'\\@';">${escapeHtmlCell(r.nationalId)}</td>
-                <td>${fmtMoney(r.entitled)}</td>
-                <td>${fmtMoney(r.net)}</td>
-            </tr>
-        `).join("");
+        const sections = groupSel === "split_abc"
+            ? groupsToRender.map(g => ({
+                label: g,
+                rows: g === "أخرى"
+                    ? visibleRows.filter(r => !["أ", "ب", "ج"].includes(normalizeGroupCode(r.groupCode)))
+                    : visibleRows.filter(r => normalizeGroupCode(r.groupCode) === g)
+            }))
+            : [{ label: groupSel === "all" ? "الكل" : groupSel, rows: visibleRows }];
+
+        const tablesBodyHtml = sections.map(sec => {
+            const rowsHtml = sec.rows.map(r => `
+                <tr>
+                    <td>${escapeHtmlCell(r.name)}</td>
+                    <td style="mso-number-format:'\\@';">${escapeHtmlCell(r.code)}</td>
+                    <td style="mso-number-format:'\\@';">${escapeHtmlCell(r.nationalId)}</td>
+                    <td>${escapeHtmlCell(r.groupCode || "-")}</td>
+                    <td>${fmtMoney(r.entitled)}</td>
+                    <td>${fmtMoney(r.net)}</td>
+                </tr>
+            `).join("");
+
+            return `
+                <table border="1" cellspacing="0" cellpadding="6" style="margin-bottom:14px;">
+                    <thead>
+                        <tr>
+                            <th colspan="6">${escapeHtmlCell(formLabel)} — المجموعة: ${escapeHtmlCell(sec.label)} — إعداد: ${escapeHtmlCell(creatorName)}</th>
+                        </tr>
+                        <tr>
+                            <th>اسم الموظف</th>
+                            <th>كود الموظف</th>
+                            <th>الرقم القومي</th>
+                            <th>المجموعة</th>
+                            <th>المستحق</th>
+                            <th>الصافي</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            `;
+        }).join("");
 
         const htmlWorkbook = `
             <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -2752,23 +2962,7 @@
                     </x:ExcelWorkbook>
                 </xml>
             </head>
-            <body dir="rtl">
-                <table border="1" cellspacing="0" cellpadding="6">
-                    <thead>
-                        <tr>
-                            <th colspan="5">${escapeHtmlCell(formLabel)} — إعداد: ${escapeHtmlCell(creatorName)}</th>
-                        </tr>
-                        <tr>
-                            <th>اسم الموظف</th>
-                            <th>كود الموظف</th>
-                            <th>الرقم القومي</th>
-                            <th>المستحق</th>
-                            <th>الصافي</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rowsHtml}</tbody>
-                </table>
-            </body>
+            <body dir="rtl">${tablesBodyHtml}</body>
             </html>
         `;
 
@@ -2790,40 +2984,81 @@
         const creatorName = authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "-";
         const formLabel = activeForm132Title.replace("استمارة ", "استمارة 132 ");
         const printDateStr = new Date().toLocaleDateString("ar-EG");
+        const { visibleRows, groupsToRender } = getFilteredAndGroupedRows();
+        const groupSel = document.getElementById("form132PrintGroupSelect")?.value || "all";
 
-        const totals = currentForm132Rows.reduce((acc, r) => {
-            acc.entitled += r.entitled;
-            acc.govShare += r.govShare;
-            acc.total += r.total;
-            acc.empShare += r.empShare;
-            acc.excluded += r.excluded;
-            acc.incomeTax += r.incomeTax;
-            acc.incomeStamp += r.incomeStamp;
-            acc.totalDeductions += r.totalDeductions;
-            acc.net += r.net;
-            return acc;
-        }, {
-            entitled: 0, govShare: 0, total: 0, empShare: 0,
-            excluded: 0, incomeTax: 0, incomeStamp: 0, totalDeductions: 0, net: 0
-        });
+        const sections = groupSel === "split_abc"
+            ? groupsToRender.map(g => ({
+                label: g,
+                rows: g === "أخرى"
+                    ? visibleRows.filter(r => !["أ", "ب", "ج"].includes(normalizeGroupCode(r.groupCode)))
+                    : visibleRows.filter(r => normalizeGroupCode(r.groupCode) === g)
+            }))
+            : [{ label: groupSel === "all" ? "الكل" : groupSel, rows: visibleRows }];
 
-        const rowsHtml = currentForm132Rows.map((r, idx) => `
-            <tr>
-                <td>${idx + 1}</td>
-                <td style="text-align:right;">${escapeHtmlCell(r.name)}</td>
-                <td>${escapeHtmlCell(r.code)}</td>
-                <td>${fmtMoney(r.entitled)}</td>
-                <td>${fmtMoney(r.govShare)}</td>
-                <td>${fmtMoney(r.total)}</td>
-                <td>${fmtMoney(r.govShare)}</td>
-                <td>${fmtMoney(r.empShare)}</td>
-                <td>${fmtMoney(r.excluded)}</td>
-                <td>${fmtMoney(r.incomeTax)}</td>
-                <td>${fmtMoney(r.incomeStamp)}</td>
-                <td>${fmtMoney(r.totalDeductions)}</td>
-                <td>${fmtMoney(r.net)}</td>
-            </tr>
-        `).join("");
+        const sectionsHtml = sections.map(sec => {
+            const totals = sumRowsArray(sec.rows);
+            const rowsHtml = sec.rows.map((r, idx) => `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td style="text-align:right;">${escapeHtmlCell(r.name)}</td>
+                    <td>${escapeHtmlCell(r.code)}</td>
+                    <td>${escapeHtmlCell(r.groupCode || "-")}</td>
+                    <td>${fmtMoney(r.entitled)}</td>
+                    <td>${fmtMoney(r.govShare)}</td>
+                    <td>${fmtMoney(r.total)}</td>
+                    <td>${fmtMoney(r.govShare)}</td>
+                    <td>${fmtMoney(r.empShare)}</td>
+                    <td>${fmtMoney(r.excluded)}</td>
+                    <td>${fmtMoney(r.incomeTax)}</td>
+                    <td>${fmtMoney(r.incomeStamp)}</td>
+                    <td>${fmtMoney(r.totalDeductions)}</td>
+                    <td>${fmtMoney(r.net)}</td>
+                </tr>
+            `).join("");
+
+            return `
+                <div class="group-print-block">
+                    <div style="font-size:10.5px; font-weight:900; margin:4px 0;">المجموعة: ${escapeHtmlCell(sec.label)} (العدد: ${sec.rows.length})</div>
+                    <table class="form132-calc-table" dir="rtl">
+                        <thead>
+                            <tr>
+                                <th>مسلسل</th>
+                                <th>اسم الموظف</th>
+                                <th>كود الموظف</th>
+                                <th>المجموعة</th>
+                                <th>المستحق</th>
+                                <th>حصة حكومة 17.25%</th>
+                                <th>الإجمالي</th>
+                                <th>حصة حكومة 17.25%</th>
+                                <th>حصة الموظف 10%</th>
+                                <th>مستبعد</th>
+                                <th>ضريبة دخل</th>
+                                <th>دمغة دخل</th>
+                                <th>جملة الاستقطاعات</th>
+                                <th>الصافي</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                            <tr class="totals-footer-row">
+                                <td colspan="4">الإجمالي</td>
+                                <td>${fmtMoney(totals.entitled)}</td>
+                                <td>${fmtMoney(totals.govShare)}</td>
+                                <td>${fmtMoney(totals.total)}</td>
+                                <td>${fmtMoney(totals.govShare)}</td>
+                                <td>${fmtMoney(totals.empShare)}</td>
+                                <td>${fmtMoney(totals.excluded)}</td>
+                                <td>${fmtMoney(totals.incomeTax)}</td>
+                                <td>${fmtMoney(totals.incomeStamp)}</td>
+                                <td>${fmtMoney(totals.totalDeductions)}</td>
+                                <td>${fmtMoney(totals.net)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }).join("");
 
         area.innerHTML = `
             <div class="official-pdf-banner" dir="rtl">
@@ -2835,49 +3070,15 @@
                     </div>
                 </div>
                 <div class="official-pdf-banner-center">
-                    <div class="official-pdf-doc-title">${escapeHtmlCell(formLabel)} (دفع إلكتروني)</div>
+                    <div class="official-pdf-doc-title">${escapeHtmlCell(formLabel)} — دفع إلكتروني</div>
                     <div class="official-pdf-doc-subtitle">إعداد الموظف: ${escapeHtmlCell(creatorName)}</div>
                 </div>
                 <div class="official-pdf-banner-left">
                     <div>التاريخ: ${escapeHtmlCell(printDateStr)}</div>
-                    <div>العدد: ${currentForm132Rows.length}</div>
+                    <div>العدد: ${visibleRows.length}</div>
                 </div>
             </div>
-            <table class="form132-calc-table" dir="rtl">
-                <thead>
-                    <tr>
-                        <th>مسلسل</th>
-                        <th>اسم الموظف</th>
-                        <th>كود الموظف</th>
-                        <th>المستحق</th>
-                        <th>حصة حكومة 17.25%</th>
-                        <th>الإجمالي</th>
-                        <th>حصة حكومة 17.25%</th>
-                        <th>حصة الموظف 10%</th>
-                        <th>مستبعد</th>
-                        <th>ضريبة دخل</th>
-                        <th>دمغة دخل</th>
-                        <th>جملة الاستقطاعات</th>
-                        <th>الصافي</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rowsHtml}
-                    <tr class="totals-footer-row">
-                        <td colspan="3">الإجمالي العام</td>
-                        <td>${fmtMoney(totals.entitled)}</td>
-                        <td>${fmtMoney(totals.govShare)}</td>
-                        <td>${fmtMoney(totals.total)}</td>
-                        <td>${fmtMoney(totals.govShare)}</td>
-                        <td>${fmtMoney(totals.empShare)}</td>
-                        <td>${fmtMoney(totals.excluded)}</td>
-                        <td>${fmtMoney(totals.incomeTax)}</td>
-                        <td>${fmtMoney(totals.incomeStamp)}</td>
-                        <td>${fmtMoney(totals.totalDeductions)}</td>
-                        <td>${fmtMoney(totals.net)}</td>
-                    </tr>
-                </tbody>
-            </table>
+            ${sectionsHtml}
         `;
 
         document.body.classList.remove("printing-employee-pdf", "printing-notif-report", "printing-collective-report");
@@ -2891,14 +3092,16 @@
     async function loadSavedForm132Records(formTitle) {
         const listBox = document.getElementById("form132SavedRecordsList");
         if (!listBox) return;
-        listBox.innerHTML = `<div style="font-size:12px; color:#1d4ed8;"><i class="fas fa-spinner fa-spin"></i> جاري تحميل السجلات المحفوظة...</div>`;
+        listBox.innerHTML = `<div style="font-size:12px; color:#1d4ed8;"><i class="fas fa-spinner fa-spin"></i> جاري جلب السجلات المحفوظة...</div>`;
 
         try {
             const snap = await getDocs(collection(firestoreDb, FORM132_RECORDS_COLLECTION));
+            const targetNorm = normalizeArabic(formTitle);
             const records = [];
             snap.forEach(docSnap => {
                 const d = docSnap.data() || {};
-                if (normalizeArabic(d.formTitle) === normalizeArabic(formTitle)) {
+                const recFormNorm = normalizeArabic(d.formTitle || "");
+                if (!targetNorm || recFormNorm === targetNorm || recFormNorm.includes(targetNorm) || targetNorm.includes(recFormNorm)) {
                     records.push({ id: docSnap.id, ...d });
                 }
             });
@@ -2910,16 +3113,16 @@
             }
 
             listBox.innerHTML = records.map((rec, i) => `
-                <div class="record-pill-row">
+                <div class="record-pill-row" id="saved-rec-row-${escapeHtmlCell(rec.id)}">
                     <div>
                         <strong style="color:#0f172a;">${escapeHtmlCell(rec.recordTitle || "سجل بدون عنوان")}</strong>
                         <span style="color:#64748b; font-size:11px;"> | إعداد: ${escapeHtmlCell(rec.createdBy || "-")} | العدد: ${Array.isArray(rec.rows) ? rec.rows.length : 0}</span>
                     </div>
                     <div style="display:flex; gap:6px;">
                         <button type="button" class="notif-action-btn notif-btn-open" onclick="openSavedForm132Record(${i})">
-                            <i class="fas fa-folder-open"></i> فتح السجل
+                            <i class="fas fa-folder-open"></i> جلب وفتح السجل
                         </button>
-                        <button type="button" class="notif-action-btn notif-btn-reject" onclick="deleteSavedForm132Record('${rec.id}')">
+                        <button type="button" class="notif-action-btn notif-btn-reject" onclick="deleteSavedForm132Record('${escapeHtmlCell(rec.id)}', this)">
                             <i class="fas fa-trash"></i> حذف
                         </button>
                     </div>
@@ -2927,13 +3130,14 @@
             `).join("");
         } catch (err) {
             console.error("Error loading form132 records:", err);
-            listBox.innerHTML = `<div style="font-size:11.5px; color:#dc2626;">تعذر تحميل السجلات المحفوظة.</div>`;
+            listBox.innerHTML = `<div style="font-size:11.5px; color:#dc2626;">تعذر جلب السجلات المحفوظة.</div>`;
         }
     }
 
     window.openSavedForm132Record = function(idx) {
         const rec = savedForm132RecordsList[idx];
         if (!rec) return;
+        form132TableSearchQuery = "";
         currentForm132Rows = sortRowsAlphabetically(Array.isArray(rec.rows) ? rec.rows.map(r => ({ ...r })) : []);
         currentForm132Meta = {
             formTitle: rec.formTitle || activeForm132Title,
@@ -2947,13 +3151,17 @@
         renderForm132ResultTableAndActions();
     };
 
-    window.deleteSavedForm132Record = async function(docId) {
-        if (!confirm("هل تريد حذف هذا السجل نهائياً؟")) return;
+    window.deleteSavedForm132Record = async function(docId, btnEl) {
+        if (!docId) return;
+        if (btnEl) btnEl.disabled = true;
         try {
             await deleteDoc(doc(firestoreDb, FORM132_RECORDS_COLLECTION, docId));
+            savedForm132RecordsList = savedForm132RecordsList.filter(r => r.id !== docId);
             await loadSavedForm132Records(activeForm132Title);
         } catch (err) {
-            alert("تعذر حذف السجل.");
+            console.error("Error deleting form132 record:", err);
+            if (btnEl) btnEl.disabled = false;
+            alert("تعذر حذف السجل من قاعدة البيانات.");
         }
     };
 
@@ -2998,7 +3206,7 @@
                 if (cols.length >= 2) {
                     const code = normalizeArabic(cols[0]);
                     const days = Number(cols[cols.length - 1]);
-                    if (idx === 0 && isNaN(days)) return; // تخطي صف العناوين
+                    if (idx === 0 && isNaN(days)) return;
                     if (code && !isNaN(days)) {
                         map.set(code, days);
                     }
@@ -3020,6 +3228,7 @@
         const totalDays = Number(document.getElementById("foodTotalDaysInput")?.value || 0);
         const graceDays = Number(document.getElementById("foodGraceDaysInput")?.value || 0);
         const selectedReportId = document.getElementById("foodLeavesReportSelect")?.value || "";
+        const shareOpts = getNoShareOptions();
 
         if (dayValue <= 0 || totalDays <= 0) {
             alert("الرجاء إدخال قيمة اليوم وعدد الأيام بشكل صحيح.");
@@ -3029,12 +3238,14 @@
         const absenceByCode = new Map();
         const absenceByNatId = new Map();
         const absenceByName = new Map();
+        let refDate = new Date();
 
         if (selectedReportId && selectedReportId !== "external") {
             const leavesSnap = await getDocs(collection(firestoreDb, "leaves"));
             const notif = cachedNotifications.find(n => n.id === selectedReportId) || null;
             const fromDt = notif?.fromDate ? parseDateSafe(notif.fromDate) : null;
             const toDt = notif?.toDate ? parseDateSafe(notif.toDate) : null;
+            if (fromDt) refDate = fromDt;
             if (toDt) toDt.setHours(23, 59, 59, 999);
 
             leavesSnap.forEach(docSnap => {
@@ -3075,34 +3286,47 @@
                 absenceByName.get(nm) ??
                 0;
 
+            const pensionInfo = getPensionAdjustedDays(emp, totalDays, refDate);
             const deductedDays = Math.max(0, rawAbsence - graceDays);
-            const entitledDays = Math.max(0, totalDays - deductedDays);
+            const entitledDays = Math.max(0, pensionInfo.effectiveDays - deductedDays);
             const entitledAmount = round2(entitledDays * dayValue);
 
-            return build13ColRowFromEntitled(emp, entitledAmount, 0);
+            return build13ColRowFromEntitled(emp, entitledAmount, 0, pensionInfo.pensionNote, shareOpts);
         });
 
+        form132TableSearchQuery = "";
         currentForm132Rows = sortRowsAlphabetically(computed);
         renderForm132ResultTableAndActions();
     };
 
     window.calculateHousingAllowanceForm = async function() {
         if (!isLoaded) await fetchAllEmployeesFromFirestore(false);
+        const shareOpts = getNoShareOptions();
 
         const activeEmps = cachedEmployees.filter(emp =>
             !isInactiveEmployeeStatus(emp.status) && (Number(emp.housingAllowance) || 0) > 0
         );
 
-        const computed = activeEmps.map(emp =>
-            build13ColRowFromEntitled(emp, Number(emp.housingAllowance) || 0, 0)
-        );
+        const computed = activeEmps.map(emp => {
+            const pensionInfo = getPensionAdjustedDays(emp, 30, new Date());
+            const baseHousing = Number(emp.housingAllowance) || 0;
+            const adjustedHousing = pensionInfo.remainingDays !== null && pensionInfo.remainingDays <= 0
+                ? 0
+                : (pensionInfo.remainingDays !== null && pensionInfo.remainingDays < 30
+                    ? round2((baseHousing / 30) * pensionInfo.remainingDays)
+                    : baseHousing);
 
+            return build13ColRowFromEntitled(emp, adjustedHousing, 0, pensionInfo.pensionNote, shareOpts);
+        });
+
+        form132TableSearchQuery = "";
         currentForm132Rows = sortRowsAlphabetically(computed);
         renderForm132ResultTableAndActions();
     };
 
     window.calculateCashAllowanceForm = async function() {
         if (!isLoaded) await fetchAllEmployeesFromFirestore(false);
+        const shareOpts = getNoShareOptions();
 
         const checkedGrades = Array.from(document.querySelectorAll(".cash-grade-checkbox:checked"))
             .map(cb => normalizeArabic(cb.value));
@@ -3130,16 +3354,25 @@
 
         const computed = matchedEmps.map(emp => {
             const tCount = String(emp.cashTicketsCount ?? "").trim();
-            const entitledVal = ticketPriceMap.get(tCount) ?? 0;
-            return build13ColRowFromEntitled(emp, entitledVal, 0);
+            const pensionInfo = getPensionAdjustedDays(emp, 30, new Date());
+            const baseRate = ticketPriceMap.get(tCount) ?? 0;
+            const adjustedVal = pensionInfo.remainingDays !== null && pensionInfo.remainingDays <= 0
+                ? 0
+                : (pensionInfo.remainingDays !== null && pensionInfo.remainingDays < 30
+                    ? round2((baseRate / 30) * pensionInfo.remainingDays)
+                    : baseRate);
+
+            return build13ColRowFromEntitled(emp, adjustedVal, 0, pensionInfo.pensionNote, shareOpts);
         });
 
+        form132TableSearchQuery = "";
         currentForm132Rows = sortRowsAlphabetically(computed);
         renderForm132ResultTableAndActions();
     };
 
     window.calculateRiskAllowanceForm = async function() {
         if (!isLoaded) await fetchAllEmployeesFromFirestore(false);
+        const shareOpts = getNoShareOptions();
 
         const computed = [];
         cachedEmployees.forEach(emp => {
@@ -3149,11 +3382,19 @@
             const pctNum = Number(rawPct);
             if (basic > 0 && !isNaN(pctNum) && pctNum > 0) {
                 const ratio = pctNum > 1 ? (pctNum / 100) : pctNum;
-                const entitledVal = round2(basic * ratio);
-                computed.push(build13ColRowFromEntitled(emp, entitledVal, 0));
+                const pensionInfo = getPensionAdjustedDays(emp, 30, new Date());
+                const baseRisk = round2(basic * ratio);
+                const adjustedVal = pensionInfo.remainingDays !== null && pensionInfo.remainingDays <= 0
+                    ? 0
+                    : (pensionInfo.remainingDays !== null && pensionInfo.remainingDays < 30
+                        ? round2((baseRisk / 30) * pensionInfo.remainingDays)
+                        : baseRisk);
+
+                computed.push(build13ColRowFromEntitled(emp, adjustedVal, 0, pensionInfo.pensionNote, shareOpts));
             }
         });
 
+        form132TableSearchQuery = "";
         currentForm132Rows = sortRowsAlphabetically(computed);
         renderForm132ResultTableAndActions();
     };
@@ -3169,9 +3410,25 @@
         }
     };
 
+    function buildNoShareFlagsHtml() {
+        return `
+            <div class="no-share-flags-row">
+                <label class="no-share-flag-label">
+                    <input type="checkbox" id="omitGovShareCheckbox">
+                    <span>صرف بدون حصة حكومة (17.25%)</span>
+                </label>
+                <label class="no-share-flag-label">
+                    <input type="checkbox" id="omitEmpShareCheckbox">
+                    <span>صرف بدون حصة موظف (10%)</span>
+                </label>
+            </div>
+        `;
+    }
+
     window.initForm132Workspace = async function(formTitle) {
         activeForm132Title = formTitle || activeForm132Title;
         currentForm132Rows = [];
+        form132TableSearchQuery = "";
         const engineArea = document.getElementById("form132DynamicEngineArea");
         if (!engineArea) return;
 
@@ -3211,6 +3468,8 @@
                         </div>
                     </div>
 
+                    ${buildNoShareFlagsHtml()}
+
                     <div id="foodExternalAbsenceUploadBox" class="${notifOptions ? "hidden" : ""}" style="background:#fffbeb; border:1px dashed #f59e0b; border-radius:9px; padding:10px; margin-bottom:10px;">
                         <div style="font-size:12px; font-weight:800; color:#92400e; margin-bottom:6px;">
                             <i class="fas fa-file-upload"></i> رفع ملف الغياب الخارجي (CSV / TXT — الأعمدة: كود الموظف، الاسم، أيام الغياب):
@@ -3228,8 +3487,9 @@
             controlsHtml = `
                 <div class="calc-controls-panel">
                     <div style="font-size:12.5px; color:#334155; font-weight:700; margin-bottom:10px;">
-                        يتم جلب جميع العاملين النشطين المسجل لهم قيمة في حقل <strong>بدل السكن</strong> أكبر من الصفر تلقائياً وتطبيق الاستقطاعات القانونية.
+                        يتم جلب جميع العاملين النشطين المسجل لهم قيمة في حقل <strong>بدل السكن</strong> أكبر من الصفر تلقائياً وتطبيق الاستقطاعات القانونية وقاعدة الأيام المتبقية على المعاش.
                     </div>
+                    ${buildNoShareFlagsHtml()}
                     <button type="button" class="pro-submit-btn" style="min-height:42px; font-size:13px;" onclick="calculateHousingAllowanceForm()">
                         <i class="fas fa-calculator"></i> احتساب وعرض استمارة بدل السكن
                     </button>
@@ -3281,6 +3541,8 @@
                         <div class="tickets-pricing-grid">${ticketsInputsHtml}</div>
                     </div>
 
+                    ${buildNoShareFlagsHtml()}
+
                     <button type="button" class="pro-submit-btn" style="min-height:42px; font-size:13px;" onclick="calculateCashAllowanceForm()">
                         <i class="fas fa-calculator"></i> احتساب وعرض استمارة البدل النقدي
                     </button>
@@ -3290,8 +3552,9 @@
             controlsHtml = `
                 <div class="calc-controls-panel">
                     <div style="font-size:12.5px; color:#334155; font-weight:700; margin-bottom:10px;">
-                        المعادلة: <strong>أساسي الراتب × نسبة المخاطر</strong> المخزنة لكل موظف في قاعدة البيانات، مع تطبيق الاستقطاعات القانونية.
+                        المعادلة: <strong>أساسي الراتب × نسبة المخاطر</strong> المخزنة لكل موظف في قاعدة البيانات، مع تطبيق الاستقطاعات القانونية وقاعدة الأيام المتبقية على المعاش.
                     </div>
+                    ${buildNoShareFlagsHtml()}
                     <button type="button" class="pro-submit-btn" style="min-height:42px; font-size:13px;" onclick="calculateRiskAllowanceForm()">
                         <i class="fas fa-calculator"></i> احتساب وعرض استمارة بدل المخاطر
                     </button>
@@ -4792,15 +5055,26 @@
         }
     };
 
+    function parseNumericIfNeeded(key, rawVal) {
+        const numericKeys = new Set([
+            "basicSalary", "functionalWage", "grossWage", "housingAllowance",
+            "feloniesCount", "revenueFeloniesCount", "cashAllowanceValue"
+        ]);
+        if (!numericKeys.has(key)) return String(rawVal ?? "").trim();
+        const trimmed = String(rawVal ?? "").trim();
+        if (trimmed === "") return 0;
+        const num = Number(trimmed);
+        return isNaN(num) ? trimmed : num;
+    }
+
     window.saveSelectedEmployeeEdits = async function() {
         if (!activeEmployeeRecord) return;
-        const saveBtn = document.getElementById("saveEmployeeEditsBtn");
-        const feedbackEl = document.getElementById("empSaveFeedback");
 
         if (isCurrentEmployeeLocked()) {
+            const feedbackEl = document.getElementById("empSaveFeedback");
             if (feedbackEl) {
                 feedbackEl.style.color = "#b91c1c";
-                feedbackEl.innerText = "غير مسموح بالتعديل لأن الموظف غير نشط.";
+                feedbackEl.innerText = "هذا الموظف غير نشط ولا يُسمح بتعديل بياناته.";
             }
             return;
         }
@@ -4813,103 +5087,82 @@
             draftEmployeeValues.__editingKey = null;
         }
 
-        const cleanNid = String(draftEmployeeValues.nationalId || "").replace(/\D/g, "").trim();
-        if (!/^\d{14}$/.test(cleanNid)) {
-            if (feedbackEl) {
-                feedbackEl.style.color = "#dc2626";
-                feedbackEl.innerText = "الرجاء إدخال رقم قومي صحيح مكون من 14 رقماً.";
-            }
-            return;
-        }
-
-        const toNum = (v) => {
-            const n = Number(String(v ?? "").trim());
-            return isNaN(n) ? 0 : n;
-        };
-        const toStr = (v) => String(v ?? "").trim();
-        const retirementClean = normalizeDateValueForSheet(draftEmployeeValues.retirementDate);
-
-        const entitlementsPayload = {
-            nationalId: cleanNid,
-            employeeCode: toStr(draftEmployeeValues.employeeCode),
-            currentGrade: toStr(draftEmployeeValues.currentGrade),
-            currentJobTitle: toStr(draftEmployeeValues.currentJobTitle),
-            basicSalary: toNum(draftEmployeeValues.basicSalary),
-            functionalWage: toNum(draftEmployeeValues.functionalWage),
-            riskPercentage: toStr(draftEmployeeValues.riskPercentage),
-            zamrPerecent: toStr(draftEmployeeValues.zamrPerecent),
-            feloniesCount: toNum(draftEmployeeValues.feloniesCount),
-            revenueFeloniesCount: toNum(draftEmployeeValues.revenueFeloniesCount),
-            housingAllowance: toNum(draftEmployeeValues.housingAllowance),
-            employmentStatus: toStr(draftEmployeeValues.employmentStatus),
-            grossWage: toNum(draftEmployeeValues.grossWage),
-            seniorManagement: toStr(draftEmployeeValues.seniorManagement),
-            bonusType: toStr(draftEmployeeValues.bonusType),
-            employeeShare: toStr(draftEmployeeValues.employeeShare),
-            government: toStr(draftEmployeeValues.government),
-            groubCode: toStr(draftEmployeeValues.groubCode),
-            birthDate: normalizeDateValueForSheet(draftEmployeeValues.birthDate),
-            retirementDate: retirementClean,
-            pensionDate: retirementClean,
-            cashTicketsCount: toStr(draftEmployeeValues.cashTicketsCount),
-            cashAllowanceValue: toNum(draftEmployeeValues.cashAllowanceValue),
-            comprehensiveInsuranceRate: toStr(draftEmployeeValues.comprehensiveInsuranceRate),
-            updatedAt: serverTimestamp()
-        };
-
-        const usersPayload = {
-            name: toStr(draftEmployeeValues.name),
-            nationalId: cleanNid,
-            jobCategory: toStr(draftEmployeeValues.jobCategory),
-            department: toStr(draftEmployeeValues.department),
-            pensionDate: retirementClean,
-            retirementDate: retirementClean,
-            updatedAt: serverTimestamp()
-        };
-
+        const saveBtn = document.getElementById("saveEmployeeEditsBtn");
+        const feedbackEl = document.getElementById("empSaveFeedback");
         if (saveBtn) saveBtn.disabled = true;
         if (feedbackEl) {
             feedbackEl.style.color = "#1d4ed8";
-            feedbackEl.innerText = "جاري حفظ البيانات...";
+            feedbackEl.innerText = "جاري الحفظ في قاعدة البيانات...";
         }
 
         try {
-            await setDoc(doc(firestoreDb, "entitlements_employees", cleanNid), entitlementsPayload, { merge: true });
+            const cleanedData = {};
+            EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+                cleanedData[f.key] = parseNumericIfNeeded(f.key, draftEmployeeValues[f.key]);
+            });
 
-            if (activeEmployeeRecord.docId) {
-                await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), usersPayload, { merge: true });
-            } else {
-                const newUserDocRef = await addDoc(collection(firestoreDb, "users"), {
-                    ...usersPayload,
-                    username: toStr(draftEmployeeValues.employeeCode) || cleanNid,
-                    status: "active",
-                    createdAt: serverTimestamp()
-                });
-                activeEmployeeRecord.docId = newUserDocRef.id;
+            const cleanNid = String(cleanedData.nationalId || activeEmployeeRecord.nationalId || "").replace(/\s+/g, "").trim();
+            const cleanCode = String(cleanedData.employeeCode || activeEmployeeRecord.employeeCode || activeEmployeeRecord.username || "").trim();
+            const cleanName = String(cleanedData.name || "").trim();
+            const cleanRetirementDate = normalizeDateValueForSheet(cleanedData.retirementDate || "");
+
+            if (!cleanName && !cleanCode && !cleanNid) {
+                throw new Error("الرجاء إدخال اسم الموظف أو الكود أو الرقم القومي قبل الحفظ.");
             }
 
-            Object.assign(activeEmployeeRecord, {
-                ...entitlementsPayload,
-                ...usersPayload,
+            const targetDocId = (/^\d{14}$/.test(cleanNid))
+                ? cleanNid
+                : (activeEmployeeRecord.docId || cleanCode || `emp_${Date.now()}`);
+
+            const entitlementPayload = {
+                ...cleanedData,
                 nationalId: cleanNid,
-                retirementDate: retirementClean,
-                pensionDate: retirementClean,
+                employeeCode: cleanCode,
+                retirementDate: cleanRetirementDate,
+                pensionDate: cleanRetirementDate,
+                updatedAt: serverTimestamp(),
+                updatedBy: authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "إدارة الاستحقاقات والمزايا"
+            };
+
+            await setDoc(doc(firestoreDb, "entitlements_employees", targetDocId), entitlementPayload, { merge: true });
+
+            if (activeEmployeeRecord.docId) {
+                const userUpdatePayload = {
+                    name: cleanName || activeEmployeeRecord.name,
+                    nationalId: cleanNid || activeEmployeeRecord.nationalId,
+                    department: cleanedData.department ?? activeEmployeeRecord.department,
+                    jobCategory: cleanedData.jobCategory ?? activeEmployeeRecord.jobCategory,
+                    pensionDate: cleanRetirementDate,
+                    retirementDate: cleanRetirementDate,
+                    updatedAt: serverTimestamp()
+                };
+                await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), userUpdatePayload, { merge: true });
+            }
+
+            const updatedLocal = {
+                ...activeEmployeeRecord,
+                ...cleanedData,
+                nationalId: cleanNid,
+                employeeCode: cleanCode,
+                retirementDate: cleanRetirementDate,
+                pensionDate: cleanRetirementDate,
                 hasEntitlementRecord: true,
                 isNewEmployee: false
-            });
+            };
 
             const existingIdx = cachedEmployees.findIndex(item =>
                 (activeEmployeeRecord.docId && item.docId === activeEmployeeRecord.docId) ||
-                (item.nationalId && item.nationalId === cleanNid)
+                (cleanNid && item.nationalId === cleanNid)
             );
             if (existingIdx >= 0) {
-                cachedEmployees[existingIdx] = { ...activeEmployeeRecord };
+                cachedEmployees[existingIdx] = updatedLocal;
             } else {
-                cachedEmployees.push({ ...activeEmployeeRecord });
+                cachedEmployees.push(updatedLocal);
             }
 
-            refreshEmployeeHeaderSummary();
+            activeEmployeeRecord = updatedLocal;
             renderEmployeeFieldsGrid();
+            refreshEmployeeHeaderSummary();
 
             if (feedbackEl) {
                 feedbackEl.style.color = "#15803d";
@@ -4919,12 +5172,13 @@
             console.error("Error saving employee edits:", err);
             if (feedbackEl) {
                 feedbackEl.style.color = "#dc2626";
-                feedbackEl.innerText = "حدث خطأ أثناء حفظ البيانات في قاعدة البيانات.";
+                feedbackEl.innerText = err.message || "حدث خطأ أثناء حفظ التعديلات.";
             }
         } finally {
-            if (saveBtn && !isCurrentEmployeeLocked()) saveBtn.disabled = false;
+            if (saveBtn) saveBtn.disabled = false;
         }
     };
 </script>
+
 </body>
 </html>
