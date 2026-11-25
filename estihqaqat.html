@@ -683,15 +683,23 @@
             min-width: 0;
             flex: 1.15;
         }
-        .official-pdf-banner-right img {
-            width: 34px;
-            height: 34px;
+        .official-pdf-logo-box {
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            object-fit: contain;
-            border: 1.2px solid #c59b27;
+            border: 1.5px solid #c59b27;
             background: #ffffff;
-            padding: 1.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
             flex-shrink: 0;
+        }
+        .official-pdf-logo-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
         }
         .official-pdf-org-lines {
             line-height: 1.3;
@@ -772,7 +780,6 @@
                 overflow: visible !important;
             }
 
-            /* طباعة بيانات الموظف بالكامل في صفحة واحدة */
             body.printing-employee-pdf > *:not(#employeePdfPrintArea) {
                 display: none !important;
             }
@@ -792,9 +799,9 @@
                 margin-bottom: 6px !important;
                 gap: 6px !important;
             }
-            body.printing-employee-pdf .official-pdf-banner-right img {
-                width: 30px !important;
-                height: 30px !important;
+            body.printing-employee-pdf .official-pdf-logo-box {
+                width: 34px !important;
+                height: 34px !important;
             }
             body.printing-employee-pdf .official-pdf-org-main {
                 font-size: 9.5px !important;
@@ -842,7 +849,6 @@
                 word-break: break-word;
             }
 
-            /* طباعة تقرير التبليغات */
             body.printing-notif-report > *:not(#notifViewerModal) { display: none !important; }
             body.printing-notif-report #notifViewerModal {
                 position: static !important;
@@ -905,7 +911,6 @@
                 font-weight: 900 !important;
             }
 
-            /* طباعة الاستعلام الفردي في صفحة واحدة */
             body:not(.printing-notif-report):not(.printing-employee-pdf) > *:not(#fullServiceSection) { display: none !important; }
             body:not(.printing-notif-report):not(.printing-employee-pdf) #fullServiceSection {
                 position: static !important;
@@ -955,7 +960,7 @@
 
     <header>
         <div class="logo-area">
-            <img src="./logo.png" alt="الشعار" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='logo.png';}">
+            <img id="headerBrandLogo" src="./logo.png" alt="الشعار">
             <div>
                 <h1>بوابة الخدمات الرقمية</h1>
                 <span>الهيئة العامة للسد العالي وخزان أسوان</span>
@@ -1257,9 +1262,9 @@
             </div>
 
             <div class="print-header">
-                <div class="official-pdf-banner">
+                <div class="official-pdf-banner" dir="rtl">
                     <div class="official-pdf-banner-right">
-                        <img src="./logo.png" alt="الشعار" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='logo.png';}">
+                        <div class="official-pdf-logo-box" data-pdf-logo-slot="1"></div>
                         <div class="official-pdf-org-lines">
                             <div class="official-pdf-org-main">الهيئة العامة للسد العالي وخزان أسوان</div>
                             <div class="official-pdf-org-sub">إدارة الموارد البشرية — إدارة الاستحقاقات والمزايا</div>
@@ -1314,6 +1319,64 @@
     let currentViewerFileName = "تقرير_تجميعي_لبيانات_الإجازات";
     let pendingRejectIndex = null;
     let pendingRejectBtnEl = null;
+    let cachedLogoDataUrl = "";
+
+    function cacheLogoForPrinting() {
+        const sources = ["./logo.png", "logo.png"];
+        let idx = 0;
+
+        function tryNext() {
+            if (idx >= sources.length) {
+                populatePrintLogoSlots("");
+                return;
+            }
+            const src = sources[idx++];
+            fetch(src)
+                .then(res => {
+                    if (!res.ok) throw new Error("fetch failed");
+                    return res.blob();
+                })
+                .then(blob => new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                }))
+                .then(dataUrl => {
+                    if (typeof dataUrl === "string" && dataUrl.startsWith("data:image")) {
+                        cachedLogoDataUrl = dataUrl;
+                        const headerImg = document.getElementById("headerBrandLogo");
+                        if (headerImg) headerImg.src = dataUrl;
+                        populatePrintLogoSlots(dataUrl);
+                    } else {
+                        tryNext();
+                    }
+                })
+                .catch(() => tryNext());
+        }
+
+        tryNext();
+    }
+
+    function populatePrintLogoSlots(dataUrl) {
+        const slots = document.querySelectorAll("[data-pdf-logo-slot]");
+        slots.forEach(slot => {
+            if (dataUrl) {
+                slot.innerHTML = `<img src="${dataUrl}" alt="شعار الهيئة">`;
+            } else {
+                slot.innerHTML = `<i class="fas fa-landmark" style="color:#0f172a;font-size:15px;"></i>`;
+            }
+        });
+    }
+
+    function getPrintLogoHtml() {
+        if (cachedLogoDataUrl) {
+            return `<div class="official-pdf-logo-box"><img src="${cachedLogoDataUrl}" alt="شعار الهيئة"></div>`;
+        }
+        return `<div class="official-pdf-logo-box"><img src="./logo.png" alt="شعار الهيئة" onerror="this.style.display='none';this.parentNode.innerHTML='<i class=\\'fas fa-landmark\\' style=\\'color:#0f172a;font-size:15px;\\'></i>';"></div>`;
+    }
+
+    window.addEventListener("DOMContentLoaded", cacheLogoForPrinting);
     
     const serviceUrls = {
         "الاستعلام عن الراتب الشهري": "https://script.google.com/macros/s/AKfycbwubbA9McDsP_6wP9CMLr1LXPZ4lUuhqqRjZUQbZ7b-hdPA9DVVkKlCMhygJuKqopgi/exec",
@@ -1481,6 +1544,7 @@
     }
 
     function printNotifReportPDF() {
+        populatePrintLogoSlots(cachedLogoDataUrl);
         document.body.classList.remove("printing-employee-pdf");
         document.body.classList.add("printing-notif-report");
         window.print();
@@ -1490,6 +1554,7 @@
     }
 
     function printSingleServicePDF() {
+        populatePrintLogoSlots(cachedLogoDataUrl);
         const userInfoText = document.getElementById("activeUserInfo")?.innerText || "";
         const metaBox = document.getElementById("printSingleServiceMeta");
         if (metaBox) {
@@ -2029,7 +2094,7 @@
         area.innerHTML = `
             <div class="official-pdf-banner" dir="rtl">
                 <div class="official-pdf-banner-right">
-                    <img src="./logo.png" alt="الشعار" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='logo.png';}">
+                    ${getPrintLogoHtml()}
                     <div class="official-pdf-org-lines">
                         <div class="official-pdf-org-main">الهيئة العامة للسد العالي وخزان أسوان</div>
                         <div class="official-pdf-org-sub">إدارة الموارد البشرية — إدارة الاستحقاقات والمزايا</div>
@@ -2755,7 +2820,7 @@
             const officialPrintHeaderHtml = `
                 <div class="notif-print-header official-pdf-banner" dir="rtl" style="display:none;">
                     <div class="official-pdf-banner-right">
-                        <img src="./logo.png" alt="الشعار" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='logo.png';}">
+                        ${getPrintLogoHtml()}
                         <div class="official-pdf-org-lines">
                             <div class="official-pdf-org-main">الهيئة العامة للسد العالي وخزان أسوان</div>
                             <div class="official-pdf-org-sub">إدارة الموارد البشرية — إدارة الاستحقاقات والمزايا</div>
