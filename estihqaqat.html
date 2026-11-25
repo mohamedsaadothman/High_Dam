@@ -582,10 +582,29 @@
         .emp-search-results li:last-child { border-bottom: none; }
         .emp-search-results li:hover { background: #eff6ff; color: #0056b3; }
 
-        .emp-details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; margin-top: 10px; }
-        .emp-field-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; }
-        .emp-field-box label { display: block; font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 3px; }
-        .emp-field-box .val { font-size: 13.5px; font-weight: 800; color: #0f172a; }
+        .emp-details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 10px; margin-top: 10px; }
+        .emp-field-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .emp-field-box.editing-active {
+            border-color: #1d4ed8; background: #eff6ff;
+        }
+        .emp-field-header {
+            display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 4px;
+        }
+        .emp-field-box label { display: block; font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 0; }
+        .emp-edit-pen-btn {
+            background: transparent; border: none; color: #1d4ed8; cursor: pointer;
+            font-size: 12px; padding: 2px 5px; border-radius: 6px; transition: all 0.15s ease;
+            line-height: 1;
+        }
+        .emp-edit-pen-btn:hover { background: #dbeafe; color: #1e3a8a; transform: scale(1.1); }
+        .emp-field-box .val { font-size: 13.5px; font-weight: 800; color: #0f172a; min-height: 20px; word-break: break-word; }
+        .emp-field-input {
+            width: 100%; padding: 6px 8px; border: 1.5px solid #1d4ed8; border-radius: 7px;
+            font-size: 13px; font-weight: 700; color: #0f172a; background: #ffffff; outline: none;
+        }
 
         .service-full-page {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -974,7 +993,7 @@
 
                 <div id="inputEditsWorkspace" class="workspace-card hidden">
                     <h3><i class="fas fa-users-cog" style="color:#0056b3;"></i> إدخال وتعديلات بيانات الموظفين</h3>
-                    <p class="sub-desc">ابحث عن الموظف بالاسم أو الرقم القومي أو كود الموظف من قاعدة بيانات Cloud Firestore (مجموعة users)</p>
+                    <p class="sub-desc">ابحث عن الموظف بالاسم أو الرقم القومي أو كود الموظف (مطابق لبيانات users و entitlements_employees)، وعدّل أي حقل عبر أيقونة القلم أو أدخل بيانات موظف جديد مباشرة</p>
 
                     <div class="emp-search-box">
                         <input type="text" id="empSearchInput" placeholder="اكتب اسم الموظف أو الرقم القومي أو كود الموظف..." oninput="filterFirestoreEmployees()" autocomplete="off">
@@ -987,11 +1006,19 @@
                     <ul id="empSearchResultsList" class="emp-search-results hidden"></ul>
 
                     <div id="selectedEmployeeDetailsCard" class="hidden" style="margin-top: 12px; border-top: 2px solid #e2e8f0; padding-top: 14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
-                            <h4 style="color:#1a365d; font-size:15px; font-weight:900;">
-                                <i class="fas fa-id-card" style="color:#c59b27;"></i> <span id="empDetailName">-</span>
-                            </h4>
-                            <span id="empDetailStatusBadge" style="background:#dcfce7; color:#166534; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:800;">نشط</span>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <h4 style="color:#1a365d; font-size:15px; font-weight:900;">
+                                    <i class="fas fa-id-card" style="color:#c59b27;"></i> <span id="empDetailName">-</span>
+                                </h4>
+                                <span id="empDetailStatusBadge" style="background:#dcfce7; color:#166534; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:800;">نشط</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span id="empSaveFeedback" style="font-size:12px; font-weight:800;"></span>
+                                <button type="button" id="saveEmployeeEditsBtn" class="act-btn btn-ex" style="padding:8px 15px; font-size:12px; font-weight:800;" onclick="saveSelectedEmployeeEdits()">
+                                    <i class="fas fa-save"></i> حفظ التعديلات في قاعدة البيانات
+                                </button>
+                            </div>
                         </div>
                         <div class="emp-details-grid" id="empDetailsGrid"></div>
                     </div>
@@ -1572,7 +1599,7 @@
     }
 </script>
 
-<!-- ربط Firestore (Dam-purchases-App / users, entitlements_leave_reports, archived_notifications, rejected_notifications, leaves) -->
+<!-- ربط Firestore (Dam-purchases-App / users, entitlements_employees, entitlements_leave_reports, archived_notifications, rejected_notifications, leaves) -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import {
@@ -1582,6 +1609,7 @@
         addDoc,
         deleteDoc,
         doc,
+        setDoc,
         updateDoc,
         serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1605,6 +1633,39 @@
     let cachedNotifications = [];
     let cachedArchivedNotifications = [];
     let isLoaded = false;
+    let activeEmployeeRecord = null;
+    let draftEmployeeValues = {};
+
+    const EMPLOYEE_EDITABLE_FIELDS = [
+        { key: "name", label: "الاسم (من users)", type: "text", source: "users" },
+        { key: "nationalId", label: "الرقم القومي", type: "text", source: "both" },
+        { key: "employeeCode", label: "كود الموظف (employeeCode)", type: "text", source: "entitlements" },
+        { key: "jobCategory", label: "الفئة الوظيفية (من users)", type: "text", source: "users" },
+        { key: "department", label: "الإدارة / القسم (من users)", type: "text", source: "users" },
+        { key: "currentGrade", label: "الدرجة الحالية", type: "text", source: "entitlements" },
+        { key: "currentJobTitle", label: "الوظيفة الحالية", type: "text", source: "entitlements" },
+        { key: "employmentStatus", label: "منتدب أو دائم", type: "text", source: "entitlements" },
+        { key: "seniorManagement", label: "إدارة عليا", type: "text", source: "entitlements" },
+        { key: "bonusType", label: "نوع المكافأة", type: "text", source: "entitlements" },
+        { key: "groubCode", label: "المجموعة (groubCode)", type: "text", source: "entitlements" },
+        { key: "basicSalary", label: "أساسي الراتب", type: "number", source: "entitlements" },
+        { key: "functionalWage", label: "الأجر الوظيفي", type: "number", source: "entitlements" },
+        { key: "grossWage", label: "إجمالي الأجر", type: "number", source: "entitlements" },
+        { key: "housingAllowance", label: "بدل السكن", type: "number", source: "entitlements" },
+        { key: "riskPercentage", label: "نسبة المخاطر", type: "text", source: "entitlements" },
+        { key: "zamrPerecent", label: "نسبة زمر", type: "text", source: "entitlements" },
+        { key: "feloniesCount", label: "عدد الجنايات", type: "number", source: "entitlements" },
+        { key: "revenueFeloniesCount", label: "جنايات الإيرادات", type: "number", source: "entitlements" },
+        { key: "employeeShare", label: "حصة موظف", type: "text", source: "entitlements" },
+        { key: "government", label: "حصة حكومة", type: "text", source: "entitlements" },
+        { key: "comprehensiveInsuranceRate", label: "نسبة التأمين الشامل", type: "text", source: "entitlements" },
+        { key: "cashTicketsCount", label: "عدد تذاكر النقدي", type: "text", source: "entitlements" },
+        { key: "cashAllowanceValue", label: "قيمة بدل النقدي", type: "number", source: "entitlements" },
+        { key: "birthDate", label: "تاريخ الميلاد", type: "text", source: "entitlements" },
+        { key: "retirementDate", label: "تاريخ الإحالة للمعاش", type: "text", source: "entitlements" },
+        { key: "lastIncentiveRaise", label: "آخر علاوة تشجيعية", type: "text", source: "entitlements" },
+        { key: "lastPromotionRaise", label: "آخر علاوة ترقية", type: "text", source: "entitlements" }
+    ];
 
     function normalizeArabic(text) {
         if (!text) return "";
@@ -2481,12 +2542,28 @@
         if (statusEl) statusEl.innerText = "جاري تحميل بيانات الموظفين من قاعدة البيانات...";
 
         try {
-            const snap = await getDocs(collection(firestoreDb, "users"));
+            const [usersSnap, entitlementsSnap] = await Promise.all([
+                getDocs(collection(firestoreDb, "users")),
+                getDocs(collection(firestoreDb, "entitlements_employees"))
+            ]);
+
+            const entitlementsByNatId = new Map();
+            entitlementsSnap.forEach((docSnap) => {
+                const ed = docSnap.data() || {};
+                const cleanNid = String(ed.nationalId || docSnap.id || "").replace(/\s+/g, "").trim();
+                if (/^\d{14}$/.test(cleanNid)) {
+                    entitlementsByNatId.set(cleanNid, { entDocId: docSnap.id, ...ed });
+                }
+            });
+
             const arr = [];
             const eligible = [];
 
-            snap.forEach((docSnap) => {
+            usersSnap.forEach((docSnap) => {
                 const d = docSnap.data() || {};
+                const cleanNid = String(d.nationalId || docSnap.id || "").replace(/\s+/g, "").trim();
+                const ent = /^\d{14}$/.test(cleanNid) ? (entitlementsByNatId.get(cleanNid) || {}) : {};
+
                 const record = {
                     docId: docSnap.id,
                     uid: d.uid || docSnap.id,
@@ -2494,7 +2571,7 @@
                     password: d.password !== undefined && d.password !== null ? String(d.password) : "",
                     role: d.role ? String(d.role).trim() : "",
                     name: d.name || d.empName || d.fullName || "",
-                    nationalId: d.nationalId ? String(d.nationalId).trim() : "",
+                    nationalId: cleanNid || (d.nationalId ? String(d.nationalId).trim() : ""),
                     department: d.department || "",
                     jobCategory: d.jobCategory || d.functionalCategory || d.category || "",
                     hireDate: d.hireDate || "",
@@ -2507,7 +2584,32 @@
                     newCasual: d.newCasual ?? 0,
                     prevBal: d.prevBal ?? 0,
                     sick: d.sick ?? 0,
-                    sick259: d.sick259 ?? ""
+                    sick259: d.sick259 ?? "",
+                    hasEntitlementRecord: Object.keys(ent).length > 0,
+                    currentGrade: ent.currentGrade ?? "",
+                    currentJobTitle: ent.currentJobTitle ?? "",
+                    basicSalary: ent.basicSalary ?? 0,
+                    functionalWage: ent.functionalWage ?? 0,
+                    riskPercentage: ent.riskPercentage ?? "",
+                    zamrPerecent: ent.zamrPerecent ?? ent.zamrPercentage ?? "",
+                    feloniesCount: ent.feloniesCount ?? 0,
+                    revenueFeloniesCount: ent.revenueFeloniesCount ?? 0,
+                    housingAllowance: ent.housingAllowance ?? 0,
+                    employeeCode: ent.employeeCode ?? "",
+                    employmentStatus: ent.employmentStatus ?? "",
+                    grossWage: ent.grossWage ?? 0,
+                    seniorManagement: ent.seniorManagement ?? "",
+                    bonusType: ent.bonusType ?? "",
+                    employeeShare: ent.employeeShare ?? "",
+                    government: ent.government ?? ent.governmentShare ?? "",
+                    groubCode: ent.groubCode ?? ent.groupCode ?? "",
+                    birthDate: ent.birthDate ?? "",
+                    retirementDate: ent.retirementDate ?? d.pensionDate ?? "",
+                    lastIncentiveRaise: ent.lastIncentiveRaise ?? "",
+                    lastPromotionRaise: ent.lastPromotionRaise ?? "",
+                    cashTicketsCount: ent.cashTicketsCount ?? "",
+                    cashAllowanceValue: ent.cashAllowanceValue ?? 0,
+                    comprehensiveInsuranceRate: ent.comprehensiveInsuranceRate ?? ent.comprehensiveHealthInsurance ?? ""
                 };
                 arr.push(record);
 
@@ -2521,10 +2623,10 @@
             isLoaded = true;
 
             renderCustomRoleDropdown(eligibleBenefitsStaff);
-            if (statusEl) statusEl.innerText = `تم تحميل بيانات (${arr.length}) موظف بنجاح.`;
+            if (statusEl) statusEl.innerText = `تم تحميل بيانات (${arr.length}) موظف بنجاح (مطابقة users مع entitlements_employees بالرقم القومي).`;
             return arr;
         } catch (err) {
-            console.error("Firestore users load error:", err);
+            console.error("Firestore users/entitlements load error:", err);
             if (statusEl) statusEl.innerText = "تعذر تحميل بيانات الموظفين من قاعدة البيانات.";
             const displayEl = document.getElementById("customRoleSelectDisplay");
             if (displayEl) displayEl.innerHTML = `<span class="custom-select-placeholder">تعذر تحميل القائمة</span>`;
@@ -2585,6 +2687,52 @@
         window.filterFirestoreEmployees();
     };
 
+    function buildBlankEmployeeRecord(searchQuery) {
+        const cleanDigits = String(searchQuery || "").replace(/\D/g, "").trim();
+        const is14NatId = /^\d{14}$/.test(cleanDigits);
+        return {
+            isNewEmployee: true,
+            docId: "",
+            uid: "",
+            username: !is14NatId && cleanDigits ? cleanDigits : "",
+            password: "",
+            role: "",
+            name: !is14NatId && isNaN(Number(searchQuery)) ? String(searchQuery).trim() : "",
+            nationalId: is14NatId ? cleanDigits : "",
+            department: "",
+            jobCategory: "",
+            hireDate: "",
+            pensionDate: "",
+            status: "active",
+            type: "",
+            hasEntitlementRecord: false,
+            currentGrade: "",
+            currentJobTitle: "",
+            basicSalary: 0,
+            functionalWage: 0,
+            riskPercentage: "",
+            zamrPerecent: "",
+            feloniesCount: 0,
+            revenueFeloniesCount: 0,
+            housingAllowance: 0,
+            employeeCode: !is14NatId && cleanDigits ? cleanDigits : "",
+            employmentStatus: "",
+            grossWage: 0,
+            seniorManagement: "",
+            bonusType: "",
+            employeeShare: "",
+            government: "",
+            groubCode: "",
+            birthDate: "",
+            retirementDate: "",
+            lastIncentiveRaise: "",
+            lastPromotionRaise: "",
+            cashTicketsCount: "",
+            cashAllowanceValue: 0,
+            comprehensiveInsuranceRate: ""
+        };
+    }
+
     window.filterFirestoreEmployees = async function() {
         const inputEl = document.getElementById("empSearchInput");
         const resultsList = document.getElementById("empSearchResultsList");
@@ -2605,26 +2753,48 @@
         const matches = cachedEmployees.filter(emp => {
             const normName = normalizeArabic(emp.name);
             const normCode = normalizeArabic(emp.username);
+            const normEmpCode = normalizeArabic(emp.employeeCode);
             const normNatId = normalizeArabic(emp.nationalId);
-            return normName.includes(normQuery) || normCode.includes(normQuery) || normNatId.includes(normQuery);
+            return (
+                normName.includes(normQuery) ||
+                normCode.includes(normQuery) ||
+                normEmpCode.includes(normQuery) ||
+                normNatId.includes(normQuery)
+            );
         });
 
         resultsList.innerHTML = "";
         resultsList.classList.remove("hidden");
 
         if (matches.length === 0) {
-            resultsList.innerHTML = `<li style="justify-content:center; color:#dc3545; cursor:default;">لا توجد نتائج مطابقة للبحث</li>`;
+            const newEmp = buildBlankEmployeeRecord(rawQuery);
+            const li = document.createElement("li");
+            li.style.background = "#fffbeb";
+            li.innerHTML = `
+                <div>
+                    <strong style="color:#92400e;"><i class="fas fa-user-plus"></i> موظف جديد: "${escapeHtmlCell(rawQuery)}"</strong>
+                    <div style="font-size:11px; color:#78350f;">لم يتم العثور على سجل مطابق — انقر لفتح كافة الحقول وإدخال بياناته الجديدة</div>
+                </div>
+                <span style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:800;">إدخال جديد</span>
+            `;
+            li.onclick = function() {
+                showSelectedEmployeeDetails(newEmp);
+                resultsList.classList.add("hidden");
+            };
+            resultsList.appendChild(li);
             return;
         }
 
         matches.slice(0, 30).forEach(emp => {
             const li = document.createElement("li");
+            const codeDisplay = emp.employeeCode || emp.username || "-";
+            const badgeText = emp.hasEntitlementRecord ? "عرض / تعديل" : "إكمال بيانات الاستحقاقات";
             li.innerHTML = `
                 <div>
                     <strong style="color:#0f172a;">${escapeHtmlCell(emp.name || "بدون اسم")}</strong>
-                    <div style="font-size:11px; color:#64748b;">الكود: ${escapeHtmlCell(emp.username || "-")} | الرقم القومي: ${escapeHtmlCell(emp.nationalId || "-")}</div>
+                    <div style="font-size:11px; color:#64748b;">الكود: ${escapeHtmlCell(codeDisplay)} | الرقم القومي: ${escapeHtmlCell(emp.nationalId || "-")}</div>
                 </div>
-                <span style="background:#e0f2fe; color:#0369a1; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700;">عرض البيانات</span>
+                <span style="background:#e0f2fe; color:#0369a1; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700;">${badgeText}</span>
             `;
             li.onclick = function() {
                 showSelectedEmployeeDetails(emp);
@@ -2634,38 +2804,267 @@
         });
     };
 
-    function showSelectedEmployeeDetails(emp) {
-        const card = document.getElementById("selectedEmployeeDetailsCard");
+    function renderEmployeeFieldsGrid() {
         const grid = document.getElementById("empDetailsGrid");
+        if (!grid) return;
+
+        grid.innerHTML = EMPLOYEE_EDITABLE_FIELDS.map(f => {
+            const currentVal = draftEmployeeValues[f.key] ?? "";
+            const isEditing = draftEmployeeValues.__editingKey === f.key;
+            const displayVal = (currentVal === "" || currentVal === null || currentVal === undefined) ? "-" : currentVal;
+
+            if (isEditing) {
+                return `
+                    <div class="emp-field-box editing-active" id="emp-field-box-${f.key}">
+                        <div class="emp-field-header">
+                            <label for="emp-input-${f.key}">${escapeHtmlCell(f.label)}</label>
+                            <button type="button" class="emp-edit-pen-btn" title="تأكيد الحقل" onclick="commitFieldEdit('${f.key}')">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        </div>
+                        <input
+                            id="emp-input-${f.key}"
+                            class="emp-field-input"
+                            type="${f.type === "number" ? "number" : "text"}"
+                            step="${f.type === "number" ? "any" : ""}"
+                            value="${escapeHtmlCell(currentVal)}"
+                            oninput="onFieldDraftChange('${f.key}', this.value)"
+                            onkeydown="handleFieldKeydown(event, '${f.key}')"
+                        />
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="emp-field-box" id="emp-field-box-${f.key}">
+                    <div class="emp-field-header">
+                        <label>${escapeHtmlCell(f.label)}</label>
+                        <button type="button" class="emp-edit-pen-btn" title="تعديل ${escapeHtmlCell(f.label)}" onclick="startFieldEdit('${f.key}')">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                    </div>
+                    <div class="val" onclick="startFieldEdit('${f.key}')" style="cursor:pointer;">${escapeHtmlCell(displayVal)}</div>
+                </div>
+            `;
+        }).join("");
+
+        if (draftEmployeeValues.__editingKey) {
+            setTimeout(() => {
+                const inp = document.getElementById(`emp-input-${draftEmployeeValues.__editingKey}`);
+                if (inp) {
+                    inp.focus();
+                    inp.select();
+                }
+            }, 20);
+        }
+    }
+
+    function refreshEmployeeHeaderSummary() {
         const nameEl = document.getElementById("empDetailName");
         const statusBadge = document.getElementById("empDetailStatusBadge");
+        if (!nameEl || !statusBadge || !activeEmployeeRecord) return;
 
-        if (!card || !grid) return;
-        card.classList.remove("hidden");
-        nameEl.innerText = emp.name || emp.username;
-        statusBadge.innerText = emp.status === "active" ? "نشط (Active)" : (emp.status || "غير محدد");
+        const currentName = String(draftEmployeeValues.name ?? "").trim();
+        nameEl.innerText = currentName || activeEmployeeRecord.username || "موظف جديد";
 
-        const fields = [
-            { label: "كود الموظف (username)", value: emp.username || "-" },
-            { label: "الرقم القومي", value: emp.nationalId || "-" },
-            { label: "الإدارة / القسم", value: emp.department || "-" },
-            { label: "الفئة الوظيفية", value: emp.jobCategory || "-" },
-            { label: "تاريخ التعيين", value: emp.hireDate || "-" },
-            { label: "تاريخ المعاش", value: emp.pensionDate || "-" },
-            { label: "رصيد الاعتيادي (annual)", value: emp.annual },
-            { label: "رصيد العارضة (casual)", value: emp.casual },
-            { label: "الرصيد السابق (prevBal)", value: emp.prevBal },
-            { label: "المرضي (sick)", value: emp.sick },
-            { label: "قرار 259 (sick259)", value: emp.sick259 || "لا" }
-        ];
-
-        grid.innerHTML = fields.map(f => `
-            <div class="emp-field-box">
-                <label>${escapeHtmlCell(f.label)}</label>
-                <div class="val">${escapeHtmlCell(f.value)}</div>
-            </div>
-        `).join("");
+        if (activeEmployeeRecord.isNewEmployee) {
+            statusBadge.style.background = "#fef3c7";
+            statusBadge.style.color = "#92400e";
+            statusBadge.innerText = "موظف جديد (وضع الإدخال)";
+        } else if (!activeEmployeeRecord.hasEntitlementRecord) {
+            statusBadge.style.background = "#e0f2fe";
+            statusBadge.style.color = "#0369a1";
+            statusBadge.innerText = "مسجل في users (بحاجة لاستكمال الاستحقاقات)";
+        } else {
+            statusBadge.style.background = "#dcfce7";
+            statusBadge.style.color = "#166534";
+            statusBadge.innerText = draftEmployeeValues.employmentStatus || (activeEmployeeRecord.status === "active" ? "نشط (Active)" : (activeEmployeeRecord.status || "مسجل"));
+        }
     }
+
+    function showSelectedEmployeeDetails(emp) {
+        const card = document.getElementById("selectedEmployeeDetailsCard");
+        const feedbackEl = document.getElementById("empSaveFeedback");
+        if (!card) return;
+
+        activeEmployeeRecord = emp;
+        draftEmployeeValues = { __editingKey: null };
+        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+            draftEmployeeValues[f.key] = emp[f.key] ?? "";
+        });
+
+        // إذا كان موظفاً جديداً بالكامل، نفتح أول حقل (الاسم) للتعديل الفوري والسهل
+        if (emp.isNewEmployee && !draftEmployeeValues.name) {
+            draftEmployeeValues.__editingKey = "name";
+        }
+
+        if (feedbackEl) {
+            feedbackEl.innerText = "";
+            feedbackEl.style.color = "";
+        }
+
+        card.classList.remove("hidden");
+        refreshEmployeeHeaderSummary();
+        renderEmployeeFieldsGrid();
+    }
+
+    window.startFieldEdit = function(key) {
+        draftEmployeeValues.__editingKey = key;
+        renderEmployeeFieldsGrid();
+    };
+
+    window.onFieldDraftChange = function(key, val) {
+        draftEmployeeValues[key] = val;
+        if (key === "name") {
+            refreshEmployeeHeaderSummary();
+        }
+    };
+
+    window.commitFieldEdit = function(key) {
+        const inp = document.getElementById(`emp-input-${key}`);
+        if (inp) {
+            draftEmployeeValues[key] = inp.value;
+        }
+        draftEmployeeValues.__editingKey = null;
+        refreshEmployeeHeaderSummary();
+        renderEmployeeFieldsGrid();
+    };
+
+    window.handleFieldKeydown = function(ev, key) {
+        if (ev.key === "Enter") {
+            ev.preventDefault();
+            window.commitFieldEdit(key);
+        } else if (ev.key === "Escape") {
+            ev.preventDefault();
+            draftEmployeeValues[key] = activeEmployeeRecord ? (activeEmployeeRecord[key] ?? "") : "";
+            draftEmployeeValues.__editingKey = null;
+            refreshEmployeeHeaderSummary();
+            renderEmployeeFieldsGrid();
+        }
+    };
+
+    window.saveSelectedEmployeeEdits = async function() {
+        if (!activeEmployeeRecord) return;
+        const saveBtn = document.getElementById("saveEmployeeEditsBtn");
+        const feedbackEl = document.getElementById("empSaveFeedback");
+
+        // تثبيت أي حقل مفتوح للتعديل حالياً
+        if (draftEmployeeValues.__editingKey) {
+            const openInp = document.getElementById(`emp-input-${draftEmployeeValues.__editingKey}`);
+            if (openInp) {
+                draftEmployeeValues[draftEmployeeValues.__editingKey] = openInp.value;
+            }
+            draftEmployeeValues.__editingKey = null;
+        }
+
+        const cleanNid = String(draftEmployeeValues.nationalId || "").replace(/\D/g, "").trim();
+        if (!/^\d{14}$/.test(cleanNid)) {
+            if (feedbackEl) {
+                feedbackEl.style.color = "#dc2626";
+                feedbackEl.innerText = "الرجاء إدخال رقم قومي صحيح مكون من 14 رقماً.";
+            }
+            return;
+        }
+
+        const toNum = (v) => {
+            const n = Number(String(v ?? "").trim());
+            return isNaN(n) ? 0 : n;
+        };
+        const toStr = (v) => String(v ?? "").trim();
+
+        const entitlementsPayload = {
+            nationalId: cleanNid,
+            employeeCode: toStr(draftEmployeeValues.employeeCode),
+            currentGrade: toStr(draftEmployeeValues.currentGrade),
+            currentJobTitle: toStr(draftEmployeeValues.currentJobTitle),
+            basicSalary: toNum(draftEmployeeValues.basicSalary),
+            functionalWage: toNum(draftEmployeeValues.functionalWage),
+            riskPercentage: toStr(draftEmployeeValues.riskPercentage),
+            zamrPerecent: toStr(draftEmployeeValues.zamrPerecent),
+            feloniesCount: toNum(draftEmployeeValues.feloniesCount),
+            revenueFeloniesCount: toNum(draftEmployeeValues.revenueFeloniesCount),
+            housingAllowance: toNum(draftEmployeeValues.housingAllowance),
+            employmentStatus: toStr(draftEmployeeValues.employmentStatus),
+            grossWage: toNum(draftEmployeeValues.grossWage),
+            seniorManagement: toStr(draftEmployeeValues.seniorManagement),
+            bonusType: toStr(draftEmployeeValues.bonusType),
+            employeeShare: toStr(draftEmployeeValues.employeeShare),
+            government: toStr(draftEmployeeValues.government),
+            groubCode: toStr(draftEmployeeValues.groubCode),
+            birthDate: toStr(draftEmployeeValues.birthDate),
+            retirementDate: toStr(draftEmployeeValues.retirementDate),
+            lastIncentiveRaise: toStr(draftEmployeeValues.lastIncentiveRaise),
+            lastPromotionRaise: toStr(draftEmployeeValues.lastPromotionRaise),
+            cashTicketsCount: toStr(draftEmployeeValues.cashTicketsCount),
+            cashAllowanceValue: toNum(draftEmployeeValues.cashAllowanceValue),
+            comprehensiveInsuranceRate: toStr(draftEmployeeValues.comprehensiveInsuranceRate),
+            updatedAt: serverTimestamp()
+        };
+
+        const usersPayload = {
+            name: toStr(draftEmployeeValues.name),
+            nationalId: cleanNid,
+            jobCategory: toStr(draftEmployeeValues.jobCategory),
+            department: toStr(draftEmployeeValues.department),
+            updatedAt: serverTimestamp()
+        };
+
+        if (saveBtn) saveBtn.disabled = true;
+        if (feedbackEl) {
+            feedbackEl.style.color = "#1d4ed8";
+            feedbackEl.innerText = "جاري حفظ البيانات...";
+        }
+
+        try {
+            await setDoc(doc(firestoreDb, "entitlements_employees", cleanNid), entitlementsPayload, { merge: true });
+
+            if (activeEmployeeRecord.docId) {
+                await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), usersPayload, { merge: true });
+            } else {
+                const newUserDocRef = await addDoc(collection(firestoreDb, "users"), {
+                    ...usersPayload,
+                    username: toStr(draftEmployeeValues.employeeCode) || cleanNid,
+                    status: "active",
+                    createdAt: serverTimestamp()
+                });
+                activeEmployeeRecord.docId = newUserDocRef.id;
+            }
+
+            Object.assign(activeEmployeeRecord, {
+                ...entitlementsPayload,
+                ...usersPayload,
+                nationalId: cleanNid,
+                hasEntitlementRecord: true,
+                isNewEmployee: false
+            });
+
+            const existingIdx = cachedEmployees.findIndex(item =>
+                (activeEmployeeRecord.docId && item.docId === activeEmployeeRecord.docId) ||
+                (item.nationalId && item.nationalId === cleanNid)
+            );
+            if (existingIdx >= 0) {
+                cachedEmployees[existingIdx] = { ...activeEmployeeRecord };
+            } else {
+                cachedEmployees.push({ ...activeEmployeeRecord });
+            }
+
+            refreshEmployeeHeaderSummary();
+            renderEmployeeFieldsGrid();
+
+            if (feedbackEl) {
+                feedbackEl.style.color = "#15803d";
+                feedbackEl.innerText = "تم حفظ التعديلات بنجاح في قاعدة البيانات.";
+            }
+        } catch (err) {
+            console.error("Error saving employee edits:", err);
+            if (feedbackEl) {
+                feedbackEl.style.color = "#dc2626";
+                feedbackEl.innerText = "حدث خطأ أثناء حفظ البيانات في قاعدة البيانات.";
+            }
+        } finally {
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    };
 </script>
 </body>
 </html>
