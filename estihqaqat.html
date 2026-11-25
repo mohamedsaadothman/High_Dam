@@ -1351,7 +1351,8 @@
             `;
         });
 
-        const metaTitleLine = `تقرير تجميعي لبيانات الإجازات — الفئة: ${currentViewerMetaInfo.specialty || "التخصصية"} — عن الفترة: ${currentViewerMetaInfo.periodDisplay || "-"}`;
+        const monthPart = currentViewerMetaInfo.monthYearLabel ? `عن شهر ${currentViewerMetaInfo.monthYearLabel}` : `عن الفترة: ${currentViewerMetaInfo.periodDisplay || "-"}`;
+        const metaTitleLine = `تقرير تجميعي لبيانات الإجازات — الفئة: ${currentViewerMetaInfo.specialty || "التخصصية"} — ${monthPart}`;
 
         const htmlWorkbook = `
             <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1627,7 +1628,33 @@
             const dt = val.toDate();
             return isNaN(dt.getTime()) ? null : dt;
         }
-        const str = String(val).trim();
+        if (val instanceof Date) {
+            return isNaN(val.getTime()) ? null : val;
+        }
+        if (typeof val === "object" && val.seconds) {
+            const dt = new Date(val.seconds * 1000);
+            return isNaN(dt.getTime()) ? null : dt;
+        }
+
+        const str = String(val)
+            .replace(/[٠-٩]/g, d => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)])
+            .trim();
+
+        const isoMatch = str.match(/^(\d{4})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{1,2})$/);
+        if (isoMatch) {
+            const dt = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+            return isNaN(dt.getTime()) ? null : dt;
+        }
+
+        const dmyMatch = str.match(/^(\d{1,2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{4})$/);
+        if (dmyMatch) {
+            const day = Number(dmyMatch[1]);
+            const month = Number(dmyMatch[2]);
+            const year = Number(dmyMatch[3]);
+            const dt = new Date(year, month - 1, day);
+            return isNaN(dt.getTime()) ? null : dt;
+        }
+
         const monthMap = {
             jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
             jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
@@ -1636,13 +1663,24 @@
         if (ddMonYyyy) {
             const m = monthMap[ddMonYyyy[2].toLowerCase()];
             if (m) {
-                const iso = `${ddMonYyyy[3]}-${m}-${ddMonYyyy[1].padStart(2, "0")}`;
-                const dt = new Date(iso);
+                const dt = new Date(Number(ddMonYyyy[3]), Number(m) - 1, Number(ddMonYyyy[1]));
                 return isNaN(dt.getTime()) ? null : dt;
             }
         }
+
         const dt = new Date(str);
         return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function formatShortDate(val) {
+        const dt = parseDateSafe(val);
+        if (dt) {
+            const dd = String(dt.getDate()).padStart(2, "0");
+            const mm = String(dt.getMonth() + 1).padStart(2, "0");
+            const yyyy = dt.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+        }
+        return String(val || "").replace(/[٠-٩]/g, d => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)]).trim();
     }
 
     function formatSentDate(d) {
@@ -1683,36 +1721,70 @@
     }
 
     function extractReportPeriodFromDoc(d) {
-        const explicitText = String(
-            d.period || d.periodText || d.periodLabel || d.reportPeriod ||
-            d.selectedPeriod || d.dateRangeText || d.dateRange || d.reportPeriodText || ""
-        ).trim();
+        if (!d || typeof d !== "object") return { fromDate: "", toDate: "", displayText: "-" };
 
-        let fromVal = String(
-            d.fromDate || d.reportFromDate || d.reportFrom || d.selectedFrom ||
-            d.selectedFromDate || d.startDate || d.dateFrom || d.periodFrom ||
-            d.rangeFrom || d.from || ""
-        ).trim();
+        let fromVal = "";
+        let toVal = "";
 
-        let toVal = String(
-            d.toDate || d.reportToDate || d.reportTo || d.selectedTo ||
-            d.selectedToDate || d.endDate || d.dateTo || d.periodTo ||
-            d.rangeTo || d.to || ""
-        ).trim();
+        const fromKeys = [
+            "fromDate", "reportFromDate", "reportFrom", "selectedFrom",
+            "selectedFromDate", "startDate", "dateFrom", "periodFrom",
+            "rangeFrom", "from", "start", "periodStart"
+        ];
+        const toKeys = [
+            "toDate", "reportToDate", "reportTo", "selectedTo",
+            "selectedToDate", "endDate", "dateTo", "periodTo",
+            "rangeTo", "to", "end", "periodEnd"
+        ];
 
-        const searchSource = explicitText || String(d.subject || d.title || "").trim();
+        for (const k of fromKeys) {
+            if (d[k]) {
+                fromVal = formatShortDate(d[k]);
+                break;
+            }
+        }
+        for (const k of toKeys) {
+            if (d[k]) {
+                toVal = formatShortDate(d[k]);
+                break;
+            }
+        }
 
-        if ((!fromVal || !toVal) && searchSource) {
-            const match = searchSource.match(/(\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})\s*(?:إلى|الى|-|–|—|to)\s*(\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})/i);
+        const periodObj = d.period || d.dateRange || d.range || null;
+        if (periodObj && typeof periodObj === "object" && !Array.isArray(periodObj) && typeof periodObj.toDate !== "function") {
+            if (!fromVal && (periodObj.from || periodObj.fromDate || periodObj.startDate || periodObj.start)) {
+                fromVal = formatShortDate(periodObj.from || periodObj.fromDate || periodObj.startDate || periodObj.start);
+            }
+            if (!toVal && (periodObj.to || periodObj.toDate || periodObj.endDate || periodObj.end)) {
+                toVal = formatShortDate(periodObj.to || periodObj.toDate || periodObj.endDate || periodObj.end);
+            }
+        }
+
+        const explicitText = typeof periodObj === "string"
+            ? periodObj.trim()
+            : String(
+                d.periodText || d.periodLabel || d.reportPeriod ||
+                d.selectedPeriod || d.dateRangeText || d.reportPeriodText || ""
+            ).trim();
+
+        const searchSource = explicitText || String(d.subject || d.title || d.description || d.notes || "").trim();
+        const cleanSearch = searchSource.replace(/[٠-٩]/g, dig => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(dig)]);
+
+        if ((!fromVal || !toVal) && cleanSearch) {
+            const match = cleanSearch.match(/(\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})\s*(?:إلى|الى|-|–|—|to)\s*(\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{2,4}|\d{1,2}[-/][A-Za-z]{3}[-/]\d{4})/i);
             if (match) {
-                if (!fromVal) fromVal = match[1].replace(/\s+/g, "").trim();
-                if (!toVal) toVal = match[2].replace(/\s+/g, "").trim();
+                if (!fromVal) fromVal = formatShortDate(match[1]);
+                if (!toVal) toVal = formatShortDate(match[2]);
             }
         }
 
         let displayText = "-";
-        if (fromVal || toVal) {
-            displayText = `من ${fromVal || "-"} إلى ${toVal || "-"}`;
+        if (fromVal && toVal) {
+            displayText = `من ${fromVal} إلى ${toVal}`;
+        } else if (fromVal) {
+            displayText = `من ${fromVal}`;
+        } else if (toVal) {
+            displayText = `إلى ${toVal}`;
         } else if (explicitText && !explicitText.includes("تقرير")) {
             displayText = explicitText;
         }
@@ -1829,7 +1901,7 @@
                     sentBy: d.sentBy || d.senderName || d.createdBy || "",
                     status: d.status || "مرسل للاستحقاقات",
                     rows: Array.isArray(d.rows) ? d.rows : (Array.isArray(d.items) ? d.items : (Array.isArray(d.reportRows) ? d.reportRows : [])),
-                    createdAt: d.createdAt || ""
+                    rawSentAt: d.sentAt || d.createdAt || d.timestamp || d.dateSent || d.sentDate || ""
                 });
             });
 
@@ -1850,8 +1922,8 @@
                 const ld = docSnap.data() || {};
                 const sameReport = notif.reportNumber && String(ld.reportNumber || ld.reportCode || "").trim() === String(notif.reportNumber).trim();
                 const samePeriod = notif.fromDate && notif.toDate &&
-                    String(ld.fromDate || ld.startDate || "").trim() === String(notif.fromDate).trim() &&
-                    String(ld.toDate || ld.endDate || "").trim() === String(notif.toDate).trim() &&
+                    formatShortDate(ld.fromDate || ld.startDate || "") === notif.fromDate &&
+                    formatShortDate(ld.toDate || ld.endDate || "") === notif.toDate &&
                     (!notif.category || normalizeArabic(ld.category || ld.leaveCategory || "") === normalizeArabic(notif.category));
 
                 if (sameReport || samePeriod) {
@@ -2102,7 +2174,7 @@
             let effectiveToDate = notif.toDate;
             let effectiveSpecialty = notif.specialty;
 
-            if (effectivePeriodDisplay === "-" || !effectiveFromDate || !effectiveToDate) {
+            if (!effectiveFromDate || !effectiveToDate || effectivePeriodDisplay === "-") {
                 const matchedReportLeave = allLeavesDocs.find(l => {
                     const sameNum = notif.reportNumber && String(l.reportNumber || l.reportCode || "").trim() === String(notif.reportNumber).trim();
                     const sameCat = notif.category && normalizeArabic(l.category || l.leaveCategory || "") === normalizeArabic(notif.category);
@@ -2122,20 +2194,45 @@
                 }
             }
 
-            const refDateForMonth = parseDateSafe(effectiveFromDate) || parseDateSafe(effectiveToDate) || parseDateSafe(notif.sentDateStr);
-            const monthYearLabel = formatArabicMonthYear(refDateForMonth);
+            if ((!effectiveFromDate || !effectiveToDate) && allLeavesDocs.length > 0) {
+                let minDt = null;
+                let maxDt = null;
+                allLeavesDocs.forEach(l => {
+                    const sDt = parseDateSafe(l.fromDate || l.startDate || l.dateFrom || "");
+                    const eDt = parseDateSafe(l.toDate || l.endDate || l.dateTo || l.fromDate || l.startDate || "");
+                    if (sDt && (!minDt || sDt < minDt)) minDt = sDt;
+                    if (eDt && (!maxDt || eDt > maxDt)) maxDt = eDt;
+                });
+                if (minDt && maxDt) {
+                    effectiveFromDate = effectiveFromDate || formatShortDate(minDt);
+                    effectiveToDate = effectiveToDate || formatShortDate(maxDt);
+                    if (effectivePeriodDisplay === "-") {
+                        effectivePeriodDisplay = `من ${effectiveFromDate} إلى ${effectiveToDate}`;
+                    }
+                }
+            }
 
-            titleEl.innerText = monthYearLabel
-                ? `تقرير تجميعي لبيانات الإجازات — ${monthYearLabel}`
-                : `تقرير تجميعي لبيانات الإجازات`;
+            const refDateForMonth =
+                parseDateSafe(effectiveFromDate) ||
+                parseDateSafe(effectiveToDate) ||
+                parseDateSafe(notif.rawSentAt) ||
+                parseDateSafe(notif.sentDateStr) ||
+                new Date();
 
-            metaEl.innerText = `الفترة: ${effectivePeriodDisplay} | الفئة: ${effectiveSpecialty} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
-            currentViewerFileName = `تقرير_تجميعي_إجازات_${monthYearLabel || "التقرير"}`;
+            const monthYearLabel = formatArabicMonthYear(refDateForMonth) || "نوفمبر26";
+            const periodOrMonthText = effectivePeriodDisplay !== "-"
+                ? `${effectivePeriodDisplay} (${monthYearLabel})`
+                : `شهر ${monthYearLabel}`;
+
+            titleEl.innerText = `تقرير تجميعي لبيانات الإجازات`;
+            metaEl.innerText = `عن شهر ${monthYearLabel} | الفئة: ${effectiveSpecialty} | الموظف المختص: ${notif.specialistLabel} | تاريخ الإرسال: ${notif.sentDateStr}`;
+            currentViewerFileName = `تقرير_تجميعي_إجازات_${monthYearLabel}`;
             currentViewerMetaInfo = {
                 title: notif.title,
                 fromDate: effectiveFromDate,
                 toDate: effectiveToDate,
                 periodDisplay: effectivePeriodDisplay,
+                monthYearLabel,
                 specialty: effectiveSpecialty,
                 specialist: notif.specialistLabel,
                 sentDateStr: notif.sentDateStr,
@@ -2145,7 +2242,7 @@
             if (notif.fileUrl && /^https?:\/\//i.test(notif.fileUrl)) {
                 bodyEl.innerHTML = `
                     <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:10px;border:1px solid #bfdbfe;flex-wrap:wrap;gap:8px;">
-                        <span style="font-size:12.5px;font-weight:800;color:#1e3a8a;">الفترة: ${escapeHtmlCell(effectivePeriodDisplay)} — رابط الملف المرفق:</span>
+                        <span style="font-size:12.5px;font-weight:800;color:#1e3a8a;">عن شهر ${escapeHtmlCell(monthYearLabel)} — رابط الملف المرفق:</span>
                         <a href="${notif.fileUrl}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;font-weight:800;font-size:12.5px;">فتح في تبويب جديد <i class="fas fa-up-right-from-square"></i></a>
                     </div>
                     <iframe src="${notif.fileUrl}" style="width:100%;height:440px;border:1px solid #cbd5e1;border-radius:10px;"></iframe>
@@ -2233,14 +2330,14 @@
                         </div>
                     </div>
                     <div style="text-align:center;font-size:15px;font-weight:900;color:#0f172a;">
-                        تقرير تجميعي لبيانات الإجازات — الفئة: ${escapeHtmlCell(effectiveSpecialty)} — عن الفترة: ${escapeHtmlCell(effectivePeriodDisplay)}
+                        تقرير تجميعي لبيانات الإجازات — الفئة: ${escapeHtmlCell(effectiveSpecialty)} — عن شهر ${escapeHtmlCell(monthYearLabel)}
                     </div>
                 </div>
             `;
 
             const bannerHtml = `
                 <div class="report-official-banner">
-                    <div><span>الفترة الزمنية:</span> <strong>${escapeHtmlCell(effectivePeriodDisplay)}</strong></div>
+                    <div><span>الفترة الزمنية:</span> <strong>${escapeHtmlCell(periodOrMonthText)}</strong></div>
                     <div><span>الجهة المرسلة:</span> <strong>${escapeHtmlCell(notif.senderDepartment || "إدارة الإجازات")}</strong></div>
                     <div><span>الموظف المختص:</span> <strong>${escapeHtmlCell(notif.specialistLabel)}</strong></div>
                     <div><span>تاريخ الإرسال:</span> <strong>${escapeHtmlCell(notif.sentDateStr)}</strong></div>
@@ -2250,7 +2347,7 @@
             const titleSubboxHtml = `
                 <div class="report-title-subbox">
                     <div class="report-title-main">تقرير تجميعي لبيانات الإجازات</div>
-                    <div class="report-title-subline">الفئة: ${escapeHtmlCell(effectiveSpecialty)} &nbsp;|&nbsp; عن الفترة: ${escapeHtmlCell(effectivePeriodDisplay)}</div>
+                    <div class="report-title-subline">الفئة: ${escapeHtmlCell(effectiveSpecialty)} &nbsp;|&nbsp; عن شهر ${escapeHtmlCell(monthYearLabel)}</div>
                 </div>
             `;
 
@@ -2261,7 +2358,7 @@
                     ${titleSubboxHtml}
                     <div style="text-align:center;padding:30px;background:#f8fafc;border-radius:12px;border:1px dashed #cbd5e1;color:#64748b;">
                         <i class="fas fa-folder-open" style="font-size:28px;color:#94a3b8;display:block;margin-bottom:8px;"></i>
-                        لا توجد بيانات إجازات مسجلة ضمن الفترة (${escapeHtmlCell(effectivePeriodDisplay)}).
+                        لا توجد بيانات إجازات مسجلة عن شهر ${escapeHtmlCell(monthYearLabel)}.
                     </div>
                 `;
                 return;
