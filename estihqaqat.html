@@ -3221,6 +3221,27 @@
         reader.readAsText(file, "UTF-8");
     };
 
+    function extractDaysFromLeaveRecord(rec) {
+        if (!rec || typeof rec !== "object") return 0;
+        const directCandidates = [
+            rec.days, rec.daysCount, rec.totalDays, rec.absenceDays,
+            rec.leaveDays, rec.count, rec.total, rec["ايام الغياب"],
+            rec["أيام الغياب"], rec["عدد الايام"], rec["عدد الأيام"], rec["المجموع"]
+        ];
+        for (const val of directCandidates) {
+            if (val !== undefined && val !== null && String(val).trim() !== "") {
+                const num = Number(String(val).replace(/[٠-٩]/g, d => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)]));
+                if (!isNaN(num) && num > 0) return num;
+            }
+        }
+        const sumParts =
+            (Number(rec.casual) || 0) +
+            (Number(rec.annual) || 0) +
+            (Number(rec.sick) || 0) +
+            (Number(rec.prev) || 0);
+        return sumParts > 0 ? sumParts : 0;
+    }
+
     window.calculateFoodAllowanceForm = async function() {
         if (!isLoaded) await fetchAllEmployeesFromFirestore(false);
 
@@ -3253,59 +3274,116 @@
             if (nm) absenceByName.set(nm, (absenceByName.get(nm) || 0) + days);
         };
 
-        if (selectedReportId && selectedReportId !== "external") {
-            const notif = cachedNotifications.find(n => n.id === selectedReportId) || null;
-            const fromDt = notif?.fromDate ? parseDateSafe(notif.fromDate) : null;
-            const toDt = notif?.toDate ? parseDateSafe(notif.toDate) : null;
-            if (fromDt) refDate = fromDt;
-            if (toDt) toDt.setHours(23, 59, 59, 999);
+        const ingestReportDoc = (docId, d) => {
+            if (!d || typeof d !== "object") return;
+            const pInfo = extractReportPeriodFromDoc(d);
+            const fDt = pInfo.fromDate ? parseDateSafe(pInfo.fromDate) : null;
+            if (fDt) refDate = fDt;
 
-            // 1. القراءة أولاً من الصفوف المرفقة داخل التبليغ نفسه (إن وجدت)
-            if (notif && Array.isArray(notif.rows) && notif.rows.length > 0) {
-                notif.rows.forEach(r => {
-                    const rowDays = Number(
-                        r.total ?? r.totalDays ?? r.days ?? r.absenceDays ??
-                        ((Number(r.casual) || 0) + (Number(r.annual) || 0) + (Number(r.sick) || 0) + (Number(r.prev) || 0))
-                    ) || 0;
+            const embeddedRows = Array.isArray(d.rows)
+                ? d.rows
+                : (Array.isArray(d.items) ? d.items : (Array.isArray(d.reportRows) ? d.reportRows : []));
 
+            if (embeddedRows.length > 0) {
+                embeddedRows.forEach(r => {
                     addAbsenceEntry(
-                        r.empCode || r.employeeCode || r.code || r.username,
-                        r.nationalId || r.natId || r.nid,
-                        r.empName || r.employeeName || r.name,
-                        rowDays
+                        r.empCode || r.employeeCode || r.code || r.username || r.userId || r.uid,
+                        r.nationalId || r.natId || r.nid || r.idNumber,
+                        r.empName || r.employeeName || r.userName || r.fullName || r.name,
+                        extractDaysFromLeaveRecord(r)
                     );
                 });
             }
 
-            // 2. إذا لم تكن الصفوف مضمنة داخل التبليغ، يتم الجلب من جدول leaves
+            const singleDocDays = extractDaysFromLeaveRecord(d);
+            if (singleDocDays > 0) {
+                addAbsenceEntry(
+                    d.empCode || d.employeeCode || d.code || d.username || d.userId || d.uid,
+                    d.nationalId || d.natId || d.nid || d.idNumber,
+                    d.employeeName || d.empName || d.userName || d.fullName || d.name,
+                    singleDocDays
+                );
+            }
+        };
+
+        if (selectedReportId && selectedReportId !== "external") {
+            const reportsSnap = await getDocs(collection(firestoreDb, NOTIFICATIONS_COLLECTION));
+            const allReports = [];
+            reportsSnap.forEach(docSnap => {
+                allReports.push({ id: docSnap.id, data: docSnap.data() || {} });
+            });
+
+            const targetEntry = allReports.find(item => item.id === selectedReportId) || null;
+            const cachedNotif = cachedNotifications.find(n => n.id === selectedReportId) || null;
+
+            if (targetEntry) {
+                ingestReportDoc(targetEntry.id, targetEntry.data);
+            }
+            if (cachedNotif) {
+                const pFrom = cachedNotif.fromDate ? parseDateSafe(cachedNotif.fromDate) : null;
+                if (pFrom) refDate = pFrom;
+                if (Array.isArray(cachedNotif.rows) && cachedNotif.rows.length > 0) {
+                    cachedNotif.rows.forEach(r => {
+                        addAbsenceEntry(
+                            r.empCode || r.employeeCode || r.code || r.username,
+                            r.nationalId || r.natId || r.nid,
+                            r.empName || r.employeeName || r.name,
+                            extractDaysFromLeaveRecord(r)
+                        );
+                    });
+                }
+            }
+
+            // إذا كان التقرير المختار عبارة عن مستند رئيسي أو مجموعة سجلات في entitlements_leave_reports
+            const selectedData = targetEntry?.data || {};
+            const repNum = String(selectedData.reportNumber || selectedData.reportCode || cachedNotif?.reportNumber || "").trim();
+            const fromStr = selectedData.fromDate || cachedNotif?.fromDate || "";
+            const toStr = selectedData.toDate || cachedNotif?.toDate || "";
+            const fromDt = fromStr ? parseDateSafe(fromStr) : null;
+            const toDt = toStr ? parseDateSafe(toStr) : null;
+            if (toDt) toDt.setHours(23, 59, 59, 999);
+
+            allReports.forEach(item => {
+                if (targetEntry && item.id === targetEntry.id) return;
+                const ld = item.data || {};
+                const lRepNum = String(ld.reportNumber || ld.reportCode || "").trim();
+                const sameRep = repNum && lRepNum && (repNum === lRepNum);
+
+                const lStart = parseDateSafe(ld.fromDate || ld.startDate || ld.dateFrom || "");
+                const lEnd = parseDateSafe(ld.toDate || ld.endDate || ld.dateTo || ld.fromDate || ld.startDate || "");
+                let inRange = false;
+                if (fromDt && toDt && lStart && lEnd) {
+                    inRange = (lStart <= toDt) && (lEnd >= fromDt);
+                } else if (fromDt && lStart) {
+                    inRange = lStart >= fromDt;
+                } else if (toDt && lStart) {
+                    inRange = lStart <= toDt;
+                }
+
+                if (sameRep || inRange) {
+                    ingestReportDoc(item.id, ld);
+                }
+            });
+
+            // احتياطي إضافي من جدول leaves إذا لم تظهر بيانات في entitlements_leave_reports
             if (absenceByCode.size === 0 && absenceByNatId.size === 0 && absenceByName.size === 0) {
                 const leavesSnap = await getDocs(collection(firestoreDb, "leaves"));
-                const notifRepNum = String(notif?.reportNumber || "").trim();
-
                 leavesSnap.forEach(docSnap => {
                     const l = docSnap.data() || {};
                     const docRepNum = String(l.reportNumber || l.reportCode || "").trim();
-                    const sameReportNum = notifRepNum && docRepNum && (notifRepNum === docRepNum);
-
+                    const sameReportNum = repNum && docRepNum && (repNum === docRepNum);
                     const lStart = parseDateSafe(l.fromDate || l.startDate || l.dateFrom || "");
                     const lEnd = parseDateSafe(l.toDate || l.endDate || l.dateTo || l.fromDate || l.startDate || "");
                     let inRange = true;
-
                     if (!sameReportNum && fromDt && toDt && lStart && lEnd) {
                         inRange = (lStart <= toDt) && (lEnd >= fromDt);
-                    } else if (!sameReportNum && fromDt && lStart) {
-                        inRange = lStart >= fromDt;
-                    } else if (!sameReportNum && toDt && lStart) {
-                        inRange = lStart <= toDt;
                     }
-
                     if (sameReportNum || inRange) {
-                        const days = Number(l.days ?? l.daysCount ?? l.totalDays ?? l.total ?? 0) || 0;
                         addAbsenceEntry(
                             l.empCode || l.employeeCode || l.code || l.username || l.userId || l.uid,
                             l.nationalId || l.natId || l.nid || l.idNumber,
                             l.employeeName || l.empName || l.userName || l.fullName || l.name,
-                            days
+                            extractDaysFromLeaveRecord(l)
                         );
                     }
                 });
@@ -4953,9 +5031,9 @@
                     <div class="emp-field-box locked-field" id="emp-field-box-${f.key}">
                         <div class="emp-field-header">
                             <label>${escapeHtmlCell(f.label)}</label>
-                            <span class="emp-lock-icon" title="الحقل مقفل لأن الموظف غير نشط"><i class="fas fa-lock"></i></span>
+                            <span class="emp-lock-icon" title="الموظف غير نشط - التعديل مغلق"><i class="fas fa-lock"></i></span>
                         </div>
-                        <div class="val" style="color:#475569; cursor:not-allowed;">${escapeHtmlCell(displayVal)}</div>
+                        <div class="val">${escapeHtmlCell(displayVal)}</div>
                     </div>
                 `;
             }
@@ -4968,116 +5046,83 @@
                             <i class="fas fa-pen"></i>
                         </button>
                     </div>
-                    <div class="val" onclick="startFieldEdit('${f.key}')" style="cursor:pointer;">${escapeHtmlCell(displayVal)}</div>
+                    <div class="val">${escapeHtmlCell(displayVal)}</div>
                 </div>
             `;
         }).join("");
-
-        if (!locked && draftEmployeeValues.__editingKey) {
-            setTimeout(() => {
-                const inp = document.getElementById(`emp-input-${draftEmployeeValues.__editingKey}`);
-                if (inp) {
-                    inp.focus();
-                    inp.select();
-                }
-            }, 20);
-        }
     }
 
     function refreshEmployeeHeaderSummary() {
         const nameEl = document.getElementById("empDetailName");
-        const statusBadge = document.getElementById("empDetailStatusBadge");
+        const badgeEl = document.getElementById("empDetailStatusBadge");
         const saveBtn = document.getElementById("saveEmployeeEditsBtn");
         const feedbackEl = document.getElementById("empSaveFeedback");
-        if (!nameEl || !statusBadge || !activeEmployeeRecord) return;
 
-        const currentName = String(draftEmployeeValues.name ?? "").trim();
-        nameEl.innerText = currentName || activeEmployeeRecord.username || "موظف";
+        if (nameEl) {
+            nameEl.innerText = draftEmployeeValues.name || activeEmployeeRecord?.name || activeEmployeeRecord?.username || "موظف";
+        }
 
         const locked = isCurrentEmployeeLocked();
-
-        if (locked) {
-            statusBadge.style.background = "#fee2e2";
-            statusBadge.style.color = "#b91c1c";
-            statusBadge.innerText = "غير نشط (جميع الحقول مقفلة)";
-            if (saveBtn) {
-                saveBtn.classList.add("hidden");
-                saveBtn.disabled = true;
+        if (badgeEl) {
+            if (locked) {
+                badgeEl.style.background = "#fee2e2";
+                badgeEl.style.color = "#991b1b";
+                badgeEl.innerText = "غير نشط (للعرض فقط)";
+            } else if (activeEmployeeRecord?.isNewEmployee) {
+                badgeEl.style.background = "#fef3c7";
+                badgeEl.style.color = "#92400e";
+                badgeEl.innerText = "موظف جديد";
+            } else {
+                badgeEl.style.background = "#dcfce7";
+                badgeEl.style.color = "#166534";
+                badgeEl.innerText = "نشط";
             }
-            if (feedbackEl) {
-                feedbackEl.style.color = "#b91c1c";
-                feedbackEl.innerText = "هذا الموظف غير نشط — تم قفل جميع الحقول ومنع التعديل.";
-            }
-            return;
         }
 
         if (saveBtn) {
-            saveBtn.classList.remove("hidden");
-            saveBtn.disabled = false;
+            if (locked) {
+                saveBtn.classList.add("hidden");
+            } else {
+                saveBtn.classList.remove("hidden");
+                saveBtn.disabled = false;
+            }
         }
 
-        if (activeEmployeeRecord.isNewEmployee) {
-            statusBadge.style.background = "#fef3c7";
-            statusBadge.style.color = "#92400e";
-            statusBadge.innerText = "موظف جديد (وضع الإدخال)";
-        } else if (!activeEmployeeRecord.hasEntitlementRecord) {
-            statusBadge.style.background = "#e0f2fe";
-            statusBadge.style.color = "#0369a1";
-            statusBadge.innerText = "بحاجة لاستكمال بيانات الاستحقاقات";
-        } else {
-            statusBadge.style.background = "#dcfce7";
-            statusBadge.style.color = "#166534";
-            statusBadge.innerText = draftEmployeeValues.employmentStatus || "نشط";
+        if (feedbackEl && locked) {
+            feedbackEl.style.color = "#b91c1c";
+            feedbackEl.innerText = "هذا الموظف غير نشط - التعديل مغلق.";
         }
-    }
-
-    function showSelectedEmployeeDetails(emp) {
-        const card = document.getElementById("selectedEmployeeDetailsCard");
-        const feedbackEl = document.getElementById("empSaveFeedback");
-        if (!card) return;
-
-        activeEmployeeRecord = emp;
-        draftEmployeeValues = { __editingKey: null };
-        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
-            draftEmployeeValues[f.key] = emp[f.key] ?? "";
-        });
-
-        const locked = isCurrentEmployeeLocked();
-        if (!locked && emp.isNewEmployee && !draftEmployeeValues.name) {
-            draftEmployeeValues.__editingKey = "name";
-        }
-
-        if (feedbackEl && !locked) {
-            feedbackEl.innerText = "";
-            feedbackEl.style.color = "";
-        }
-
-        card.classList.remove("hidden");
-        refreshEmployeeHeaderSummary();
-        renderEmployeeFieldsGrid();
     }
 
     window.startFieldEdit = function(key) {
         if (isCurrentEmployeeLocked()) return;
+        if (draftEmployeeValues.__editingKey && draftEmployeeValues.__editingKey !== key) {
+            const prevInp = document.getElementById(`emp-input-${draftEmployeeValues.__editingKey}`);
+            if (prevInp) draftEmployeeValues[draftEmployeeValues.__editingKey] = prevInp.value;
+        }
         draftEmployeeValues.__editingKey = key;
         renderEmployeeFieldsGrid();
+        setTimeout(() => {
+            const inp = document.getElementById(`emp-input-${key}`);
+            if (inp) {
+                inp.focus();
+                inp.select();
+            }
+        }, 10);
     };
 
     window.onFieldDraftChange = function(key, val) {
         if (isCurrentEmployeeLocked()) return;
         draftEmployeeValues[key] = val;
-        if (key === "name") {
-            refreshEmployeeHeaderSummary();
-        }
     };
 
     window.commitFieldEdit = function(key) {
         if (isCurrentEmployeeLocked()) return;
         const inp = document.getElementById(`emp-input-${key}`);
-        if (inp) {
-            draftEmployeeValues[key] = inp.value;
+        if (inp) draftEmployeeValues[key] = inp.value;
+        if (draftEmployeeValues.__editingKey === key) {
+            draftEmployeeValues.__editingKey = null;
         }
-        draftEmployeeValues.__editingKey = null;
         refreshEmployeeHeaderSummary();
         renderEmployeeFieldsGrid();
     };
@@ -5088,23 +5133,43 @@
             window.commitFieldEdit(key);
         } else if (ev.key === "Escape") {
             ev.preventDefault();
-            draftEmployeeValues[key] = activeEmployeeRecord[key] ?? "";
             draftEmployeeValues.__editingKey = null;
-            refreshEmployeeHeaderSummary();
             renderEmployeeFieldsGrid();
         }
     };
 
+    function showSelectedEmployeeDetails(emp) {
+        activeEmployeeRecord = emp;
+        const card = document.getElementById("selectedEmployeeDetailsCard");
+        const feedbackEl = document.getElementById("empSaveFeedback");
+        if (!card) return;
+
+        if (feedbackEl) {
+            feedbackEl.innerText = "";
+        }
+
+        draftEmployeeValues = {
+            __editingKey: emp.isNewEmployee ? "name" : null
+        };
+        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+            draftEmployeeValues[f.key] = emp[f.key] ?? "";
+        });
+
+        card.classList.remove("hidden");
+        refreshEmployeeHeaderSummary();
+        renderEmployeeFieldsGrid();
+
+        if (emp.isNewEmployee) {
+            setTimeout(() => {
+                const firstInp = document.getElementById("emp-input-name");
+                if (firstInp) firstInp.focus();
+            }, 20);
+        }
+    }
+
     window.saveSelectedEmployeeEdits = async function() {
         if (!activeEmployeeRecord) return;
-        if (isCurrentEmployeeLocked()) {
-            const feedbackEl = document.getElementById("empSaveFeedback");
-            if (feedbackEl) {
-                feedbackEl.style.color = "#b91c1c";
-                feedbackEl.innerText = "هذا الموظف غير نشط ولا يمكن حفظ تعديلات له.";
-            }
-            return;
-        }
+        if (isCurrentEmployeeLocked()) return;
 
         if (draftEmployeeValues.__editingKey) {
             const openInp = document.getElementById(`emp-input-${draftEmployeeValues.__editingKey}`);
@@ -5116,72 +5181,100 @@
 
         const saveBtn = document.getElementById("saveEmployeeEditsBtn");
         const feedbackEl = document.getElementById("empSaveFeedback");
+
+        const cleanedUpdates = {};
+        EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
+            const rawVal = draftEmployeeValues[f.key];
+            if (f.type === "number") {
+                const strVal = String(rawVal ?? "").trim();
+                cleanedUpdates[f.key] = strVal === "" ? 0 : (isNaN(Number(strVal)) ? strVal : Number(strVal));
+            } else {
+                cleanedUpdates[f.key] = String(rawVal ?? "").trim();
+            }
+        });
+
+        const cleanNatId = String(cleanedUpdates.nationalId || activeEmployeeRecord.nationalId || "").replace(/\s+/g, "").trim();
+        const cleanEmpCode = String(cleanedUpdates.employeeCode || activeEmployeeRecord.employeeCode || activeEmployeeRecord.username || "").trim();
+
+        if (!cleanNatId && !cleanEmpCode && !cleanedUpdates.name) {
+            if (feedbackEl) {
+                feedbackEl.style.color = "#dc2626";
+                feedbackEl.innerText = "أدخل الاسم أو الكود أو الرقم القومي أولاً.";
+            }
+            return;
+        }
+
         if (saveBtn) saveBtn.disabled = true;
         if (feedbackEl) {
             feedbackEl.style.color = "#1d4ed8";
-            feedbackEl.innerText = "جاري الحفظ في قاعدة البيانات...";
+            feedbackEl.innerText = "جاري الحفظ...";
         }
 
         try {
-            const updates = {};
-            EMPLOYEE_EDITABLE_FIELDS.forEach(f => {
-                const rawVal = draftEmployeeValues[f.key];
-                if (f.type === "number") {
-                    const strVal = String(rawVal ?? "").trim();
-                    updates[f.key] = strVal === "" ? 0 : (isNaN(Number(strVal)) ? strVal : Number(strVal));
-                } else {
-                    updates[f.key] = String(rawVal ?? "").trim();
-                }
-            });
+            const targetDocId =
+                (/^\d{14}$/.test(cleanNatId) ? cleanNatId : "") ||
+                activeEmployeeRecord.docId ||
+                cleanEmpCode ||
+                `emp_${Date.now()}`;
 
-            const cleanNatId = String(updates.nationalId || "").replace(/\s+/g, "").trim();
-            const cleanCode = String(updates.employeeCode || "").trim();
-            const entDocId = (/^\d{14}$/.test(cleanNatId))
-                ? cleanNatId
-                : (cleanCode || activeEmployeeRecord.docId || `emp_${Date.now()}`);
+            const entitlementPayload = {
+                ...cleanedUpdates,
+                nationalId: cleanNatId,
+                employeeCode: cleanEmpCode,
+                retirementDate: cleanedUpdates.retirementDate || "",
+                pensionDate: cleanedUpdates.retirementDate || "",
+                updatedAt: serverTimestamp(),
+                updatedBy: authenticatedBenefitsStaff?.name || authenticatedBenefitsStaff?.username || "إدارة الاستحقاقات والمزايا"
+            };
 
-            updates.nationalId = cleanNatId;
-            updates.employeeCode = cleanCode;
-            updates.updatedAt = serverTimestamp();
-
-            await setDoc(doc(firestoreDb, "entitlements_employees", entDocId), updates, { merge: true });
+            await setDoc(doc(firestoreDb, "entitlements_employees", targetDocId), entitlementPayload, { merge: true });
 
             if (!activeEmployeeRecord.isNewEmployee && activeEmployeeRecord.docId) {
                 await setDoc(doc(firestoreDb, "users", activeEmployeeRecord.docId), {
-                    name: updates.name,
-                    nationalId: cleanNatId,
-                    department: updates.department,
-                    jobCategory: updates.jobCategory,
-                    retirementDate: updates.retirementDate,
-                    birthDate: updates.birthDate,
+                    name: cleanedUpdates.name || activeEmployeeRecord.name || "",
+                    nationalId: cleanNatId || activeEmployeeRecord.nationalId || "",
+                    department: cleanedUpdates.department || activeEmployeeRecord.department || "",
+                    jobCategory: cleanedUpdates.jobCategory || activeEmployeeRecord.jobCategory || "",
+                    retirementDate: cleanedUpdates.retirementDate || "",
+                    pensionDate: cleanedUpdates.retirementDate || "",
                     updatedAt: serverTimestamp()
                 }, { merge: true });
             }
 
-            Object.assign(activeEmployeeRecord, updates, {
+            Object.assign(activeEmployeeRecord, cleanedUpdates, {
                 isNewEmployee: false,
-                hasEntitlementRecord: true,
-                pensionDate: updates.retirementDate,
-                docId: activeEmployeeRecord.docId || entDocId
+                docId: activeEmployeeRecord.docId || targetDocId,
+                nationalId: cleanNatId,
+                employeeCode: cleanEmpCode,
+                retirementDate: cleanedUpdates.retirementDate || "",
+                pensionDate: cleanedUpdates.retirementDate || "",
+                hasEntitlementRecord: true
             });
 
-            if (!cachedEmployees.includes(activeEmployeeRecord)) {
-                cachedEmployees.unshift(activeEmployeeRecord);
+            const existingIdx = cachedEmployees.findIndex(u =>
+                (activeEmployeeRecord.docId && u.docId === activeEmployeeRecord.docId) ||
+                (cleanNatId && u.nationalId === cleanNatId)
+            );
+            if (existingIdx >= 0) {
+                cachedEmployees[existingIdx] = { ...cachedEmployees[existingIdx], ...activeEmployeeRecord };
+            } else {
+                cachedEmployees.push({ ...activeEmployeeRecord });
             }
+
+            refreshEmployeeHeaderSummary();
+            renderEmployeeFieldsGrid();
 
             if (feedbackEl) {
                 feedbackEl.style.color = "#15803d";
-                feedbackEl.innerText = "تم حفظ التعديلات بنجاح.";
+                feedbackEl.innerText = "تم الحفظ بنجاح.";
             }
-            refreshEmployeeHeaderSummary();
-            renderEmployeeFieldsGrid();
+            if (saveBtn) saveBtn.disabled = false;
         } catch (err) {
-            console.error("Save employee edits failed:", err);
+            console.error("Error saving employee edits:", err);
             if (feedbackEl) {
                 feedbackEl.style.color = "#dc2626";
-                feedbackEl.innerText = "حدث خطأ أثناء الحفظ في قاعدة البيانات.";
+                feedbackEl.innerText = "تعذر الحفظ.";
             }
-        } finally {
             if (saveBtn) saveBtn.disabled = false;
         }
     };
