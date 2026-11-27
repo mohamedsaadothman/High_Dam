@@ -275,7 +275,7 @@
                     </div>
                 </div>
                 <div class="input-group">
-                    <label>تاريخ المعاش (اختياري):</label>
+                    <label>تاريخ المعاش (pension Date):</label>
                     <div style="position: relative;">
                         <input type="text" id="newEmpRetireDate" placeholder="يوم / شهر / سنة" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'" style="padding-left: 35px;">
                         <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpRetireDate')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
@@ -954,6 +954,10 @@
 
     function normalizeDateStr(val) {
         if (!val) return "";
+        if (typeof val === "object" && typeof val.toDate === "function") {
+            let dt = val.toDate();
+            return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        }
         let s = String(val).trim();
         let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
         if (m) {
@@ -969,33 +973,29 @@
         return "";
     }
 
-    function isEmployeeRetired(nationalId, retireDateVal) {
+    function getTodayDateStr() {
         let today = new Date();
-        let todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    }
 
-        if (retireDateVal) {
-            let normRet = normalizeDateStr(retireDateVal);
-            if (normRet && todayStr >= normRet) {
-                return true;
-            }
+    function getPensionDateFromData(userData) {
+        if (!userData) return "";
+        return userData["pension Date"] || userData["pensionDate"] || userData["pension_date"] || userData["retireDate"] || "";
+    }
+
+    function isEmployeeRetired(nationalId, retireDateVal) {
+        let todayStr = getTodayDateStr();
+        let normRet = normalizeDateStr(retireDateVal);
+        if (normRet && todayStr >= normRet) {
+            return true;
         }
-
-        if (!nationalId || nationalId.length !== 14) return false;
-        let centuryCode = nationalId.charAt(0);
-        let yearPrefix = (centuryCode === '2') ? '19' : '20';
-        let birthYear = parseInt(yearPrefix + nationalId.substr(1, 2));
-        let birthMonth = parseInt(nationalId.substr(3, 2)) - 1;
-        let birthDay = parseInt(nationalId.substr(5, 2));
-        
-        let birthDate = new Date(birthYear, birthMonth, birthDay);
-        let retireDate = new Date(birthDate.getFullYear() + 60, birthDate.getMonth(), birthDate.getDate());
-        
-        return today >= retireDate;
+        return false;
     }
 
     function markUserInactiveIfRetired(userDoc, userData) {
         if (!userDoc || !userData) return Promise.resolve(false);
-        if (isEmployeeRetired(userData.nationalId, userData.retireDate)) {
+        let pensionVal = getPensionDateFromData(userData);
+        if (isEmployeeRetired(userData.nationalId, pensionVal)) {
             if (String(userData.status || "").trim().toLowerCase() !== "inactive") {
                 userData.status = "inactive";
                 return userDoc.ref.update({ status: "inactive" }).then(() => true).catch(() => false);
@@ -1006,6 +1006,10 @@
 
     function formatDateToAr(val) {
         if (!val) return '';
+        if (typeof val === "object" && typeof val.toDate === "function") {
+            let dt = val.toDate();
+            return `${String(dt.getDate()).padStart(2, '0')} / ${String(dt.getMonth() + 1).padStart(2, '0')} / ${dt.getFullYear()}`;
+        }
         let strVal = String(val).trim();
         let match = strVal.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
         if (match) {
@@ -1176,7 +1180,8 @@
                 if (wf.routeType === "from_central_head") {
                     noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>رئيس مجلس الإدارة</b> (مقدم الطلب: رئيس الإدارة المركزية).`;
                 } else if (wf.routeType === "from_general_manager") {
-                    noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>رئيس الإدارة المركزية</b> ثم يُرفع إلى <b>رئيس مجلس الإدارة</b> (مقدم الطلب: مدير عام).`;
+                    let cmName = String((userData && userData.centralManager) || "").trim();
+                    noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>رئيس الإدارة المركزية</b>${cmName ? ` (<b>${cmName}</b>)` : ""} ثم يُرفع إلى <b>رئيس مجلس الإدارة</b>.`;
                 } else {
                     noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>${wf.responsibleManager}</b>.`;
                 }
@@ -1222,18 +1227,19 @@
                 return;
             }
 
+            let pensionVal = getPensionDateFromData(userData);
             markUserInactiveIfRetired(userDoc, userData).then(() => {
                 btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
                 btn.disabled = false;
 
-                if (isEmployeeRetired(nid, userData.retireDate)) {
-                    showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن المعاش وتم تحديث حالته إلى غير نشط (inactive).");
+                if (isEmployeeRetired(nid, pensionVal)) {
+                    showCustomAlert("تنبيه تاريخ المعاش", "عذراً، هذا الموظف بلغ تاريخ المعاش (pension Date) وتم تحديث حالته إلى غير نشط (inactive).");
                     return;
                 }
 
                 let empStatus = String(userData.status || "active").trim().toLowerCase();
                 if (empStatus !== "active") {
-                    showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً (منقطع). لا يمكنك تقديم طلبات، يرجى تسجيل العودة أولاً من صفحة المختص.");
+                    showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً (inactive). لا يمكنك تقديم طلبات، يرجى مراجعة المختص.");
                     return;
                 }
 
@@ -1370,6 +1376,7 @@
             }
 
             let empDeptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
+            let empCentralMgrVal = String((currentSubmitEmpData && currentSubmitEmpData.centralManager) || "").trim();
             let deptWorkflow = getWorkflowByDepartment(empDeptVal);
             if (deptWorkflow) {
                 targetManager = deptWorkflow.responsibleManager;
@@ -1461,6 +1468,7 @@
                     nationalId: currentSubmitEmpNationalId,
                     dept: targetManager, 
                     employeeDepartment: empDeptVal,
+                    centralManager: empCentralMgrVal,
                     responsibleManager: targetManager,
                     workflowRoute: deptWorkflow ? deptWorkflow.routeType : "default",
                     workflowSteps: deptWorkflow ? deptWorkflow.workflowSteps : ["الموظف المختص", targetManager, "الموظف المختص (الأرشفة)"],
@@ -1614,6 +1622,8 @@
                 empName: otherData.name,
                 nationalId: otherNid,
                 dept: absManagerDept,
+                employeeDepartment: otherData.department || "",
+                centralManager: otherData.centralManager || "",
                 jobCategory: otherData.jobCategory || "غير محدد", 
                 targetManager: absManagerDept, 
                 titlePrefix: absManagerTitle,  
@@ -1683,6 +1693,8 @@
             empName: currentSubmitEmpName,
             nationalId: currentSubmitEmpNationalId,
             dept: targetManager,
+            employeeDepartment: (currentSubmitEmpData && currentSubmitEmpData.department) || "",
+            centralManager: (currentSubmitEmpData && currentSubmitEmpData.centralManager) || "",
             jobCategory: currentSubmitEmpCategory, 
             targetManager: targetManager, 
             titlePrefix: titlePrefix,
@@ -1805,9 +1817,10 @@
                 let casual = parseFloat(userData.casual) || 0;
                 let prevBal = parseFloat(userData.prevBal) || 0;
                 let computedRemaining = annual + casual + prevBal;
+                let statusBadge = String(userData.status || "active") === "inactive" ? '<span style="color:#dc3545; font-weight:bold;">inactive</span>' : '<span style="color:#198754; font-weight:bold;">active</span>';
 
                 document.getElementById("inquiryDataContainer").innerHTML = `
-                    <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name}</div>
+                    <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name} — <strong>الحالة (status):</strong> ${statusBadge}</div>
                     <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${userData.nationalId}</div>
                     <div class="inquiry-data-item"><strong>الفئة:</strong> ${userData.jobCategory || '-'}</div>
                     <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${annual}</span></div>
@@ -2149,7 +2162,7 @@
                 }
             });
             
-            currentLeavesData = currentLeavesData.filter(item => !isEmployeeRetired(item.nationalId));
+            currentLeavesData = currentLeavesData.filter(item => !isEmployeeRetired(item.nationalId, getPensionDateFromData(item)));
             currentLeavesData.sort((a, b) => new Date(b.requestDate) - new Date(a.requestDate));
             
             filteredLeavesData = [...currentLeavesData]; 
@@ -2288,12 +2301,12 @@
                 `;
             } else if (item.workflowRoute === "from_central_head") {
                 stepsDisplay = `
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>المدير المسؤول:</strong> <span style="color:#198754; font-weight:bold;">رئيس مجلس الإدارة (${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'})</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>المدير المسئول - رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</span></p>
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>الاعتماد النهائي والأرشفة:</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 `;
             } else if (item.workflowRoute === "from_general_manager") {
                 stepsDisplay = `
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. رئيس الإدارة المركزية (المدير المسؤول):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.centralManagerApproval || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. المدير المسئول - رئيس الإدارة المركزية (${item.centralManager || 'غير محدد'}):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.centralManagerApproval || 'قيد الانتظار'}</span></p>
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>2. رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || 'قيد الانتظار'}</span></p>
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>3. الموظف المختص (الاعتماد النهائي والأرشفة):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 `;
@@ -2713,6 +2726,37 @@
         performPrint(item);
     }
 
+    function getResponsibleBlockHtml(item) {
+        let requesterDept = String(item.employeeDepartment || item.dept || "").trim();
+        let isFromCentralHead = (item.workflowRoute === "from_central_head") || requesterDept.includes("رئيس الإدارة المركزية") || requesterDept.includes("رئيس الادارة المركزية");
+        let isFromGeneralManager = (item.workflowRoute === "from_general_manager") || requesterDept === "مدير عام" || requesterDept.startsWith("مدير عام");
+
+        if (isFromCentralHead) {
+            let chairmanName = item.chairmanName || item.mgrName || ".................................";
+            return `
+                <p><strong>المدير المسئول</strong></p>
+                <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">رئيس مجلس الإدارة</p>
+                <p style="margin-top: 6px; font-weight: 800; font-size: 15px; color: #0f172a;">${chairmanName}</p>
+            `;
+        }
+
+        if (isFromGeneralManager) {
+            let centralMgrName = item.centralManager || ".................................";
+            return `
+                <p><strong>المدير المسئول</strong></p>
+                <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">رئيس الإدارة المركزية</p>
+                <p style="margin-top: 6px; font-weight: 800; font-size: 15px; color: #0f172a;">${centralMgrName}</p>
+            `;
+        }
+
+        let approverName = item.mgrName || item.responsibleManager || item.targetManager || ".................................";
+        return `
+            <p><strong>المدير المسئول</strong></p>
+            <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">${item.responsibleManager || item.targetManager || "المدير العام"}</p>
+            <p style="margin-top: 6px; font-weight: 800; font-size: 15px; color: #0f172a;">${approverName}</p>
+        `;
+    }
+
     function performPrint(item) {
         let printWindow = window.open('', '_blank');
         
@@ -2766,9 +2810,9 @@
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، وذلك نظراً لـ: <strong>${item.reason}</strong>.`;
         
-        let approverName = item.mgrName || item.responsibleManager || item.targetManager || ".................................";
         let rawMgrDept = item.responsibleManager || item.targetManager || "الشئون الإدارية";
         let deducedDept = rawMgrDept.replace(/^مدير\s+عام\s+/i, "إدارة ");
+        let responsibleBlockHtml = getResponsibleBlockHtml(item);
 
         let stepsTextForPrint = "";
         if (item.leaveType === "التبليغ عن منقطع") {
@@ -2785,12 +2829,12 @@
             `;
         } else if (item.workflowRoute === "from_central_head") {
             stepsTextForPrint = `
-                - المدير المسؤول (رئيس مجلس الإدارة): <b>${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</b><br>
+                - المدير المسئول (رئيس مجلس الإدارة): <b>${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</b><br>
                 - الموظف المختص (الاعتماد النهائي والأرشفة): <b>${item.hrStatus || 'قيد الانتظار'}</b>
             `;
         } else if (item.workflowRoute === "from_general_manager") {
             stepsTextForPrint = `
-                - المدير المسؤول (رئيس الإدارة المركزية): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
+                - المدير المسئول (رئيس الإدارة المركزية - ${item.centralManager || 'غير محدد'}): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
                 - رئيس مجلس الإدارة: <b>${item.chairmanApproval || 'قيد الانتظار'}</b><br>
                 - الموظف المختص (الاعتماد النهائي والأرشفة): <b>${item.hrStatus || 'قيد الانتظار'}</b>
             `;
@@ -2845,8 +2889,7 @@
                             <p><strong>الرقم القومي:</strong> ${item.nationalId}</p>
                         </div>
                         <div style="text-align: left;">
-                            <p><strong>المدير المسؤول،،</strong></p>
-                            <p style="margin-top: 35px; font-weight:900; font-size: 18px; color: #1a365d;">${approverName}</p>
+                            ${responsibleBlockHtml}
                         </div>
                     </div>
                     <div class="status-box">
@@ -3311,10 +3354,7 @@
         e.preventDefault();
         let nationalIdVal = document.getElementById("newEmpNationalId").value.trim();
         let retireDateVal = document.getElementById("newEmpRetireDate").value;
-        if (isEmployeeRetired(nationalIdVal, retireDateVal)) {
-            showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن المعاش ولا يمكن إضافته.");
-            return;
-        }
+        let reachedPension = isEmployeeRetired(nationalIdVal, retireDateVal);
         
         db.collection("users").where("nationalId", "==", nationalIdVal).get().then((querySnapshot) => {
             if (!querySnapshot.empty) {
@@ -3322,7 +3362,7 @@
                 return;
             }
 
-            let empStatus = document.getElementById("empStatusSwitch").checked ? "active" : "inactive";
+            let empStatus = reachedPension ? "inactive" : (document.getElementById("empStatusSwitch").checked ? "active" : "inactive");
             let empData = {
                 name: document.getElementById("newEmpName").value.trim(),
                 nationalId: nationalIdVal,
@@ -3330,6 +3370,7 @@
                 password: document.getElementById("newEmpPassword").value,
                 hireDate: document.getElementById("newEmpHireDate").value,
                 retireDate: retireDateVal,
+                "pension Date": retireDateVal,
                 annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
                 casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
                 sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
@@ -3341,7 +3382,7 @@
             };
             
             db.collection("users").add(empData).then(() => {
-                showCustomAlert("تم بنجاح", "تمت إضافة الموظف بنجاح."); 
+                showCustomAlert("تم بنجاح", reachedPension ? "تمت إضافة الموظف وتعيين حالته إلى (inactive) لأن تاريخ المعاش يوافق اليوم أو بعده." : "تمت إضافة الموظف بنجاح."); 
                 document.getElementById("addEmployeeForm").reset(); 
                 document.getElementById("empStatusSwitch").checked = true;
                 toggleEmpStatusText();
@@ -3366,7 +3407,7 @@
             matches.slice(0, 10).forEach(emp => {
                 let div = document.createElement("div");
                 div.className = "suggestion-item";
-                div.innerHTML = `<i class="fas fa-user" style="margin-left:5px; color:#64748b;"></i> <strong>${emp.name}</strong> - ${emp.nationalId} ${emp.status === 'inactive' ? '<span style="color:red; font-size:10px;">(منقطع / موقوف)</span>' : ''}`;
+                div.innerHTML = `<i class="fas fa-user" style="margin-left:5px; color:#64748b;"></i> <strong>${emp.name}</strong> - ${emp.nationalId} ${emp.status === 'inactive' ? '<span style="color:red; font-size:10px;">(inactive)</span>' : ''}`;
                 div.onclick = function() { loadEmployeeForEditing(emp); };
                 suggestBox.appendChild(div);
             });
@@ -3384,7 +3425,7 @@
         document.getElementById("newEmpName").value = emp.name || "";
         document.getElementById("newEmpNationalId").value = emp.nationalId || "";
         document.getElementById("newEmpHireDate").value = emp.hireDate || "";
-        document.getElementById("newEmpRetireDate").value = emp.retireDate || "";
+        document.getElementById("newEmpRetireDate").value = normalizeDateStr(getPensionDateFromData(emp)) || "";
         document.getElementById("newEmpAnnual").value = emp.annual || 0;
         document.getElementById("newEmpCasual").value = emp.casual || 0;
         document.getElementById("newEmpSick").value = emp.sick || 0;
@@ -3428,6 +3469,7 @@
             department: "",
             hireDate: document.getElementById("newEmpHireDate").value,
             retireDate: retVal,
+            "pension Date": retVal,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
             casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
             sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
@@ -3486,7 +3528,7 @@
                 let empCat = String(data.jobCategory || "").trim();
                 
                 if (empCat.includes(cat)) {
-                    if (isEmployeeRetired(data.nationalId, data.retireDate)) {
+                    if (isEmployeeRetired(data.nationalId, getPensionDateFromData(data))) {
                         if (String(data.status || "").trim().toLowerCase() !== "inactive") {
                             batch.update(doc.ref, { status: "inactive" });
                         }
@@ -3524,7 +3566,7 @@
             querySnapshot.forEach(doc => {
                 let data = doc.data();
                 markUserInactiveIfRetired(doc, data);
-                if (String(data.jobCategory || "").includes(cat) && !isEmployeeRetired(data.nationalId, data.retireDate)) {
+                if (String(data.jobCategory || "").includes(cat)) {
                     data.docId = doc.id;
                     currentEmployeesList.push(data);
                 }
@@ -3537,7 +3579,7 @@
                 </div>
                 <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
                 <table class="summary-report-table"><thead><tr>
-                    <th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الحالة</th>
+                    <th>م</th><th>الاسم</th><th>الرقم القومي</th><th>الحالة (status)</th>
                     <th>الاعتيادي</th><th>العارضة</th><th>المرضية</th><th>مرضية 259</th>
                     <th>سنوات سابقة</th><th>المتبقي</th>
                 </tr></thead><tbody>`;
@@ -3553,7 +3595,7 @@
                     <td>${idx + 1}</td>
                     <td style="text-align:right; font-weight:bold;">${emp.name}</td>
                     <td>${emp.nationalId}</td>
-                    <td>${isActive ? '<span style="color:green;">نشط</span>' : '<span style="color:red;">منقطع</span>'}</td>
+                    <td>${isActive ? '<span style="color:green;">active</span>' : '<span style="color:red;">inactive</span>'}</td>
                     <td>${annual}</td><td>${casual}</td><td>${emp.sick || 0}</td><td>${emp.sick259 || 'لا'}</td>
                     <td>${prevBal}</td><td style="font-weight:bold; background:#f0fdf4;">${remaining}</td>
                 </tr>`;
@@ -3590,7 +3632,7 @@
         if (!query || query.trim().length < 1) { suggestBox.style.display = "none"; return; }
 
         query = query.trim().toLowerCase();
-        let matches = currentEmployeesList.filter(emp => emp.status === 'inactive' && emp.name.toLowerCase().includes(query));
+        let matches = currentEmployeesList.filter(emp => emp.status === 'inactive' && !isEmployeeRetired(emp.nationalId, getPensionDateFromData(emp)) && emp.name.toLowerCase().includes(query));
 
         if (matches.length > 0) {
             suggestBox.innerHTML = "";
