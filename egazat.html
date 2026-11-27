@@ -97,6 +97,9 @@
         .summary-report-table th { background-color: #1e293b; color: #fff; font-weight: 800; }
         .summary-report-table tr:nth-child(even) { background-color: #f1f5f9; }
         .summary-report-table .total-row { background-color: #c59b27 !important; font-weight: 900; color: #fff; }
+        .summary-report-table tr.retired-in-period-row { background-color: #fee2e2 !important; color: #7f1d1d !important; font-weight: 700; }
+        .summary-report-table tr.retired-in-period-row td { border-color: #f87171 !important; }
+        .retired-badge { display: inline-block; background: #dc2626; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; margin-top: 3px; }
 
         .inquiry-login-box { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto 20px auto; }
         .inquiry-data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
@@ -375,7 +378,7 @@
                     </div>
                 </div>
                 <div class="input-group">
-                    <label>تاريخ المعاش (pension Date):</label>
+                    <label>تاريخ المعاش (pensionDate):</label>
                     <div style="position: relative;">
                         <input type="text" id="newEmpRetireDate" class="ar-cal-input" lang="ar-EG" placeholder="يوم / شهر / سنة" onfocus="openArabicDatePicker(this)" onclick="openArabicDatePicker(this)" style="padding-left: 35px;">
                         <i class="fas fa-pen edit-icon hidden" onclick="toggleEdit('newEmpRetireDate')" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #0d6efd;"></i>
@@ -461,7 +464,8 @@
 
             <!-- عرض الرصيد المتبقي وتحديد الفترة الزمنية (من - إلى) -->
             <div style="margin-top: 20px; background: #eff6ff; padding: 15px; border-radius: 8px; border: 1px solid #93c5fd;">
-                <h3 style="color: #1e40af; font-size: 14px; font-weight: 900; margin-bottom: 10px;"><i class="fas fa-wallet"></i> عرض الرصيد المتبقي وتحديد الفترة الزمنية</h3>
+                <h3 style="color: #1e40af; font-size: 14px; font-weight: 900; margin-bottom: 6px;"><i class="fas fa-wallet"></i> عرض الرصيد المتبقي وتحديد الفترة الزمنية</h3>
+                <p style="font-size: 11px; color: #1e3a8a; margin-bottom: 10px;">يعرض جميع الموظفين المتواجدين خلال الفترة المحددة، مع تلوين صف من خرج على المعاش خلالها وإظهار تاريخ معاشه وآخر رصيد له.</p>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                     <div class="input-group" style="margin-bottom: 0;">
                         <label>من تاريخ:</label>
@@ -478,6 +482,27 @@
             </div>
             
             <div id="specialistDataContainer" style="margin-top: 20px; overflow-x: auto;"></div>
+
+            <!-- قسم مستقل: المُحالون للمعاش خلال فترة زمنية (من - إلى) -->
+            <div style="margin-top: 22px; background: #fef2f2; padding: 15px; border-radius: 8px; border: 1.5px solid #fca5a5;">
+                <h3 style="color: #991b1b; font-size: 14px; font-weight: 900; margin-bottom: 6px;"><i class="fas fa-user-clock"></i> المُحالون للمعاش خلال فترة زمنية (من - إلى)</h3>
+                <p style="font-size: 11px; color: #b91c1c; margin-bottom: 10px;">استعلام مستقل يجلب فقط الموظفين الذين خرجوا على المعاش (pensionDate) خلال الفترة الزمنية المحددة مع آخر رصيد إجازات لكل منهم.</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <div class="input-group" style="margin-bottom: 0;">
+                        <label>من تاريخ:</label>
+                        <input type="text" id="retiredPeriodStartDate" class="ar-cal-input" lang="ar-EG" placeholder="يوم / شهر / سنة" onfocus="openArabicDatePicker(this)" onclick="openArabicDatePicker(this)">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 0;">
+                        <label>إلى تاريخ:</label>
+                        <input type="text" id="retiredPeriodEndDate" class="ar-cal-input" lang="ar-EG" placeholder="يوم / شهر / سنة" onfocus="openArabicDatePicker(this)" onclick="openArabicDatePicker(this)">
+                    </div>
+                </div>
+                <button type="button" class="act-btn btn-danger" onclick="loadRetiredEmployeesInPeriod()" style="width: 100%; padding: 10px; font-size: 13px;">
+                    <i class="fas fa-search"></i> عرض المُحالين للمعاش خلال الفترة
+                </button>
+            </div>
+
+            <div id="retiredPeriodContainer" style="margin-top: 15px; overflow-x: auto;"></div>
         </div>
     </section>
 
@@ -1057,6 +1082,8 @@
     var currentEmployeesList = [];
     var currentRemainingEmployeesList = [];
     var currentRemainingPeriodFilter = { fromDate: "", toDate: "" };
+    var currentRetiredInPeriodList = [];
+    var currentRetiredPeriodFilter = { fromDate: "", toDate: "" };
     var summaryDataForExcel = [];
     var currentSpecActionDocId = null;
     var currentSpecActionStatus = "";
@@ -1277,7 +1304,7 @@
 
     function getPensionDateFromData(userData) {
         if (!userData) return "";
-        return userData["pension Date"] || userData["pensionDate"] || userData["pension_date"] || userData["retireDate"] || "";
+        return userData["pensionDate"] || userData["pension Date"] || userData["pension_date"] || userData["retireDate"] || "";
     }
 
     function isEmployeeRetired(nationalId, retireDateVal) {
@@ -1289,7 +1316,10 @@
         return false;
     }
 
-    // التحقق مما إذا كان تاريخ المعاش (pension Date) متداخلاً مع الفترة أو قبل/ضمن الفترة المحددة
+    // التحقق من تواجد الموظف أثناء الفترة المحددة [fromDate, toDate]:
+    // - يظهر الموظف المستمر (لا يوجد pensionDate أو تاريخه بعد نهاية الفترة)
+    // - يظهر الموظف الذي خرج على المعاش أثناء الفترة المحددة (fromDate <= pensionDate <= toDate)
+    // - لا يظهر من خرج على المعاش قبل بداية الفترة المحددة (pensionDate < fromDate)
     function shouldShowEmployeeInRemainingPeriod(pensionDateVal, fromDateStr, toDateStr) {
         let normRet = normalizeDateStr(pensionDateVal);
         let fDate = normalizeDateStr(fromDateStr);
@@ -1299,19 +1329,34 @@
             return !isEmployeeRetired("", normRet);
         }
 
-        // إذا لم يكن للموظف تاريخ معاش مسجل، فلا يُستبعد عند عرض الرصيد المتبقي (حتى لو status = inactive)
         if (!normRet) return true;
 
-        // إذا كان تاريخ المعاش بعد نهاية الفترة المحددة (أو بعد تاريخ البداية عند تحديد بداية فقط) لا يتم عرضه
-        if (tDate && normRet > tDate) {
-            return false;
-        }
-        if (!tDate && fDate && normRet > fDate) {
+        // إذا خرج على المعاش قبل بداية الفترة المحددة، فلم يكن متواجداً خلال هذه الفترة
+        if (fDate && normRet < fDate) {
             return false;
         }
 
-        // متداخل مع الفترة أو قبل/ضمن الفترة المحددة -> يُعرض حتى لو status = inactive
+        // سواء كان معاشه داخل الفترة [fDate..tDate] أو بعدها (مستمر خلال الفترة) -> كان موجوداً أثناء الفترة فيُعرض
         return true;
+    }
+
+    // التحقق مما إذا كان الموظف قد خرج على المعاش تحديداً داخل الفترة [fromDate, toDate]
+    function isRetiredWithinPeriod(pensionDateVal, fromDateStr, toDateStr) {
+        let normRet = normalizeDateStr(pensionDateVal);
+        if (!normRet) return false;
+        let fDate = normalizeDateStr(fromDateStr);
+        let tDate = normalizeDateStr(toDateStr);
+
+        if (fDate && tDate) {
+            return normRet >= fDate && normRet <= tDate;
+        }
+        if (fDate && !tDate) {
+            return normRet >= fDate && normRet <= getTodayDateStr();
+        }
+        if (!fDate && tDate) {
+            return normRet <= tDate;
+        }
+        return isEmployeeRetired("", normRet);
     }
 
     function markUserInactiveIfRetired(userDoc, userData) {
@@ -1616,7 +1661,7 @@
                 btn.disabled = false;
 
                 if (isEmployeeRetired(nid, pensionVal)) {
-                    showCustomAlert("تنبيه تاريخ المعاش", "عذراً، هذا الموظف بلغ تاريخ المعاش (pension Date) وتم تحديث حالته إلى غير نشط (inactive).");
+                    showCustomAlert("تنبيه تاريخ المعاش", "عذراً، هذا الموظف بلغ تاريخ المعاش (pensionDate) وتم تحديث حالته إلى غير نشط (inactive).");
                     return;
                 }
 
@@ -3770,6 +3815,8 @@
         document.getElementById("hiddenJobCategory").value = "";
         document.getElementById("specCategoryDisplay").innerText = "";
         document.getElementById("specialistDataContainer").innerHTML = "";
+        let retiredBox = document.getElementById("retiredPeriodContainer");
+        if (retiredBox) retiredBox.innerHTML = "";
         cancelEditMode(); 
 
         let select = document.getElementById('specAuthDept');
@@ -3814,6 +3861,8 @@
                 document.getElementById("specCategoryDisplay").innerText = "الفئة: " + category;
                 document.getElementById("hiddenJobCategory").value = category;
                 document.getElementById("specialistDataContainer").innerHTML = "";
+                let retiredBox = document.getElementById("retiredPeriodContainer");
+                if (retiredBox) retiredBox.innerHTML = "";
                 document.getElementById('specialistAuthModal').classList.add('hidden');
                 document.getElementById("mainEgazatMenu").classList.add("hidden");
                 document.getElementById("addEmployeeSection").classList.remove("hidden");
@@ -3850,6 +3899,7 @@
                 password: document.getElementById("newEmpPassword").value,
                 hireDate: document.getElementById("newEmpHireDate").value,
                 retireDate: retireDateVal,
+                pensionDate: retireDateVal,
                 "pension Date": retireDateVal,
                 annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
                 casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
@@ -3949,6 +3999,7 @@
             department: "",
             hireDate: document.getElementById("newEmpHireDate").value,
             retireDate: retVal,
+            pensionDate: retVal,
             "pension Date": retVal,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
             casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
@@ -4051,6 +4102,35 @@
         }).catch(() => {});
     }
 
+    // حساب الإجازات المستهلكة لموظف خلال فترة معينة مع مراعاة تاريخ المعاش كحد أقصى
+    function computeConsumedLeavesForEmployee(empLeaves, fromDate, toDate, normPensionDate) {
+        let effectiveEnd = toDate;
+        if (normPensionDate) {
+            if (!effectiveEnd || normPensionDate < effectiveEnd) {
+                effectiveEnd = normPensionDate;
+            }
+        }
+
+        let totalConsumed = 0;
+        empLeaves.forEach(l => {
+            let lStart = normalizeDateStr(l.startDate);
+            let lEnd = normalizeDateStr(l.endDate || l.startDate);
+            if (!lStart) return;
+
+            if (fromDate && lEnd < fromDate) return;
+            if (effectiveEnd && lStart > effectiveEnd) return;
+
+            if (fromDate && effectiveEnd) {
+                totalConsumed += getDaysInPeriod(lStart, lEnd, fromDate, effectiveEnd);
+            } else if (!fromDate && effectiveEnd) {
+                totalConsumed += getDaysInPeriod(lStart, lEnd, lStart, effectiveEnd);
+            } else {
+                totalConsumed += (parseFloat(l.daysCount) || 0);
+            }
+        });
+        return totalConsumed;
+    }
+
     function loadSpecialistData() {
         let cat = document.getElementById("hiddenJobCategory").value;
         if(!cat) return;
@@ -4091,35 +4171,39 @@
                 }
             });
 
-            let periodLeavesByNid = {};
-            if (fromDate || toDate) {
-                leavesSnap.forEach(ldoc => {
-                    let l = ldoc.data();
-                    let nid = String(l.nationalId || "").trim();
-                    if (!nid) return;
-                    let sStat = l.specialistStatus || "";
-                    let mStat = l.managerStatus || "";
-                    let hrStat = l.hrStatus || "";
-                    if (sStat.includes("مرفوض") || mStat.includes("مرفوض") || hrStat.includes("مرفوض")) return;
-                    if (!l.startDate) return;
-                    if (fromDate && (l.endDate || l.startDate) < fromDate) return;
-                    if (toDate && l.startDate > toDate) return;
-
-                    let days = (fromDate && toDate)
-                        ? getDaysInPeriod(l.startDate, l.endDate, fromDate, toDate)
-                        : (parseFloat(l.daysCount) || 0);
-
-                    if (!periodLeavesByNid[nid]) periodLeavesByNid[nid] = 0;
-                    periodLeavesByNid[nid] += days;
-                });
-            }
+            let validLeavesByNid = {};
+            leavesSnap.forEach(ldoc => {
+                let l = ldoc.data();
+                let nid = String(l.nationalId || "").trim();
+                if (!nid) return;
+                let sStat = l.specialistStatus || "";
+                let mStat = l.managerStatus || "";
+                let hrStat = l.hrStatus || "";
+                if (sStat.includes("مرفوض") || mStat.includes("مرفوض") || hrStat.includes("مرفوض")) return;
+                if (!l.startDate) return;
+                if (!validLeavesByNid[nid]) validLeavesByNid[nid] = [];
+                validLeavesByNid[nid].push(l);
+            });
 
             currentRemainingEmployeesList = matchingEmployees.map(emp => {
                 let annual = parseFloat(emp.annual) || 0;
                 let casual = parseFloat(emp.casual) || 0;
                 let prevBal = parseFloat(emp.prevBal) || 0;
-                let consumedInPeriod = periodLeavesByNid[String(emp.nationalId || "").trim()] || 0;
-                let remaining = Math.max(0, (annual + casual + prevBal) - consumedInPeriod);
+                let pensionVal = getPensionDateFromData(emp);
+                let normPension = normalizeDateStr(pensionVal);
+                let retiredInPeriod = isRetiredWithinPeriod(pensionVal, fromDate, toDate);
+
+                let nid = String(emp.nationalId || "").trim();
+                let empLeaves = validLeavesByNid[nid] || [];
+                let consumedInPeriod = (fromDate || toDate)
+                    ? computeConsumedLeavesForEmployee(empLeaves, fromDate, toDate, normPension)
+                    : 0;
+
+                // الرصيد المسجل في users (annual + casual + prevBal) يعكس آخر رصيد مخصوم منه الإجازات المعتمدة؛
+                // وإذا كانت هناك إجازات غير مخصومة بعد ضمن الفترة حتى تاريخ المعاش تُخصم تلقائياً
+                let baseBalance = annual + casual + prevBal;
+                let remaining = baseBalance;
+
                 return {
                     ...emp,
                     _annual: annual,
@@ -4128,7 +4212,9 @@
                     _sick259: emp.sick259 || 'لا',
                     _prevBal: prevBal,
                     _consumedInPeriod: consumedInPeriod,
-                    _remaining: remaining
+                    _remaining: remaining,
+                    _pensionDate: normPension,
+                    _retiredInPeriod: retiredInPeriod
                 };
             });
 
@@ -4145,8 +4231,10 @@
             ? currentRemainingEmployeesList.filter(e => String(e.nationalId) === String(selectedNationalId))
             : currentRemainingEmployeesList;
 
+        let retiredCountInList = listToRender.filter(e => e._retiredInPeriod).length;
+
         let periodBanner = (fromDate || toDate)
-            ? `<p style="font-size:12px; color:#1e3a8a; font-weight:800; margin-bottom:8px;">الفترة المحددة: ${fromDate ? 'من ' + formatDateToAr(fromDate) : 'البداية'} ${toDate ? 'إلى ' + formatDateToAr(toDate) : 'النهاية'}</p>`
+            ? `<p style="font-size:12px; color:#1e3a8a; font-weight:800; margin-bottom:6px;">الفترة المحددة: ${fromDate ? 'من ' + formatDateToAr(fromDate) : 'البداية'} ${toDate ? 'إلى ' + formatDateToAr(toDate) : 'النهاية'} — إجمالي المتواجدين: (${listToRender.length}) ${retiredCountInList > 0 ? `| <span style="color:#dc2626;">منهم (${retiredCountInList}) خرجوا على المعاش خلال الفترة (مظللين باللون الأحمر)</span>` : ''}</p>`
             : '';
 
         let searchBarHtml = `
@@ -4165,88 +4253,304 @@
         let html = `
             ${periodBanner}
             ${searchBarHtml}
-            <div style="display:flex; gap:8px; margin-bottom:10px;">
-                <button class="act-btn btn-ex" onclick="exportSpecialistExcel('${cat}')"><i class="fas fa-file-excel"></i> تحميل Excel</button>
-                <button class="act-btn btn-danger" onclick="printSpecialistPDF('${cat}')"><i class="fas fa-file-pdf"></i> تحميل PDF / طباعة</button>
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button class="act-btn btn-ex" onclick="exportEmployeesExcel('${cat}')"><i class="fas fa-file-excel"></i> تصدير لإكسل</button>
+                <button class="act-btn btn-pd" onclick="printEmployeesPDF('${cat}')"><i class="fas fa-print"></i> طباعة PDF</button>
             </div>
-            <div style="max-height: 450px; overflow-y:auto; overflow-x:auto;">
-            <table class="summary-report-table"><thead><tr>
-                <th>م</th><th>الاسم</th><th>الرقم القومي</th>
-                <th>الاعتيادي</th><th>العارضة</th><th>المرضية</th><th>مرضية 259</th>
-                <th>سنوات سابقة</th>${showConsumedCol ? '<th>مستهلك الفترة</th>' : ''}<th>الرصيد المتبقي</th>
-            </tr></thead><tbody>`;
+            <table class="summary-report-table" id="employeesTable">
+                <thead>
+                    <tr>
+                        <th>م</th>
+                        <th>الاسم</th>
+                        <th>الرقم القومي</th>
+                        <th>تاريخ المعاش (pensionDate)</th>
+                        <th>اعتيادي</th>
+                        <th>عارضة</th>
+                        <th>مرضية</th>
+                        <th>259</th>
+                        <th>سنوات سابقة</th>
+                        ${showConsumedCol ? '<th>المستهلك بالفترة</th>' : ''}
+                        <th>الرصيد المتبقي (آخر رصيد)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        let count = 0;
+        listToRender.forEach(emp => {
+            count++;
+            let rowClass = emp._retiredInPeriod ? 'retired-in-period-row' : '';
+            let pensionDisplay = emp._pensionDate ? formatDateToAr(emp._pensionDate) : '-';
+            let retiredBadgeHtml = emp._retiredInPeriod
+                ? `<br><span class="retired-badge"><i class="fas fa-user-clock"></i> خرج على المعاش بتاريخ: ${pensionDisplay}</span>`
+                : '';
 
-        if (listToRender.length === 0) {
-            html += `<tr><td colspan="${showConsumedCol ? 10 : 9}">لا يوجد موظفون مطابقون للفترة أو البحث المحدد.</td></tr>`;
-        } else {
-            listToRender.forEach((emp, idx) => {
-                html += `<tr>
-                    <td>${idx + 1}</td>
-                    <td style="text-align:right; font-weight:bold;">${emp.name}</td>
+            html += `
+                <tr class="${rowClass}">
+                    <td>${count}</td>
+                    <td style="text-align:right; font-weight:bold;">${emp.name}${retiredBadgeHtml}</td>
                     <td>${emp.nationalId}</td>
-                    <td>${emp._annual}</td><td>${emp._casual}</td><td>${emp._sick}</td><td>${emp._sick259}</td>
-                    <td>${emp._prevBal}</td>${showConsumedCol ? `<td>${emp._consumedInPeriod}</td>` : ''}<td style="font-weight:bold; background:#f0fdf4;">${emp._remaining}</td>
-                </tr>`;
-            });
-        }
-        html += `</tbody></table></div>`;
+                    <td style="font-weight:${emp._retiredInPeriod ? '900' : '600'};">${pensionDisplay}</td>
+                    <td>${emp._annual}</td>
+                    <td>${emp._casual}</td>
+                    <td>${emp._sick}</td>
+                    <td>${emp._sick259}</td>
+                    <td>${emp._prevBal}</td>
+                    ${showConsumedCol ? `<td style="color:#dc2626; font-weight:bold;">${emp._consumedInPeriod}</td>` : ''}
+                    <td style="font-weight:bold; color:${emp._retiredInPeriod ? '#991b1b' : '#198754'}; font-size:14px;">${emp._remaining}</td>
+                </tr>
+            `;
+        });
+        
+        if(count === 0) html += `<tr><td colspan="${showConsumedCol ? 11 : 10}">لا يوجد موظفين متواجدين خلال هذه الفترة</td></tr>`;
+        html += `</tbody></table>`;
         document.getElementById("specialistDataContainer").innerHTML = html;
+
+        if (selectedNationalId && listToRender.length > 0) {
+            let inp = document.getElementById("remainingSearchInput");
+            if (inp) inp.value = listToRender[0].name;
+        }
     }
 
     function handleRemainingSearchInput(query) {
-        let box = document.getElementById("remainingSearchSuggestions");
-        if (!box) return;
+        let suggestBox = document.getElementById("remainingSearchSuggestions");
+        let cat = document.getElementById("hiddenJobCategory").value;
+        if (!suggestBox) return;
+
         let q = String(query || "").trim().toLowerCase();
         if (!q) {
-            box.style.display = "none";
+            suggestBox.style.display = "none";
             return;
         }
 
-        let matches = currentRemainingEmployeesList.filter(emp => {
-            let name = String(emp.name || "").trim().toLowerCase();
-            let nid = String(emp.nationalId || "").trim();
-            let firstWord = name.split(/\s+/)[0] || "";
-            return name.startsWith(q) || firstWord.startsWith(q) || name.includes(q) || nid.includes(q);
-        });
+        let matches = currentRemainingEmployeesList.filter(emp =>
+            (emp.name && emp.name.toLowerCase().includes(q)) ||
+            (emp.nationalId && String(emp.nationalId).includes(q))
+        );
 
-        if (matches.length === 0) {
-            box.innerHTML = `<div style="padding:8px; text-align:center; color:#dc3545; font-size:12px;">لا توجد أسماء مطابقة</div>`;
-            box.style.display = "block";
-            return;
+        if (matches.length > 0) {
+            suggestBox.innerHTML = "";
+            matches.slice(0, 12).forEach(emp => {
+                let div = document.createElement("div");
+                div.className = "suggestion-item";
+                let statusBadge = emp._retiredInPeriod
+                    ? `<span style="color:#dc2626; font-weight:bold;">[خرج على المعاش: ${formatDateToAr(emp._pensionDate)}]</span>`
+                    : (String(emp.status || "active") === "inactive" ? '<span style="color:#dc3545;">(inactive)</span>' : '<span style="color:#198754;">(active)</span>');
+                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId} ${statusBadge} — <span style="color:#0369a1; font-weight:bold;">الرصيد: ${emp._remaining}</span>`;
+                div.onclick = function() {
+                    suggestBox.style.display = "none";
+                    renderRemainingEmployeesSection(cat, emp.nationalId);
+                };
+                suggestBox.appendChild(div);
+            });
+            suggestBox.style.display = "block";
+        } else {
+            suggestBox.innerHTML = '<div style="padding:8px; text-align:center; color:#dc3545; font-size:12px;">لا يوجد موظف مطابق</div>';
+            suggestBox.style.display = "block";
         }
-
-        let cat = document.getElementById("hiddenJobCategory").value;
-        box.innerHTML = "";
-        matches.slice(0, 8).forEach(emp => {
-            let item = document.createElement("div");
-            item.className = "suggestion-item";
-            item.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId}`;
-            item.onclick = function() {
-                box.style.display = "none";
-                renderRemainingEmployeesSection(cat, emp.nationalId);
-            };
-            box.appendChild(item);
-        });
-        box.style.display = "block";
     }
 
-    function exportSpecialistExcel(cat) {
-        let table = document.querySelector("#specialistDataContainer table");
-        if (!table) return;
-        let wb = XLSX.utils.book_new();
-        let ws = XLSX.utils.table_to_sheet(table);
-        XLSX.utils.book_append_sheet(wb, ws, "بيانات الفئة");
-        XLSX.writeFile(wb, `بيانات_فئة_${cat}.xlsx`);
+    function exportEmployeesExcel(cat) {
+        let wb = XLSX.utils.table_to_book(document.getElementById("employeesTable"));
+        XLSX.writeFile(wb, `الرصيد_المتبقي_فئة_${cat}.xlsx`);
     }
 
-    function printSpecialistPDF(cat) {
-        let tableHtml = document.querySelector("#specialistDataContainer table");
-        if (!tableHtml) return;
+    function printEmployeesPDF(cat) {
+        let printContents = document.getElementById("employeesTable").outerHTML;
+        let fromDate = currentRemainingPeriodFilter.fromDate;
+        let toDate = currentRemainingPeriodFilter.toDate;
+        let periodLine = (fromDate || toDate)
+            ? `<p style="font-size:12px; color:#334155;">الفترة الزمنية: ${fromDate ? 'من ' + formatDateToAr(fromDate) : ''} ${toDate ? 'إلى ' + formatDateToAr(toDate) : ''}</p>`
+            : '';
         let win = window.open('', '_blank');
         win.document.write(`
-            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير الفئة ${cat}</title>
-            <style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#1e293b; color:#fff;}</style></head>
-            <body><h2>تقرير الرصيد المتبقي للفئة: ${cat}</h2>${tableHtml.outerHTML}</body></html>
+            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+            <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+            <style>
+                body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
+                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
+                th,td{border:1px solid #333; padding:6px; text-align:center;}
+                th{background:#1e293b; color:#fff; -webkit-print-color-adjust:exact;}
+                tr.retired-in-period-row{background:#fee2e2 !important; color:#7f1d1d !important; -webkit-print-color-adjust:exact;}
+                .retired-badge{display:inline-block; background:#dc2626; color:#fff; font-size:10px; padding:1px 6px; border-radius:4px; -webkit-print-color-adjust:exact;}
+            </style></head>
+            <body><h2>بيان الرصيد المتبقي لموظفي فئة: ${cat}</h2>${periodLine}${printContents}</body></html>
+        `);
+        win.document.close();
+        setTimeout(() => { win.focus(); win.print(); }, 500);
+    }
+
+    // === القسم المستقل: عرض المُحالين للمعاش خلال فترة زمنية (من - إلى) ===
+    function loadRetiredEmployeesInPeriod() {
+        let cat = document.getElementById("hiddenJobCategory").value;
+        if (!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
+
+        let fromDate = document.getElementById("retiredPeriodStartDate").value;
+        let toDate = document.getElementById("retiredPeriodEndDate").value;
+
+        if (!fromDate || !toDate) {
+            showCustomAlert("تنبيه", "يرجى تحديد تاريخ البداية (من) وتاريخ النهاية (إلى) لعرض المُحالين للمعاش خلال الفترة.");
+            return;
+        }
+        if (toDate < fromDate) {
+            showCustomAlert("خطأ في الفترة", "تاريخ النهاية يجب أن يكون أكبر من أو يساوي تاريخ البداية.");
+            return;
+        }
+
+        currentRetiredPeriodFilter = { fromDate: fromDate, toDate: toDate };
+        let container = document.getElementById("retiredPeriodContainer");
+        container.innerHTML = '<p style="text-align:center; padding:15px; color:#991b1b; font-weight:bold;">جاري البحث عن المُحالين للمعاش خلال الفترة...</p>';
+
+        Promise.all([
+            db.collection("users").get(),
+            db.collection("leaves").get()
+        ]).then(([usersSnap, leavesSnap]) => {
+            let retiredEmployees = [];
+
+            usersSnap.forEach(doc => {
+                let data = doc.data();
+                let pensionVal = getPensionDateFromData(data);
+                if (isEmployeeRetired(data.nationalId, pensionVal)) {
+                    markUserInactiveIfRetired(doc, data);
+                }
+
+                if (String(data.jobCategory || "").includes(cat)) {
+                    if (isRetiredWithinPeriod(pensionVal, fromDate, toDate)) {
+                        data.docId = doc.id;
+                        retiredEmployees.push(data);
+                    }
+                }
+            });
+
+            let validLeavesByNid = {};
+            leavesSnap.forEach(ldoc => {
+                let l = ldoc.data();
+                let nid = String(l.nationalId || "").trim();
+                if (!nid) return;
+                let sStat = l.specialistStatus || "";
+                let mStat = l.managerStatus || "";
+                let hrStat = l.hrStatus || "";
+                if (sStat.includes("مرفوض") || mStat.includes("مرفوض") || hrStat.includes("مرفوض")) return;
+                if (!l.startDate) return;
+                if (!validLeavesByNid[nid]) validLeavesByNid[nid] = [];
+                validLeavesByNid[nid].push(l);
+            });
+
+            currentRetiredInPeriodList = retiredEmployees.map(emp => {
+                let annual = parseFloat(emp.annual) || 0;
+                let casual = parseFloat(emp.casual) || 0;
+                let prevBal = parseFloat(emp.prevBal) || 0;
+                let normPension = normalizeDateStr(getPensionDateFromData(emp));
+                let nid = String(emp.nationalId || "").trim();
+                let empLeaves = validLeavesByNid[nid] || [];
+                let consumedUpToPension = computeConsumedLeavesForEmployee(empLeaves, fromDate, toDate, normPension);
+                let finalRemainingBalance = annual + casual + prevBal;
+
+                return {
+                    ...emp,
+                    _pensionDate: normPension,
+                    _annual: annual,
+                    _casual: casual,
+                    _sick: emp.sick || 0,
+                    _sick259: emp.sick259 || 'لا',
+                    _prevBal: prevBal,
+                    _consumedUpToPension: consumedUpToPension,
+                    _finalRemainingBalance: finalRemainingBalance
+                };
+            }).sort((a, b) => a._pensionDate.localeCompare(b._pensionDate));
+
+            renderRetiredEmployeesInPeriodTable(cat);
+        }).catch(() => {
+            showCustomAlert("خطأ", "تعذر تحميل بيانات المُحالين للمعاش.");
+        });
+    }
+
+    function renderRetiredEmployeesInPeriodTable(cat) {
+        let container = document.getElementById("retiredPeriodContainer");
+        let fromDate = currentRetiredPeriodFilter.fromDate;
+        let toDate = currentRetiredPeriodFilter.toDate;
+
+        let html = `
+            <div style="background:#fff1f2; border:1px solid #fda4af; border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                    <div>
+                        <strong style="color:#991b1b; font-size:13px;"><i class="fas fa-user-clock"></i> كشف المُحالين للمعاش (فئة: ${cat})</strong><br>
+                        <span style="font-size:11px; color:#7f1d1d;">عن الفترة من <b>${formatDateToAr(fromDate)}</b> إلى <b>${formatDateToAr(toDate)}</b> — العدد الإجمالي: <b>${currentRetiredInPeriodList.length}</b></span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="act-btn btn-ex" onclick="exportRetiredPeriodExcel('${cat}')"><i class="fas fa-file-excel"></i> تصدير إكسل</button>
+                        <button type="button" class="act-btn btn-pd" onclick="printRetiredPeriodPDF('${cat}')"><i class="fas fa-print"></i> طباعة PDF</button>
+                    </div>
+                </div>
+                <table class="summary-report-table" id="retiredPeriodTable">
+                    <thead>
+                        <tr>
+                            <th>م</th>
+                            <th>اسم الموظف</th>
+                            <th>الرقم القومي</th>
+                            <th>تاريخ المعاش (pensionDate)</th>
+                            <th>اعتيادي</th>
+                            <th>عارضة</th>
+                            <th>سنوات سابقة</th>
+                            <th>المستهلك حتى المعاش</th>
+                            <th>آخر رصيد مستحق عند المعاش</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        if (currentRetiredInPeriodList.length === 0) {
+            html += `<tr><td colspan="9" style="color:#64748b; font-weight:bold;">لا يوجد موظفون خرجوا على المعاش خلال هذه الفترة المحددة.</td></tr>`;
+        } else {
+            currentRetiredInPeriodList.forEach((emp, idx) => {
+                html += `
+                    <tr class="retired-in-period-row">
+                        <td>${idx + 1}</td>
+                        <td style="text-align:right; font-weight:bold;">${emp.name}</td>
+                        <td>${emp.nationalId}</td>
+                        <td style="font-weight:900; color:#dc2626;">${formatDateToAr(emp._pensionDate)}</td>
+                        <td>${emp._annual}</td>
+                        <td>${emp._casual}</td>
+                        <td>${emp._prevBal}</td>
+                        <td>${emp._consumedUpToPension}</td>
+                        <td style="font-weight:900; font-size:14px; color:#991b1b; background:#fecaca;">${emp._finalRemainingBalance}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+    }
+
+    function exportRetiredPeriodExcel(cat) {
+        let tbl = document.getElementById("retiredPeriodTable");
+        if (!tbl) return;
+        let wb = XLSX.utils.table_to_book(tbl);
+        XLSX.writeFile(wb, `المحالون_للمعاش_فئة_${cat}.xlsx`);
+    }
+
+    function printRetiredPeriodPDF(cat) {
+        let tbl = document.getElementById("retiredPeriodTable");
+        if (!tbl) return;
+        let fromDate = currentRetiredPeriodFilter.fromDate;
+        let toDate = currentRetiredPeriodFilter.toDate;
+        let win = window.open('', '_blank');
+        win.document.write(`
+            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+            <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+            <style>
+                body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
+                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
+                th,td{border:1px solid #333; padding:6px; text-align:center;}
+                th{background:#991b1b; color:#fff; -webkit-print-color-adjust:exact;}
+                tr.retired-in-period-row{background:#fee2e2 !important; color:#7f1d1d !important; -webkit-print-color-adjust:exact;}
+            </style></head>
+            <body>
+                <h2>كشف المُحالين للمعاش وآخر رصيد مستحق - فئة: ${cat}</h2>
+                <p>الفترة الزمنية: من ${formatDateToAr(fromDate)} إلى ${formatDateToAr(toDate)}</p>
+                ${tbl.outerHTML}
+            </body></html>
         `);
         win.document.close();
         setTimeout(() => { win.focus(); win.print(); }, 500);
@@ -4254,103 +4558,142 @@
 
     function searchReturnEmployee(query) {
         let suggestBox = document.getElementById("searchReturnResults");
+        let cat = document.getElementById("hiddenJobCategory").value;
+        
         if (!query || query.trim().length < 1) { suggestBox.style.display = "none"; return; }
 
         query = query.trim().toLowerCase();
-        let matches = currentEmployeesList.filter(emp => emp.status === 'inactive' && !isEmployeeRetired(emp.nationalId, getPensionDateFromData(emp)) && emp.name.toLowerCase().includes(query));
-
-        if (matches.length > 0) {
-            suggestBox.innerHTML = "";
-            matches.slice(0, 5).forEach(emp => {
-                let div = document.createElement("div");
-                div.className = "suggestion-item";
-                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId}`;
-                div.onclick = function() {
-                    document.getElementById("searchReturnInput").value = emp.name;
-                    document.getElementById("returnEmpNationalId").value = emp.nationalId;
-                    document.getElementById("returnEmpNameDisplay").innerText = emp.name;
-                    
-                    loadTargetNames();
-
-                    db.collection("leaves").where("nationalId", "==", emp.nationalId).get().then(q => {
-                        let aDate = "غير مسجل";
-                        q.forEach(d => { if(d.data().leaveType === "التبليغ عن منقطع") aDate = d.data().startDate; });
-                        document.getElementById("returnStartDateDisplay").innerText = formatDateToAr(aDate);
-                    }).catch(() => {});
-
-                    suggestBox.style.display = "none";
-                    document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
-                };
-                suggestBox.appendChild(div);
-            });
-            suggestBox.style.display = "block";
-        }
-    }
-
-    function loadTargetNames() {
-        let select4 = document.getElementById("returnTargetManager");
-        if (select4) select4.innerHTML = '<option value="">-- جاري التحميل --</option>';
-        db.collection("users").get().then((querySnapshot) => {
-            let managersSet = new Set();
-            querySnapshot.forEach((doc) => {
-                let cm = String(doc.data().centralManager || "").trim();
-                if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
-                    managersSet.add(cm);
+        
+        db.collection("users").get().then((snapshot) => {
+            let matches = [];
+            snapshot.forEach(doc => {
+                let data = doc.data();
+                markUserInactiveIfRetired(doc, data);
+                let empCat = String(data.jobCategory || "").trim();
+                let empStatus = String(data.status || "").trim();
+                
+                if (empCat.includes(cat) && empStatus === 'inactive' && !isEmployeeRetired(data.nationalId, getPensionDateFromData(data))) {
+                    if ((data.name && data.name.toLowerCase().includes(query)) || 
+                        (data.nationalId && data.nationalId.includes(query))) {
+                        matches.push({ name: data.name, nationalId: data.nationalId });
+                    }
                 }
             });
-            let options = '<option value="">-- اختر المدير العام --</option>';
-            Array.from(managersSet).sort().forEach(m => { options += `<option value="${m}">${m}</option>`; });
-            if (select4) select4.innerHTML = options;
+
+            if (matches.length > 0) {
+                suggestBox.innerHTML = "";
+                matches.slice(0, 5).forEach(m => {
+                    let div = document.createElement("div");
+                    div.className = "suggestion-item";
+                    div.innerHTML = `<strong>${m.name}</strong> - ${m.nationalId} <span style="color:red; font-weight:bold;">(منقطع)</span>`;
+                    div.onclick = function() {
+                        suggestBox.style.display = "none";
+                        document.getElementById("searchReturnInput").value = m.name;
+                        openReturnFromAbsenceModal(m.nationalId, m.name);
+                    };
+                    suggestBox.appendChild(div);
+                });
+                suggestBox.style.display = "block";
+            } else {
+                suggestBox.innerHTML = '<div style="padding:10px; text-align:center; color:#dc3545;">لا يوجد موظف منقطع مطابق</div>';
+                suggestBox.style.display = "block";
+            }
         }).catch(() => {});
     }
 
+    function openReturnFromAbsenceModal(nationalId, name) {
+        document.getElementById("returnEmpNationalId").value = nationalId;
+        document.getElementById("returnEmpNameDisplay").innerText = name;
+        
+        loadTargetManagers();
+
+        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then(snapshot => {
+            let startDateStr = "";
+            snapshot.forEach(doc => {
+                let d = doc.data();
+                if (d.hrStatus === "أرشفة نهائية") {
+                    startDateStr = d.startDate;
+                }
+            });
+
+            if (!startDateStr) {
+                showCustomAlert("تنبيه", "لم يتم العثور على بلاغ انقطاع مؤرشف لهذا الموظف.");
+                return;
+            }
+
+            document.getElementById("returnStartDateDisplay").innerText = formatDateToAr(startDateStr);
+            document.getElementById("returnFromAbsenceModal").dataset.startDate = startDateStr;
+            document.getElementById("returnDate").value = "";
+            document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
+        }).catch(() => { showCustomAlert("خطأ", "تعذر جلب تاريخ الانقطاع."); });
+    }
+
     function submitReturnFromAbsence() {
-        let nid = document.getElementById("returnEmpNationalId").value;
-        let empName = document.getElementById("returnEmpNameDisplay").innerText;
-        let retDate = document.getElementById("returnDate").value;
-        let targetMgr = document.getElementById("returnTargetManager").value;
+        let nationalId = document.getElementById("returnEmpNationalId").value;
+        let name = document.getElementById("returnEmpNameDisplay").innerText;
+        let returnDate = document.getElementById("returnDate").value;
+        let targetManager = document.getElementById("returnTargetManager").value;
         let calcType = document.getElementById("returnCalcType").value;
+        let startDate = document.getElementById("returnFromAbsenceModal").dataset.startDate;
 
-        if (!retDate || !targetMgr) { showCustomAlert("تنبيه", "يرجى تحديد تاريخ العودة والمدير العام التابع له."); return; }
+        if (!returnDate) { showCustomAlert("تنبيه", "يرجى تحديد تاريخ العودة."); return; }
+        if (!targetManager) { showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له الموظف."); return; }
+        if (returnDate < startDate) { showCustomAlert("خطأ في التاريخ", "تاريخ العودة لا يمكن أن يسبق تاريخ بدء الانقطاع (" + formatDateToAr(startDate) + ")."); return; }
 
-        db.collection("leaves").where("nationalId", "==", nid).get().then(q => {
-            let absenceStart = new Date().toISOString().split('T')[0];
-            q.forEach(d => { if(d.data().leaveType === "التبليغ عن منقطع") absenceStart = d.data().startDate; });
+        let d1 = new Date(startDate);
+        let d2 = new Date(returnDate);
+        let daysCount = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+        if (daysCount <= 0) daysCount = 1;
 
-            let diffDays = Math.round((new Date(retDate) - new Date(absenceStart)) / (1000 * 60 * 60 * 24));
-            if (diffDays <= 0) diffDays = 1;
+        db.collection("users").where("nationalId", "==", nationalId).get().then(q => {
+            if (q.empty) return;
+            let userData = q.docs[0].data();
 
-            let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-            let leaveData = {
+            if (calcType === "اعتيادية" && (parseFloat(userData.annual)||0) < daysCount) {
+                showCustomAlert("خطأ في الرصيد", `رصيد الاعتيادي للموظف (${userData.annual || 0} يوم) أقل من مدة الانقطاع (${daysCount} يوم).`);
+                return;
+            }
+            if (calcType === "رصيد سنوات سابقة" && (parseFloat(userData.prevBal)||0) < daysCount) {
+                showCustomAlert("خطأ في الرصيد", `رصيد السنوات السابقة للموظف (${userData.prevBal || 0} يوم) أقل من مدة الانقطاع (${daysCount} يوم).`);
+                return;
+            }
+
+            let randomId = "RET-" + Math.floor(100000 + Math.random() * 900000);
+            
+            let returnData = {
                 requestId: randomId,
-                empName: empName,
-                nationalId: nid,
-                dept: targetMgr,
-                jobCategory: document.getElementById("hiddenJobCategory").value,
-                targetManager: targetMgr,
+                empName: name,
+                nationalId: nationalId,
+                dept: targetManager,
+                employeeDepartment: userData.department || "",
+                centralManager: userData.centralManager || "",
+                jobCategory: userData.jobCategory || "غير محدد",
+                targetManager: targetManager,
+                titlePrefix: "السيد المهندس /",
+                mgrName: targetManager,
                 leaveType: "طلب عودة من انقطاع",
-                startDate: absenceStart,
-                endDate: retDate,
-                daysCount: diffDays,
+                startDate: startDate,
+                endDate: returnDate,
+                daysCount: daysCount,
+                reason: `طلب عودة للعمل بعد انقطاع اعتباراً من تاريخ ${formatDateToAr(returnDate)}. نوع المعالجة: (${calcType}).`,
                 absenceCalcType: calcType,
-                reason: `عودة من انقطاع. معالجة المدة (${diffDays} يوم) بـ: ${calcType}`,
                 phone: "-",
-                daysAnnual: 0, daysPrev: 0,
+                daysAnnual: 0,
+                daysPrev: 0,
+                specialistStatus: "تم الإنشاء من المختص",
+                hrReturnStatus: "قيد الانتظار",           
+                managerReturnStatus: "قيد الانتظار",      
                 managerStatus: "قيد الانتظار",
-                specialistStatus: "مراجع من المختص",
                 hrStatus: "قيد الانتظار",
-                hrReturnStatus: "قيد الانتظار",
-                managerReturnStatus: "قيد الانتظار",
                 rejectionReason: "",
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 requestDate: new Date().toISOString().split('T')[0]
             };
 
-            db.collection("leaves").add(leaveData).then(() => {
+            db.collection("leaves").add(returnData).then(() => {
                 document.getElementById("returnFromAbsenceModal").classList.add("hidden");
-                showCustomAlert("تم بنجاح", "تم إنشاء طلب العودة وإرساله إلى مدير عام الموارد البشرية للاعتماد أولاً.");
+                showCustomAlert("تم بنجاح", "تم إنشاء طلب العودة من الانقطاع، وإرساله مباشرة إلى مدير عام الموارد البشرية لاعتماده وتفعيل حساب الموظف، ثم يُحال للمدير العام التابع للعلم وتسليم العمل.");
                 document.getElementById("searchReturnInput").value = "";
-                refreshSpecialistEmployeesCache();
             }).catch(() => { showCustomAlert("خطأ", "تعذر إرسال الطلب."); });
         });
     }
