@@ -685,7 +685,7 @@
 
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
-                    <label>اختر الجهة (مختص / مدير عام):</label>
+                    <label>اختر الجهة (مختص / مدير عام / رئيس إدارة مركزية / رئيس مجلس الإدارة):</label>
                     <select id="loginDept" required>
                         <option value="">-- جاري تحميل الجهات... --</option>
                     </select>
@@ -1122,27 +1122,32 @@
         loadTargetManagers();
     }
 
-    function getWorkflowByDepartment(deptVal) {
+    function getWorkflowByDepartment(deptVal, centralMgrVal) {
         let d = String(deptVal || "").trim();
-        if (!d) return null;
+        let cm = String(centralMgrVal || "").trim();
+        if (!d && !cm) return null;
 
         if (d.includes("رئيس الإدارة المركزية") || d.includes("رئيس الادارة المركزية")) {
             return {
                 routeType: "from_central_head",
                 initialTargetManager: "رئيس مجلس الإدارة",
+                nextCentralManager: "",
                 workflowSteps: ["رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
             };
         }
         if (d === "مدير عام" || d.startsWith("مدير عام")) {
+            let nextMgr = cm || "رئيس الإدارة المركزية";
             return {
                 routeType: "from_general_manager",
-                initialTargetManager: "رئيس الإدارة المركزية",
-                workflowSteps: ["مدير عام", "رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
+                initialTargetManager: nextMgr,
+                nextCentralManager: nextMgr,
+                workflowSteps: ["مدير عام", nextMgr, "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
             };
         }
         return {
             routeType: "custom_department",
             initialTargetManager: d,
+            nextCentralManager: cm,
             workflowSteps: [d, "الموظف المختص (الأرشفة)"]
         };
     }
@@ -1205,7 +1210,8 @@
                 currentSubmitEmpCategory = cat;
 
                 let deptVal = String(userData.department || "").trim();
-                let wf = getWorkflowByDepartment(deptVal);
+                let cmVal = String(userData.centralManager || "").trim();
+                let wf = getWorkflowByDepartment(deptVal, cmVal);
                 if (wf) {
                     let tSelect = document.getElementById("targetManagerDept");
                     if (tSelect) {
@@ -1273,7 +1279,8 @@
             document.getElementById("leaveFormContainer").classList.remove("hidden");
 
             let deptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
-            let wf = getWorkflowByDepartment(deptVal);
+            let cmVal = String((currentSubmitEmpData && currentSubmitEmpData.centralManager) || "").trim();
+            let wf = getWorkflowByDepartment(deptVal, cmVal);
             if (wf) {
                 let tSelect = document.getElementById("targetManagerDept");
                 if (tSelect) {
@@ -1355,7 +1362,8 @@
             }
 
             let empDeptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
-            let deptWorkflow = getWorkflowByDepartment(empDeptVal);
+            let empCentralMgrVal = String((currentSubmitEmpData && currentSubmitEmpData.centralManager) || "").trim();
+            let deptWorkflow = getWorkflowByDepartment(empDeptVal, empCentralMgrVal);
             if (deptWorkflow) {
                 targetManager = deptWorkflow.initialTargetManager;
             }
@@ -1445,6 +1453,7 @@
                     nationalId: currentSubmitEmpNationalId,
                     dept: targetManager, 
                     employeeDepartment: empDeptVal,
+                    employeeCentralManager: empCentralMgrVal,
                     workflowRoute: deptWorkflow ? deptWorkflow.routeType : "default",
                     workflowSteps: deptWorkflow ? deptWorkflow.workflowSteps : ["الموظف المختص", targetManager, "الموظف المختص (الأرشفة)"],
                     jobCategory: currentSubmitEmpCategory, 
@@ -1597,6 +1606,8 @@
                 empName: otherData.name,
                 nationalId: otherNid,
                 dept: absManagerDept,
+                employeeDepartment: otherData.department || "",
+                employeeCentralManager: otherData.centralManager || "",
                 jobCategory: otherData.jobCategory || "غير محدد", 
                 targetManager: absManagerDept, 
                 titlePrefix: absManagerTitle,  
@@ -1660,12 +1671,23 @@
         if (phone.length < 11 || !isEnglishNumbers(phone)) { showCustomAlert("خطأ في رقم الهاتف", "يجب أن يكون رقم الهاتف مكوناً من 11 رقماً بالأرقام الإنجليزية."); return; }
         if (!isValidArabicReason(reason)) { showCustomAlert("خطأ في سبب التصريح", "يجب أن يكون السبب باللغة العربية وألا يقل عن 10 أحرف صحيحة."); return; }
 
+        let empDeptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
+        let empCentralMgrVal = String((currentSubmitEmpData && currentSubmitEmpData.centralManager) || "").trim();
+        let deptWorkflow = getWorkflowByDepartment(empDeptVal, empCentralMgrVal);
+        if (deptWorkflow) {
+            targetManager = deptWorkflow.initialTargetManager;
+        }
+
         let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
         let leaveData = {
             requestId: randomId,
             empName: currentSubmitEmpName,
             nationalId: currentSubmitEmpNationalId,
             dept: targetManager,
+            employeeDepartment: empDeptVal,
+            employeeCentralManager: empCentralMgrVal,
+            workflowRoute: deptWorkflow ? deptWorkflow.routeType : "default",
+            workflowSteps: deptWorkflow ? deptWorkflow.workflowSteps : ["الموظف المختص", targetManager, "الموظف المختص (الأرشفة)"],
             jobCategory: currentSubmitEmpCategory, 
             targetManager: targetManager, 
             titlePrefix: titlePrefix,
@@ -1922,18 +1944,33 @@
         db.collection("users").get().then((querySnapshot) => {
             let specialists = new Set();
             let managers = new Set();
+            let centralHeads = new Set();
+            let boardChairmen = new Set();
 
             querySnapshot.forEach(doc => {
                 let data = doc.data();
                 markUserInactiveIfRetired(doc, data);
                 let role = String(data.role || "").trim();
                 let cm = String(data.centralManager || "").trim();
+                let dept = String(data.department || "").trim();
 
                 if (role.includes("اجازات") || role.includes("إجازات") || role.includes("مختص")) {
                     specialists.add(role);
                 }
                 if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
                     managers.add(cm);
+                }
+                if (dept.includes("رئيس الإدارة المركزية") || dept.includes("رئيس الادارة المركزية")) {
+                    centralHeads.add(dept);
+                }
+                if (cm.includes("رئيس الإدارة المركزية") || cm.includes("رئيس الادارة المركزية")) {
+                    centralHeads.add(cm);
+                }
+                if (dept.includes("رئيس مجلس الإدارة") || dept.includes("رئيس مجلس الادارة")) {
+                    boardChairmen.add(dept);
+                }
+                if (cm.includes("رئيس مجلس الإدارة") || cm.includes("رئيس مجلس الادارة")) {
+                    boardChairmen.add(cm);
                 }
             });
 
@@ -1946,6 +1983,30 @@
                     let opt = document.createElement("option");
                     opt.value = mgr + "|manager|";
                     opt.textContent = "   " + mgr;
+                    optGroup.appendChild(opt);
+                });
+                select.appendChild(optGroup);
+            }
+
+            if (centralHeads.size > 0) {
+                let optGroup = document.createElement("optgroup");
+                optGroup.label = "🏛️ رؤساء الإدارات المركزية";
+                Array.from(centralHeads).sort().forEach(ch => {
+                    let opt = document.createElement("option");
+                    opt.value = ch + "|manager|";
+                    opt.textContent = "   " + ch;
+                    optGroup.appendChild(opt);
+                });
+                select.appendChild(optGroup);
+            }
+
+            if (boardChairmen.size > 0) {
+                let optGroup = document.createElement("optgroup");
+                optGroup.label = "👑 رئيس مجلس الإدارة";
+                Array.from(boardChairmen).sort().forEach(bc => {
+                    let opt = document.createElement("option");
+                    opt.value = bc + "|manager|";
+                    opt.textContent = "   " + bc;
                     optGroup.appendChild(opt);
                 });
                 select.appendChild(optGroup);
@@ -1979,9 +2040,16 @@
         let roleType = parts[1];   
         let category = parts[2];   
 
-        let queryField = (roleType === 'manager') ? 'centralManager' : 'role';
+        let queryField = (roleType === 'manager') ? 'department' : 'role';
         
-        db.collection("users").where(queryField, "==", targetRole).get().then((querySnapshot) => {
+        let runLoginQuery = (fieldName) => db.collection("users").where(fieldName, "==", targetRole).get();
+
+        runLoginQuery(queryField).then((querySnapshot) => {
+            if (querySnapshot.empty && roleType === 'manager') {
+                return db.collection("users").where("centralManager", "==", targetRole).get();
+            }
+            return querySnapshot;
+        }).then((querySnapshot) => {
             if (querySnapshot.empty) {
                 return showCustomAlert("خطأ", "هذا المستخدم غير مسجل بالنظام.");
             }
@@ -2068,7 +2136,7 @@
                 } 
                 else {
                     let isHRManager = deptName.includes("الموارد البشرية") || deptName.includes("موارد بشرية");
-                    let isTargetManager = (data.targetManager === deptName);
+                    let isTargetManager = (data.targetManager === deptName || data.dept === deptName);
 
                     if (data.leaveType === "طلب عودة من انقطاع") {
                         let hrReturnStat = data.hrReturnStatus || "قيد الانتظار";
@@ -2296,7 +2364,7 @@
         } 
         else if (loggedInRole === 'manager') {
             let isHRManager = currentDeptOrCat.includes("الموارد البشرية") || currentDeptOrCat.includes("موارد بشرية");
-            let isTargetManager = (item.targetManager === currentDeptOrCat);
+            let isTargetManager = (item.targetManager === currentDeptOrCat || item.dept === currentDeptOrCat);
 
             if (item.leaveType === "طلب عودة من انقطاع") {
                 let hrReturnStat = item.hrReturnStatus || "قيد الانتظار";
@@ -2493,20 +2561,22 @@
                 rejectionReason: defaultReason
             };
 
-            if (d.workflowRoute === "from_general_manager" && currentDeptOrCat !== "رئيس الإدارة المركزية") {
-                updateData.targetManager = "رئيس الإدارة المركزية";
-                updateData.dept = "رئيس الإدارة المركزية";
+            let isCentralHeadRole = currentDeptOrCat.includes("رئيس الإدارة المركزية") || currentDeptOrCat.includes("رئيس الادارة المركزية");
+            let isBoardChairmanRole = currentDeptOrCat.includes("رئيس مجلس الإدارة") || currentDeptOrCat.includes("رئيس مجلس الادارة");
+
+            if (d.workflowRoute === "from_general_manager" && !isCentralHeadRole && !isBoardChairmanRole) {
+                let nextMgr = d.employeeCentralManager || d.nextCentralManager || "رئيس الإدارة المركزية";
+                updateData.targetManager = nextMgr;
+                updateData.dept = nextMgr;
                 updateData.managerStatus = "قيد الانتظار";
                 updateData.generalManagerApproval = "موافق من مدير عام";
-            } else if (d.workflowRoute === "from_general_manager" && currentDeptOrCat === "رئيس الإدارة المركزية") {
+            } else if ((d.workflowRoute === "from_general_manager" && isCentralHeadRole) || (d.workflowRoute === "from_central_head" && !isBoardChairmanRole)) {
                 updateData.targetManager = "رئيس مجلس الإدارة";
                 updateData.dept = "رئيس مجلس الإدارة";
                 updateData.managerStatus = "قيد الانتظار";
-                updateData.centralManagerApproval = "موافق من رئيس الإدارة المركزية";
-            } else if (d.workflowRoute === "from_central_head" && currentDeptOrCat !== "رئيس مجلس الإدارة") {
-                updateData.targetManager = "رئيس مجلس الإدارة";
-                updateData.dept = "رئيس مجلس الإدارة";
-                updateData.managerStatus = "قيد الانتظار";
+                if (isCentralHeadRole) {
+                    updateData.centralManagerApproval = "موافق من رئيس الإدارة المركزية";
+                }
             }
 
             db.collection("leaves").doc(docId).update(updateData).then(() => {
@@ -2669,6 +2739,38 @@
         let rawMgrDept = item.targetManager || "الشئون الإدارية";
         let deducedDept = rawMgrDept.replace(/^مدير\s+عام\s+/i, "إدارة ");
 
+        let isFromCentralHead =
+            item.workflowRoute === "from_central_head" ||
+            String(item.employeeDepartment || "").includes("رئيس الإدارة المركزية") ||
+            String(item.employeeDepartment || "").includes("رئيس الادارة المركزية") ||
+            String(item.dept || "").includes("رئيس الإدارة المركزية") ||
+            String(item.dept || "").includes("رئيس الادارة المركزية");
+
+        let headerSubDept = deducedDept;
+        let signerBlockHtml = `
+            <p><strong>المدير العام المسؤول،،</strong></p>
+            <p style="margin-top: 35px; font-weight:900; font-size: 18px; color: #1a365d;">${approverName}</p>
+        `;
+
+        if (isFromCentralHead) {
+            let centralDeptName = String(item.employeeDepartment || "")
+                .replace(/^رئيس\s+الإدارة\s+المركزية\s*(لـ?|للـ?|ل)?\s*/i, "")
+                .replace(/^رئيس\s+الادارة\s+المركزية\s*(لـ?|للـ?|ل)?\s*/i, "")
+                .trim();
+            if (!centralDeptName) {
+                centralDeptName = deducedDept;
+            } else if (!centralDeptName.includes("إدارة") && !centralDeptName.includes("ادارة")) {
+                centralDeptName = "إدارة " + centralDeptName;
+            }
+            headerSubDept = centralDeptName;
+
+            signerBlockHtml = `
+                <p><strong>المدير المسئول،،</strong></p>
+                <p style="margin-top: 12px; font-weight:800; font-size: 16px; color: #000;">رئيس مجلس الإدارة</p>
+                <p style="margin-top: 18px; font-weight:900; font-size: 18px; color: #1a365d;">${approverName}</p>
+            `;
+        }
+
         let stepsTextForPrint = "";
         if (item.leaveType === "التبليغ عن منقطع") {
             stepsTextForPrint = `
@@ -2711,7 +2813,7 @@
                 ${watermark}
                 <div class="page-container">
                     <div class="header">
-                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span style="font-size: 13px; font-weight: bold; color: #334155;">${deducedDept}</span></div>
+                        <div><strong style="font-size: 18px;">الهيئة العامة للسد العالي وخزان أسوان</strong><br><span style="font-size: 13px; font-weight: bold; color: #334155;">${headerSubDept}</span></div>
                         <div style="text-align: left;">
                             <span>مسلسل الطلب: <strong>${item.requestId}</strong></span><br>
                             <span style="font-size: 13px; color: #333;">تاريخ التحرير: <strong>${reqDate}</strong></span>
@@ -2733,8 +2835,7 @@
                             <p><strong>الرقم القومي:</strong> ${item.nationalId}</p>
                         </div>
                         <div style="text-align: left;">
-                            <p><strong>المدير العام المسؤول،،</strong></p>
-                            <p style="margin-top: 35px; font-weight:900; font-size: 18px; color: #1a365d;">${approverName}</p>
+                            ${signerBlockHtml}
                         </div>
                     </div>
                     <div class="status-box">
