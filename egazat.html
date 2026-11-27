@@ -1503,82 +1503,76 @@
             .replace(/ة/g, "ه");
     }
 
-    function isExemptGeneralManager(deptVal, jobTitleVal) {
-        let normDept = normalizeArabicText(deptVal);
-        let normTitle = normalizeArabicText(jobTitleVal);
-        let combined = normDept + " " + normTitle;
-
-        const exemptKeywords = [
-            "مدير عام الامن",
-            "مدير عام المراجعه الداخليه والحوكمه",
-            "مدير عام التخطيط والمتابعه",
-            "مدير عام المكتب الفني",
-            "مدير عام الشئون القانونيه",
-            "مدير عام الشؤون القانونيه",
-            "مدير عام الخدمات الطبيه",
-            "مدير عام متحف المركز الثقافي الافريقي",
-            "مدير عام متحف المركز الثقافي الفريقي"
-        ];
-
-        return exemptKeywords.some(kw => combined.includes(kw));
-    }
-
+    // (1 & 4) تحديد مسار الدورة المستندية وتوجيه الطلب بدقة:
+    // أ- مقدم الطلب مدير عام: مدير عام مقدم الطلب -> رئيس الإدارة المركزية -> رئيس مجلس الإدارة -> الموظف المختص (الأرشفة وخصم الرصيد)
+    // ب- مقدم الطلب رئيس الإدارة المركزية: رئيس الإدارة المركزية مقدم الطلب -> رئيس مجلس الإدارة مباشرة -> الموظف المختص (الأرشفة وخصم الرصيد)
     function getWorkflowByDepartment(userData) {
         let deptVal = String((userData && userData.department) || "").trim();
         let jobTitleVal = String((userData && userData.jobTitle) || "").trim();
+        let roleVal = String((userData && userData.role) || "").trim();
         let centralMgrVal = String((userData && userData.centralManager) || "").trim();
-        let d = deptVal;
+        let combined = `${deptVal} ${jobTitleVal} ${roleVal}`.trim();
+        let normCombined = normalizeArabicText(combined);
 
-        if (!d && !jobTitleVal) return null;
+        if (!combined) return null;
 
-        if (d.includes("رئيس الإدارة المركزية") || d.includes("رئيس الادارة المركزية")) {
+        let isCentralHeadRequester =
+            normCombined.includes("رئيس الاداره المركزيه") ||
+            normCombined.includes("رئيس الادارة المركزية");
+
+        if (isCentralHeadRequester) {
             return {
                 routeType: "from_central_head",
                 responsibleManager: "رئيس مجلس الإدارة",
                 initialTargetManager: "رئيس مجلس الإدارة",
                 centralManagerName: centralMgrVal,
-                workflowSteps: ["رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة وخصم الرصيد)"]
+                workflowSteps: [
+                    "رئيس الإدارة المركزية مقدم الطلب",
+                    "رئيس مجلس الإدارة",
+                    "الموظف المختص (الأرشفة وخصم الرصيد)"
+                ]
             };
         }
 
-        if (d === "مدير عام" || d.startsWith("مدير عام") || jobTitleVal.includes("مدير عام")) {
-            if (isExemptGeneralManager(d, jobTitleVal)) {
-                return {
-                    routeType: "from_exempt_gm_to_chairman",
-                    responsibleManager: "رئيس مجلس الإدارة",
-                    initialTargetManager: "رئيس مجلس الإدارة",
-                    centralManagerName: centralMgrVal,
-                    workflowSteps: ["مدير عام (مستثنى)", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة وخصم الرصيد)"]
-                };
-            }
+        let isGeneralManagerRequester =
+            normCombined.includes("مدير عام") ||
+            normCombined.startsWith("مدير عام");
 
+        if (isGeneralManagerRequester) {
             let targetCentralHead = centralMgrVal || "رئيس الإدارة المركزية";
             return {
                 routeType: "from_general_manager",
                 responsibleManager: targetCentralHead,
                 initialTargetManager: targetCentralHead,
-                centralManagerName: centralMgrVal,
-                workflowSteps: ["مدير عام", targetCentralHead, "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة وخصم الرصيد)"]
+                centralManagerName: targetCentralHead,
+                workflowSteps: [
+                    "مدير عام مقدم الطلب",
+                    targetCentralHead,
+                    "رئيس مجلس الإدارة",
+                    "الموظف المختص (الأرشفة وخصم الرصيد)"
+                ]
             };
         }
 
         return {
             routeType: "custom_department",
-            responsibleManager: d,
-            initialTargetManager: d,
+            responsibleManager: deptVal || jobTitleVal || roleVal,
+            initialTargetManager: deptVal || jobTitleVal || roleVal,
             centralManagerName: centralMgrVal,
-            workflowSteps: [d, "الموظف المختص (الأرشفة وخصم الرصيد)"]
+            workflowSteps: [
+                deptVal || jobTitleVal || roleVal,
+                "الموظف المختص (الأرشفة وخصم الرصيد)"
+            ]
         };
     }
 
     function applyLeaveFormWorkflowUI(userData) {
-        let deptVal = String((userData && userData.department) || "").trim();
         let wf = getWorkflowByDepartment(userData);
         let deptGroup = document.getElementById("targetManagerDeptGroup");
         let noticeBox = document.getElementById("deptWorkflowNotice");
         let tSelect = document.getElementById("targetManagerDept");
 
-        if (wf) {
+        if (wf && wf.routeType !== "custom_department") {
             if (deptGroup) deptGroup.classList.add("hidden");
             if (tSelect) {
                 tSelect.removeAttribute("required");
@@ -1594,13 +1588,9 @@
             if (noticeBox) {
                 noticeBox.classList.remove("hidden");
                 if (wf.routeType === "from_central_head") {
-                    noticeBox.innerHTML = `المدير المسئول: <b>رئيس مجلس الإدارة</b> (مقدم الطلب: رئيس الإدارة المركزية).`;
-                } else if (wf.routeType === "from_exempt_gm_to_chairman") {
-                    noticeBox.innerHTML = `المدير المسئول: <b>رئيس مجلس الإدارة</b> (توجيه مباشر من المدير العام المستثنى إلى رئيس مجلس الإدارة).`;
+                    noticeBox.innerHTML = `الدورة المستندية: <b>رئيس الإدارة المركزية مقدم الطلب</b> ← <b>رئيس مجلس الإدارة</b> ← <b>الموظف المختص (الأرشفة وخصم الرصيد)</b>.`;
                 } else if (wf.routeType === "from_general_manager") {
-                    noticeBox.innerHTML = `سيتم توجيه الطلب إلى: <b>${wf.responsibleManager}</b> ثم إلى <b>رئيس مجلس الإدارة</b> ثم <b>الموظف المختص (الأرشفة وخصم الرصيد)</b>.`;
-                } else {
-                    noticeBox.innerHTML = `المدير المسئول عن اعتماد الإجازة: <b>${wf.responsibleManager}</b>.`;
+                    noticeBox.innerHTML = `الدورة المستندية: <b>مدير عام مقدم الطلب</b> ← <b>${wf.responsibleManager}</b> ← <b>رئيس مجلس الإدارة</b> ← <b>الموظف المختص (الأرشفة وخصم الرصيد)</b>.`;
                 }
             }
         } else {
@@ -1794,9 +1784,10 @@
             }
 
             let empDeptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
+            let empJobTitleVal = String((currentSubmitEmpData && currentSubmitEmpData.jobTitle) || "").trim();
             let empCentralMgrVal = String((currentSubmitEmpData && currentSubmitEmpData.centralManager) || "").trim();
             let deptWorkflow = getWorkflowByDepartment(currentSubmitEmpData);
-            if (deptWorkflow) {
+            if (deptWorkflow && deptWorkflow.routeType !== "custom_department") {
                 targetManager = deptWorkflow.responsibleManager;
             }
 
@@ -1879,8 +1870,7 @@
                 let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
                 let isLeadershipRoute = deptWorkflow && (
                     deptWorkflow.routeType === "from_general_manager" ||
-                    deptWorkflow.routeType === "from_central_head" ||
-                    deptWorkflow.routeType === "from_exempt_gm_to_chairman"
+                    deptWorkflow.routeType === "from_central_head"
                 );
                 let initialSpecialistStatus = isLeadershipRoute ? "غير مطلوب (مسار قيادي)" : "قيد الانتظار";
                 
@@ -1890,6 +1880,7 @@
                     nationalId: currentSubmitEmpNationalId,
                     dept: targetManager, 
                     employeeDepartment: empDeptVal,
+                    employeeJobTitle: empJobTitleVal,
                     centralManager: empCentralMgrVal,
                     responsibleManager: targetManager,
                     workflowRoute: deptWorkflow ? deptWorkflow.routeType : "default",
@@ -2600,8 +2591,7 @@
                         } else {
                             let isLeadershipRoute = (
                                 data.workflowRoute === "from_general_manager" ||
-                                data.workflowRoute === "from_central_head" ||
-                                data.workflowRoute === "from_exempt_gm_to_chairman"
+                                data.workflowRoute === "from_central_head"
                             );
                             let readyForFinalArchive = isLeadershipRoute
                                 ? (data.chairmanApproval === "موافق من رئيس مجلس الإدارة" && hrStat === "قيد الانتظار")
@@ -2638,7 +2628,6 @@
                     }
                     else if (isChairman && (
                         data.workflowRoute === "from_central_head" ||
-                        data.workflowRoute === "from_exempt_gm_to_chairman" ||
                         (data.workflowRoute === "from_general_manager" && data.centralManagerApproval === "موافق من رئيس الإدارة المركزية") ||
                         data.targetManager === "رئيس مجلس الإدارة"
                     )) {
@@ -2793,21 +2782,18 @@
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>2. مدير عام الموارد البشرية (اعتماد العودة وتفعيل الحساب):</strong> <span style="color:#198754; font-weight:bold;">${item.hrReturnStatus || 'قيد الانتظار'}</span></p>
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>3. المدير العام التابع (${item.targetManager || 'غير محدد'} - للعلم وتسليم العمل):</strong> <span style="color:#166534; font-weight:bold;">${item.managerReturnStatus || 'قيد الانتظار'}</span></p>
                 `;
-            } else if (item.workflowRoute === "from_exempt_gm_to_chairman") {
-                stepsDisplay = `
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. رئيس مجلس الإدارة (توجيه مباشر للمدير العام المستثنى):</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</span></p>
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>2. الموظف المختص (الأرشفة وخصم الرصيد):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
-                `;
             } else if (item.workflowRoute === "from_central_head") {
                 stepsDisplay = `
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</span></p>
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>2. الموظف المختص (الأرشفة وخصم الرصيد):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. رئيس الإدارة المركزية مقدم الطلب:</strong> <span style="color:#0d6efd; font-weight:bold;">مقدم الطلب</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>2. رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>3. الموظف المختص (الأرشفة وخصم الرصيد):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 `;
             } else if (item.workflowRoute === "from_general_manager") {
                 stepsDisplay = `
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. رئيس الإدارة المركزية (${item.centralManager || 'غير محدد'}):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.centralManagerApproval || 'قيد الانتظار'}</span></p>
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>2. رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || 'قيد الانتظار'}</span></p>
-                    <p style="position:relative; z-index:1; font-size:12px;"><strong>3. الموظف المختص (الأرشفة وخصم الرصيد):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. مدير عام مقدم الطلب:</strong> <span style="color:#0d6efd; font-weight:bold;">مقدم الطلب</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>2. رئيس الإدارة المركزية (${item.centralManager || item.targetManager || 'غير محدد'}):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.centralManagerApproval || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>3. رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>4. الموظف المختص (الأرشفة وخصم الرصيد):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
                 `;
             } else {
                 stepsDisplay = `
@@ -2860,8 +2846,7 @@
             } else if (item.leaveType !== "طلب عودة من انقطاع") {
                 let isLeadershipRoute = (
                     item.workflowRoute === "from_general_manager" ||
-                    item.workflowRoute === "from_central_head" ||
-                    item.workflowRoute === "from_exempt_gm_to_chairman"
+                    item.workflowRoute === "from_central_head"
                 );
                 if (!isLeadershipRoute && sStat === "قيد الانتظار") {
                     html += `
@@ -2920,7 +2905,6 @@
             } else if (isChairman) {
                 let canChairmanAct = (
                     (item.workflowRoute === "from_central_head" && item.chairmanApproval !== "موافق من رئيس مجلس الإدارة" && !mStat.includes("مرفوض")) ||
-                    (item.workflowRoute === "from_exempt_gm_to_chairman" && item.chairmanApproval !== "موافق من رئيس مجلس الإدارة" && !mStat.includes("مرفوض")) ||
                     (item.workflowRoute === "from_general_manager" && item.centralManagerApproval === "موافق من رئيس الإدارة المركزية" && item.chairmanApproval !== "موافق من رئيس مجلس الإدارة" && !mStat.includes("مرفوض")) ||
                     (!item.workflowRoute && isTargetManager && mStat === "قيد الانتظار")
                 );
@@ -3118,9 +3102,6 @@
             } else if (d.workflowRoute === "from_central_head" && isChairman) {
                 updateData.chairmanApproval = "موافق من رئيس مجلس الإدارة";
                 updateData.managerStatus = "موافق من المدير العام";
-            } else if (d.workflowRoute === "from_exempt_gm_to_chairman" && isChairman) {
-                updateData.chairmanApproval = "موافق من رئيس مجلس الإدارة";
-                updateData.managerStatus = "موافق من المدير العام";
             } else if (isChairman) {
                 updateData.chairmanApproval = "موافق من رئيس مجلس الإدارة";
                 updateData.managerStatus = "موافق من المدير العام";
@@ -3216,7 +3197,7 @@
             } else if (item.leaveType === "طلب عودة من انقطاع") {
                 if (item.hrReturnStatus === "قيد الانتظار") wmText += "مدير عام الموارد البشرية";
                 else wmText += "المدير العام التابع (العلم وتسليم العمل)";
-            } else if (item.workflowRoute === "from_exempt_gm_to_chairman" || item.workflowRoute === "from_central_head") {
+            } else if (item.workflowRoute === "from_central_head") {
                 wmText += item.chairmanApproval === "موافق من رئيس مجلس الإدارة" ? "المختص (الأرشفة وخصم الرصيد)" : "رئيس مجلس الإدارة";
             } else if (item.workflowRoute === "from_general_manager") {
                 if (item.centralManagerApproval !== "موافق من رئيس الإدارة المركزية") wmText += "رئيس الإدارة المركزية";
@@ -3235,13 +3216,44 @@
         performPrint(item);
     }
 
-    function getResponsibleBlockHtml(item) {
-        let requesterDept = String(item.employeeDepartment || item.dept || "").trim();
-        let isFromCentralHead = (item.workflowRoute === "from_central_head") || requesterDept.includes("رئيس الإدارة المركزية") || requesterDept.includes("رئيس الادارة المركزية");
-        let isFromExemptGm = (item.workflowRoute === "from_exempt_gm_to_chairman") || isExemptGeneralManager(requesterDept, "");
-        let isFromGeneralManager = !isFromExemptGm && ((item.workflowRoute === "from_general_manager") || requesterDept === "مدير عام" || requesterDept.startsWith("مدير عام"));
+    // (2) صياغة اسم الإدارة أسفل الهيئة العامة للسد العالي وخزان أسوان من مسمى المدير العام أو رئيس الإدارة المركزية
+    function formatDepartmentNameForPrint(rawSource) {
+        let s = String(rawSource || "").trim();
+        if (!s) return "الشئون الإدارية";
+        s = s
+            .replace(/^رئيس\s+(الإدارة|الادارة)\s+المركزية\s+(ل|لل|لـ)?/i, "")
+            .replace(/^مدير\s+عام\s+(ال|ل|لل|لـ)?/i, "")
+            .trim();
+        if (!s) return "الشئون الإدارية";
+        if (s.startsWith("إدارة ") || s.startsWith("ادارة ")) {
+            return s.replace(/^ادارة\s+/, "إدارة ");
+        }
+        return "إدارة " + s;
+    }
 
-        if (isFromCentralHead || isFromExemptGm) {
+    function getPrintedDepartmentLabel(item) {
+        let requesterDept = String(item.employeeDepartment || item.employeeJobTitle || item.empName || "").trim();
+        let normReq = normalizeArabicText(requesterDept);
+        if (normReq.includes("مدير عام") || normReq.includes("رئيس الاداره المركزيه") || normReq.includes("رئيس الادارة المركزية")) {
+            return formatDepartmentNameForPrint(requesterDept);
+        }
+        let targetSource = item.responsibleManager || item.targetManager || item.dept || "الشئون الإدارية";
+        return formatDepartmentNameForPrint(targetSource);
+    }
+
+    // (3) صياغة "المدير المسئول":
+    // إذا كان من مدير عام: "المدير المسئول" وتحتها "رئيس الإدارة المركزية..." وتحتها اسمه
+    // إذا كان من رئيس الإدارة المركزية: "المدير المسئول" وتحتها "رئيس مجلس الإدارة" وتحتها اسمه
+    function getResponsibleBlockHtml(item) {
+        let requesterDept = String(item.employeeDepartment || item.employeeJobTitle || item.empName || "").trim();
+        let normReq = normalizeArabicText(requesterDept);
+
+        let isFromCentralHead =
+            (item.workflowRoute === "from_central_head") ||
+            normReq.includes("رئيس الاداره المركزيه") ||
+            normReq.includes("رئيس الادارة المركزية");
+
+        if (isFromCentralHead) {
             let chairmanName = item.chairmanName || item.mgrName || ".................................";
             return `
                 <p><strong>المدير المسئول</strong></p>
@@ -3250,11 +3262,17 @@
             `;
         }
 
+        let isFromGeneralManager =
+            (item.workflowRoute === "from_general_manager") ||
+            normReq.includes("مدير عام") ||
+            normReq.startsWith("مدير عام");
+
         if (isFromGeneralManager) {
-            let centralMgrName = item.centralManager || ".................................";
+            let centralMgrLabel = item.centralManager || item.responsibleManager || item.targetManager || "رئيس الإدارة المركزية";
+            let centralMgrName = item.mgrName || ".................................";
             return `
                 <p><strong>المدير المسئول</strong></p>
-                <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">رئيس الإدارة المركزية</p>
+                <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">${centralMgrLabel}</p>
                 <p style="margin-top: 6px; font-weight: 800; font-size: 15px; color: #0f172a;">${centralMgrName}</p>
             `;
         }
@@ -3320,8 +3338,7 @@
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، وذلك نظراً لـ: <strong>${item.reason}</strong>.`;
         
-        let rawMgrDept = item.responsibleManager || item.targetManager || "الشئون الإدارية";
-        let deducedDept = rawMgrDept.replace(/^مدير\s+عام\s+/i, "إدارة ");
+        let deducedDept = getPrintedDepartmentLabel(item);
         let responsibleBlockHtml = getResponsibleBlockHtml(item);
 
         let stepsTextForPrint = "";
@@ -3337,19 +3354,16 @@
                 - مدير عام الموارد البشرية (الاعتماد وتفعيل الحساب): <b>${item.hrReturnStatus || 'قيد الانتظار'}</b><br>
                 - المدير العام التابع (${item.targetManager || 'غير محدد'} - للعلم وتسليم العمل): <b>${item.managerReturnStatus || 'قيد الانتظار'}</b>
             `;
-        } else if (item.workflowRoute === "from_exempt_gm_to_chairman") {
-            stepsTextForPrint = `
-                - رئيس مجلس الإدارة (توجيه مباشر للمدير العام المستثنى): <b>${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</b><br>
-                - الموظف المختص (الأرشفة وخصم الرصيد): <b>${item.hrStatus || 'قيد الانتظار'}</b>
-            `;
         } else if (item.workflowRoute === "from_central_head") {
             stepsTextForPrint = `
+                - رئيس الإدارة المركزية مقدم الطلب<br>
                 - رئيس مجلس الإدارة: <b>${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</b><br>
                 - الموظف المختص (الأرشفة وخصم الرصيد): <b>${item.hrStatus || 'قيد الانتظار'}</b>
             `;
         } else if (item.workflowRoute === "from_general_manager") {
             stepsTextForPrint = `
-                - رئيس الإدارة المركزية (${item.centralManager || 'غير محدد'}): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
+                - مدير عام مقدم الطلب<br>
+                - رئيس الإدارة المركزية (${item.centralManager || item.targetManager || 'غير محدد'}): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
                 - رئيس مجلس الإدارة: <b>${item.chairmanApproval || 'قيد الانتظار'}</b><br>
                 - الموظف المختص (الأرشفة وخصم الرصيد): <b>${item.hrStatus || 'قيد الانتظار'}</b>
             `;
@@ -4283,16 +4297,16 @@
 
         if (selectedNationalId && listToRender.length > 0) {
             let inp = document.getElementById("remainingSearchInput");
-            if (inp) inp.value = listToRender[0].name;
+            if (inp) inp.value = listToRender[0].name || "";
         }
     }
 
-    function handleRemainingSearchInput(query) {
-        let suggestBox = document.getElementById("remainingSearchSuggestions");
+    function handleRemainingSearchInput(val) {
         let cat = document.getElementById("hiddenJobCategory").value;
+        let suggestBox = document.getElementById("remainingSearchSuggestions");
         if (!suggestBox) return;
 
-        let q = String(query || "").trim().toLowerCase();
+        let q = String(val || "").trim().toLowerCase();
         if (!q) {
             suggestBox.style.display = "none";
             renderRemainingEmployeesSection(cat, null);
@@ -4304,36 +4318,34 @@
             (emp.nationalId && String(emp.nationalId).includes(q))
         );
 
-        suggestBox.innerHTML = "";
-        if (matches.length === 0) {
-            suggestBox.innerHTML = '<div style="padding:10px; text-align:center; color:#dc3545;">لا يوجد موظف مطابق</div>';
+        if (matches.length > 0) {
+            suggestBox.innerHTML = "";
+            matches.slice(0, 8).forEach(emp => {
+                let div = document.createElement("div");
+                div.className = "suggestion-item";
+                let retTag = emp._retiredInPeriod ? ` <span style="color:#dc2626; font-weight:800;">(معاش: ${formatDateToAr(emp._pensionDate)})</span>` : "";
+                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId}${retTag}`;
+                div.onclick = function() {
+                    suggestBox.style.display = "none";
+                    renderRemainingEmployeesSection(cat, emp.nationalId);
+                };
+                suggestBox.appendChild(div);
+            });
             suggestBox.style.display = "block";
-            return;
+        } else {
+            suggestBox.innerHTML = '<div style="padding:8px; text-align:center; color:#dc3545;">لا يوجد موظف مطابق في القائمة المعروضة</div>';
+            suggestBox.style.display = "block";
         }
-
-        matches.slice(0, 8).forEach(emp => {
-            let div = document.createElement("div");
-            div.className = "suggestion-item";
-            let pensionInfo = emp._pensionDate ? ` — معاش: ${formatDateToAr(emp._pensionDate)}` : '';
-            div.innerHTML = `<strong>${emp.name}</strong> (${emp.nationalId})${pensionInfo} — <span style="color:#198754; font-weight:bold;">المتبقي: ${emp._remaining}</span>`;
-            div.onclick = function() {
-                suggestBox.style.display = "none";
-                renderRemainingEmployeesSection(cat, emp.nationalId);
-            };
-            suggestBox.appendChild(div);
-        });
-        suggestBox.style.display = "block";
     }
 
     function loadRetiredEmployeesInPeriod() {
         let cat = document.getElementById("hiddenJobCategory").value;
-        if (!cat) return;
+        if (!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
 
         let fromDate = document.getElementById("retiredPeriodStartDate").value;
         let toDate = document.getElementById("retiredPeriodEndDate").value;
-
         if (!fromDate || !toDate) {
-            showCustomAlert("تنبيه", "يرجى تحديد تاريخ البداية وتاريخ النهاية لفترة الإحالة للمعاش.");
+            showCustomAlert("تنبيه", "يرجى تحديد تاريخ البداية وتاريخ النهاية لفترة الإحالة للمعاش (من - إلى).");
             return;
         }
         if (toDate < fromDate) {
@@ -4351,25 +4363,27 @@
                 let data = doc.data();
                 if (!String(data.jobCategory || "").includes(cat)) return;
                 let pensionVal = getPensionDateFromData(data);
-                if (isRetiredWithinPeriod(pensionVal, fromDate, toDate)) {
+                let normPension = normalizeDateStr(pensionVal);
+                if (!normPension) return;
+                if (normPension >= fromDate && normPension <= toDate) {
                     let annual = parseFloat(data.annual) || 0;
                     let casual = parseFloat(data.casual) || 0;
                     let prevBal = parseFloat(data.prevBal) || 0;
                     retiredList.push({
                         ...data,
                         docId: doc.id,
-                        _pensionDate: normalizeDateStr(pensionVal),
+                        _pensionDate: normPension,
                         _annual: annual,
                         _casual: casual,
                         _sick: data.sick || 0,
                         _sick259: data.sick259 || 'لا',
                         _prevBal: prevBal,
-                        _lastBalance: annual + casual + prevBal
+                        _lastRemaining: annual + casual + prevBal
                     });
                 }
             });
 
-            retiredList.sort((a, b) => String(a._pensionDate).localeCompare(String(b._pensionDate)));
+            retiredList.sort((a, b) => a._pensionDate.localeCompare(b._pensionDate));
             currentRetiredInPeriodList = retiredList;
             renderRetiredEmployeesInPeriodTable(cat);
         }).catch(() => {
@@ -4382,21 +4396,21 @@
         let { fromDate, toDate } = currentRetiredPeriodFilter;
 
         let html = `
-            <div style="background:#fff; border:1.5px solid #fca5a5; border-radius:10px; padding:12px;">
+            <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #fca5a5;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-                    <h4 style="color:#991b1b; font-size:14px; font-weight:900; margin:0;">
-                        بيان المُحالين للمعاش — الفئة: ${cat} (${fromDate ? 'من ' + formatDateToAr(fromDate) : ''} ${toDate ? 'إلى ' + formatDateToAr(toDate) : ''}) — العدد: (${currentRetiredInPeriodList.length})
-                    </h4>
+                    <div style="font-size:13px; font-weight:900; color:#991b1b;">
+                        المُحالون للمعاش — فئة (${cat}) من ${formatDateToAr(fromDate)} إلى ${formatDateToAr(toDate)} — العدد: (${currentRetiredInPeriodList.length})
+                    </div>
                     <div style="display:flex; gap:8px;">
-                        <button type="button" class="act-btn btn-ex" onclick="exportRetiredInPeriodExcel('${cat}')"><i class="fas fa-file-excel"></i> تصدير إكسل</button>
-                        <button type="button" class="act-btn btn-danger" onclick="printRetiredInPeriodPDF('${cat}')"><i class="fas fa-print"></i> طباعة PDF</button>
+                        <button type="button" class="act-btn btn-ex" onclick="exportRetiredPeriodExcel('${cat}')"><i class="fas fa-file-excel"></i> تصدير لإكسل</button>
+                        <button type="button" class="act-btn btn-pd" onclick="printRetiredPeriodPDF('${cat}')"><i class="fas fa-print"></i> طباعة PDF</button>
                     </div>
                 </div>
-                <table class="summary-report-table" id="retiredInPeriodTable">
+                <table class="summary-report-table" id="retiredPeriodTable">
                     <thead>
                         <tr>
                             <th>م</th>
-                            <th>الاسم</th>
+                            <th>اسم الموظف</th>
                             <th>الرقم القومي</th>
                             <th>تاريخ المعاش (pensionDate)</th>
                             <th>اعتيادي</th>
@@ -4404,29 +4418,28 @@
                             <th>مرضية</th>
                             <th>259</th>
                             <th>سنوات سابقة</th>
-                            <th>آخر رصيد إجازات</th>
+                            <th>آخر رصيد متبقي</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
 
         if (currentRetiredInPeriodList.length === 0) {
-            html += `<tr><td colspan="10" style="color:#991b1b; font-weight:700;">لا يوجد موظفون خرجوا على المعاش خلال هذه الفترة الزمنية.</td></tr>`;
+            html += `<tr><td colspan="10" style="padding:14px; font-weight:700; color:#64748b;">لا يوجد موظفون خرجوا على المعاش خلال هذه الفترة الزمنية.</td></tr>`;
         } else {
             currentRetiredInPeriodList.forEach((emp, idx) => {
-                let pDisp = emp._pensionDate ? formatDateToAr(emp._pensionDate) : '-';
                 html += `
                     <tr class="retired-in-period-row">
                         <td>${idx + 1}</td>
-                        <td style="text-align:right; font-weight:800;">${emp.name} <span class="retired-badge">مُحال للمعاش</span></td>
+                        <td style="text-align:right; font-weight:800;">${emp.name}</td>
                         <td>${emp.nationalId}</td>
-                        <td style="font-weight:900;">${pDisp}</td>
+                        <td style="font-weight:900;">${formatDateToAr(emp._pensionDate)}</td>
                         <td>${emp._annual}</td>
                         <td>${emp._casual}</td>
                         <td>${emp._sick}</td>
                         <td>${emp._sick259}</td>
                         <td>${emp._prevBal}</td>
-                        <td style="font-weight:900; font-size:14px;">${emp._lastBalance}</td>
+                        <td style="font-weight:900; font-size:14px;">${emp._lastRemaining}</td>
                     </tr>
                 `;
             });
@@ -4436,33 +4449,27 @@
         container.innerHTML = html;
     }
 
-    function exportRetiredInPeriodExcel(cat) {
-        let tableEl = document.getElementById("retiredInPeriodTable");
-        if (!tableEl) return;
-        let wb = XLSX.utils.table_to_book(tableEl, { sheet: "المحالون للمعاش" });
+    function exportRetiredPeriodExcel(cat) {
+        let tbl = document.getElementById("retiredPeriodTable");
+        if (!tbl) return;
+        let wb = XLSX.utils.table_to_book(tbl);
         XLSX.writeFile(wb, `المحالون_للمعاش_${cat}.xlsx`);
     }
 
-    function printRetiredInPeriodPDF(cat) {
-        let tableEl = document.getElementById("retiredInPeriodTable");
-        if (!tableEl) return;
+    function printRetiredPeriodPDF(cat) {
+        let tbl = document.getElementById("retiredPeriodTable");
+        if (!tbl) return;
         let { fromDate, toDate } = currentRetiredPeriodFilter;
         let win = window.open('', '_blank');
         win.document.write(`
-            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>المحالون للمعاش - ${cat}</title>
+            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+            <title>المُحالون للمعاش - ${cat}</title>
             <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-            <style>
-                body{font-family:'Cairo',sans-serif; padding:20px; direction:rtl;}
-                h2,h3,p{text-align:center; margin:4px 0;}
-                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
-                th,td{border:1px solid #333; padding:6px; text-align:center;}
-                th{background:#7f1d1d; color:#fff;}
-                tr.retired-in-period-row{background:#fee2e2; color:#7f1d1d; font-weight:700;}
-            </style></head><body>
-            <h2>الهيئة العامة للسد العالي وخزان أسوان</h2>
-            <h3>بيان المُحالين للمعاش — الفئة: ${cat}</h3>
-            <p>الفترة: ${fromDate ? 'من ' + formatDateToAr(fromDate) : ''} ${toDate ? 'إلى ' + formatDateToAr(toDate) : ''}</p>
-            ${tableEl.outerHTML}
+            <style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} h2,h3{text-align:center; margin:4px 0;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#991b1b; color:#fff;}</style>
+            </head><body>
+            <h2>كشف المُحالين للمعاش خلال فترة زمنية</h2>
+            <h3>الفئة: ${cat} | الفترة: من ${formatDateToAr(fromDate)} إلى ${formatDateToAr(toDate)}</h3>
+            ${tbl.outerHTML}
             </body></html>
         `);
         win.document.close();
@@ -4471,12 +4478,17 @@
 
     function exportEmployeesExcel(cat) {
         let wb = XLSX.utils.table_to_book(document.getElementById("employeesTable"));
-        XLSX.writeFile(wb, `أرصدة_${cat}.xlsx`);
+        XLSX.writeFile(wb, `بيانات_الموظفين_${cat}.xlsx`);
     }
 
     function printEmployeesPDF(cat) {
+        let printContents = document.getElementById("employeesTable").outerHTML;
         let win = window.open('', '_blank');
-        win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#1e293b; color:#fff;}</style></head><body><h2>أرصدة الموظفين - الفئة: ${cat}</h2>${document.getElementById("employeesTable").outerHTML}</body></html>`);
+        win.document.write(`
+            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف الموظفين</title>
+            <style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#1e293b; color:#fff;}</style></head>
+            <body><h2>كشف بيانات الموظفين والأرصدة المتبقية - ${cat}</h2>${printContents}</body></html>
+        `);
         win.document.close();
         setTimeout(() => { win.focus(); win.print(); }, 500);
     }
@@ -4486,15 +4498,12 @@
         if (!query || query.trim().length < 1) { suggestBox.style.display = "none"; return; }
 
         query = query.trim().toLowerCase();
-        
-        db.collection("users").get().then((snapshot) => {
+        db.collection("users").where("status", "==", "inactive").get().then((snapshot) => {
             let matches = [];
             snapshot.forEach(doc => {
                 let data = doc.data();
-                if (data.status === 'inactive') {
-                    if (data.name && data.name.toLowerCase().includes(query)) {
-                        matches.push({ name: data.name, nationalId: data.nationalId });
-                    }
+                if ((data.name && data.name.toLowerCase().includes(query)) || (data.nationalId && data.nationalId.includes(query))) {
+                    matches.push({ name: data.name, nationalId: data.nationalId });
                 }
             });
 
@@ -4503,99 +4512,113 @@
                 matches.slice(0, 5).forEach(m => {
                     let div = document.createElement("div");
                     div.className = "suggestion-item";
-                    div.innerHTML = `<strong>${m.name}</strong> - ${m.nationalId} <span style="color:red; font-size:10px;">(موقوف)</span>`;
-                    div.onclick = function() {
-                        suggestBox.style.display = "none";
-                        openReturnFromAbsenceModal(m.nationalId, m.name);
-                    };
+                    div.innerHTML = `<i class="fas fa-user-clock" style="margin-left:5px; color:#dc3545;"></i> <strong>${m.name}</strong> - ${m.nationalId} <span style="color:red; font-size:10px;">(منقطع / موقوف)</span>`;
+                    div.onclick = function() { openReturnModal(m.nationalId, m.name); };
                     suggestBox.appendChild(div);
                 });
                 suggestBox.style.display = "block";
             } else {
-                suggestBox.innerHTML = '<div style="padding:10px; color:red; text-align:center;">لا يوجد موظف موقوف بهذا الاسم</div>';
+                suggestBox.innerHTML = '<div style="padding:10px; text-align:center; color:#64748b;">لا يوجد موظف موقوف مطابق</div>';
                 suggestBox.style.display = "block";
             }
         }).catch(() => {});
     }
 
-    function openReturnFromAbsenceModal(nationalId, empName) {
+    function openReturnModal(nationalId, empName) {
+        document.getElementById("searchReturnResults").style.display = "none";
         document.getElementById("returnEmpNationalId").value = nationalId;
         document.getElementById("returnEmpNameDisplay").innerText = empName;
-        document.getElementById("returnDate").value = "";
         
-        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then(q => {
-            let startDate = "غير محدد";
-            if (!q.empty) {
-                let d = q.docs[0].data();
-                startDate = d.startDate ? formatDateToAr(d.startDate) : "غير محدد";
-            }
-            document.getElementById("returnStartDateDisplay").innerText = startDate;
-        }).catch(() => {});
+        let todayStr = new Date().toISOString().split('T')[0];
+        let retInput = document.getElementById("returnDate");
+        retInput.value = todayStr;
+        retInput.min = "";
+        delete retInput.dataset.minDate;
 
-        loadTargetManagers();
-        document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
+        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then((snapshot) => {
+            let startDateStr = "غير محدد";
+            snapshot.forEach(doc => {
+                let d = doc.data();
+                if (d.startDate) {
+                    startDateStr = formatDateToAr(d.startDate);
+                    retInput.min = d.startDate;
+                    retInput.dataset.minDate = d.startDate;
+                }
+            });
+            document.getElementById("returnStartDateDisplay").innerText = startDateStr;
+            loadTargetManagers();
+            document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
+        }).catch(() => {
+            document.getElementById("returnStartDateDisplay").innerText = "غير محدد";
+            loadTargetManagers();
+            document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
+        });
     }
 
     function submitReturnFromAbsence() {
         let nationalId = document.getElementById("returnEmpNationalId").value;
         let empName = document.getElementById("returnEmpNameDisplay").innerText;
         let returnDate = document.getElementById("returnDate").value;
-        let targetMgr = document.getElementById("returnTargetManager").value;
         let calcType = document.getElementById("returnCalcType").value;
+        let targetMgr = document.getElementById("returnTargetManager").value;
+        let category = document.getElementById("hiddenJobCategory").value;
 
         if (!returnDate) { showCustomAlert("خطأ", "يرجى إدخال تاريخ العودة."); return; }
         if (!targetMgr) { showCustomAlert("خطأ", "يرجى اختيار المدير العام التابع له."); return; }
 
-        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then(q => {
-            let absenceStartStr = "";
-            let absenceDocId = null;
-            if (!q.empty) {
-                let d = q.docs[0].data();
-                absenceStartStr = d.startDate;
-                absenceDocId = q.docs[0].id;
+        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then((snapshot) => {
+            let absenceStartDate = null;
+            snapshot.forEach(doc => {
+                let d = doc.data();
+                if (d.startDate) absenceStartDate = d.startDate;
+            });
+
+            if (absenceStartDate && returnDate < absenceStartDate) {
+                showCustomAlert("تاريخ غير منطقي", `تاريخ العودة (${formatDateToAr(returnDate)}) لا يمكن أن يكون قبل تاريخ بدء الانقطاع (${formatDateToAr(absenceStartDate)}).`);
+                return;
             }
 
             let daysCount = 0;
-            if (absenceStartStr) {
-                let d1 = new Date(absenceStartStr);
+            if (absenceStartDate && returnDate) {
+                let d1 = new Date(absenceStartDate);
                 let d2 = new Date(returnDate);
-                daysCount = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-                if (daysCount <= 0) daysCount = 1;
-            } else {
-                daysCount = 1;
+                daysCount = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)));
             }
 
             let randomId = "RET-" + Math.floor(100000 + Math.random() * 900000);
-            let leaveData = {
+            let returnRequestData = {
                 requestId: randomId,
                 empName: empName,
                 nationalId: nationalId,
                 dept: targetMgr,
+                jobCategory: category,
                 targetManager: targetMgr,
-                jobCategory: document.getElementById("hiddenJobCategory").value || "غير محدد",
+                titlePrefix: "السيد المهندس /",
+                mgrName: targetMgr,
                 leaveType: "طلب عودة من انقطاع",
-                startDate: absenceStartStr || returnDate,
+                startDate: absenceStartDate || returnDate,
                 endDate: returnDate,
                 daysCount: daysCount,
                 absenceCalcType: calcType,
-                reason: `طلب عودة من الانقطاع وتسليم العمل للمدير العام (${targetMgr}) - معالجة الانقطاع: ${calcType}`,
-                specialistStatus: "تم الإنشاء والإرسال",
+                reason: `طلب عودة وتسليم عمل اعتباراً من ${formatDateToAr(returnDate)} (معالجة الانقطاع كـ: ${calcType})`,
+                phone: "-",
+                daysAnnual: 0,
+                daysPrev: 0,
+                specialistStatus: "مُنشأ من المختص",
                 hrReturnStatus: "قيد الانتظار",
                 managerReturnStatus: "قيد الانتظار",
                 hrStatus: "قيد الانتظار",
+                rejectionReason: "",
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 requestDate: new Date().toISOString().split('T')[0]
             };
 
-            db.collection("leaves").add(leaveData).then(() => {
-                if (absenceDocId) {
-                    db.collection("leaves").doc(absenceDocId).update({ endDate: returnDate, daysCount: daysCount }).catch(()=>{});
-                }
+            db.collection("leaves").add(returnRequestData).then(() => {
+                showCustomAlert("تم بنجاح", "تم إنشاء طلب العودة وإرساله إلى مدير عام الموارد البشرية للاعتماد وتفعيل الحساب، ثم يحال للمدير العام التابع للعلم وتسليمه العمل.");
                 document.getElementById("returnFromAbsenceModal").classList.add("hidden");
-                showCustomAlert("تم بنجاح", "تم إرسال طلب العودة إلى مدير عام الموارد البشرية. بمجرد اعتماده سيتم تنشيط الموظف تلقائياً وتحويل الطلب إلى المدير العام التابع (للعلم وتسليم العمل).");
                 document.getElementById("searchReturnInput").value = "";
-            }).catch(() => { showCustomAlert("خطأ", "تعذر إرسال الطلب."); });
-        });
+            }).catch(() => { showCustomAlert("خطأ", "تعذر إرسال طلب العودة."); });
+        }).catch(() => { showCustomAlert("خطأ", "تعذر التحقق من تاريخ الانقطاع."); });
     }
 </script>
 </body>
