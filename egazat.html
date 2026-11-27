@@ -1252,9 +1252,13 @@
             return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
         }
         let s = String(val).trim();
-        let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-        if (m) {
-            return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+        let mIso = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+        if (mIso) {
+            return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
+        }
+        let mAr = s.match(/^(\d{1,2})\s*[-\/]\s*(\d{1,2})\s*[-\/]\s*(\d{4})/);
+        if (mAr) {
+            return `${mAr[3]}-${mAr[2].padStart(2, '0')}-${mAr[1].padStart(2, '0')}`;
         }
         let d = new Date(s);
         if (!isNaN(d.getTime())) {
@@ -1295,22 +1299,19 @@
             return !isEmployeeRetired("", normRet);
         }
 
-        // إذا لم يكن للموظف قيمة pension Date، فلا يُظهر عند تحديد فترة أو يُعامل كغير متداخل
-        if (!normRet) return false;
+        // إذا لم يكن للموظف تاريخ معاش مسجل، فلا يُستبعد عند عرض الرصيد المتبقي (حتى لو status = inactive)
+        if (!normRet) return true;
 
-        // إذا تم تحديد (من تاريخ) و (إلى تاريخ):
-        // يكون متداخلاً مع الفترة إذا كان تاريخ المعاش يقع داخل الفترة أو قبل/عند نهاية الفترة المحددة
-        // أما إذا كان تاريخ المعاش بعد نهاية الفترة المحددة (normRet > tDate) فلا يتم عرضه
-        if (fDate && tDate) {
-            return normRet <= tDate;
+        // إذا كان تاريخ المعاش بعد نهاية الفترة المحددة (أو بعد تاريخ البداية عند تحديد بداية فقط) لا يتم عرضه
+        if (tDate && normRet > tDate) {
+            return false;
         }
-        if (tDate) {
-            return normRet <= tDate;
+        if (!tDate && fDate && normRet > fDate) {
+            return false;
         }
-        if (fDate) {
-            return normRet <= fDate;
-        }
-        return false;
+
+        // متداخل مع الفترة أو قبل/ضمن الفترة المحددة -> يُعرض حتى لو status = inactive
+        return true;
     }
 
     function markUserInactiveIfRetired(userDoc, userData) {
@@ -4289,59 +4290,69 @@
     function loadTargetNames() {
         let select4 = document.getElementById("returnTargetManager");
         if (select4) select4.innerHTML = '<option value="">-- جاري التحميل --</option>';
-        loadTargetManagers();
+        db.collection("users").get().then((querySnapshot) => {
+            let managersSet = new Set();
+            querySnapshot.forEach((doc) => {
+                let cm = String(doc.data().centralManager || "").trim();
+                if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
+                    managersSet.add(cm);
+                }
+            });
+            let options = '<option value="">-- اختر المدير العام --</option>';
+            Array.from(managersSet).sort().forEach(m => { options += `<option value="${m}">${m}</option>`; });
+            if (select4) select4.innerHTML = options;
+        }).catch(() => {});
     }
 
     function submitReturnFromAbsence() {
         let nid = document.getElementById("returnEmpNationalId").value;
         let empName = document.getElementById("returnEmpNameDisplay").innerText;
-        let returnDate = document.getElementById("returnDate").value;
-        let targetManager = document.getElementById("returnTargetManager").value;
-        let returnCalcType = document.getElementById("returnCalcType").value;
+        let retDate = document.getElementById("returnDate").value;
+        let targetMgr = document.getElementById("returnTargetManager").value;
+        let calcType = document.getElementById("returnCalcType").value;
 
-        if (!returnDate) return showCustomAlert("خطأ", "يرجى تحديد تاريخ العودة.");
-        if (!targetManager) return showCustomAlert("خطأ", "يرجى اختيار المدير العام التابع له.");
+        if (!retDate || !targetMgr) { showCustomAlert("تنبيه", "يرجى تحديد تاريخ العودة والمدير العام التابع له."); return; }
 
-        db.collection("leaves").where("nationalId", "==", nid).get().then((q) => {
-            let startAbsenceDate = returnDate;
-            q.forEach(d => { if(d.data().leaveType === "التبليغ عن منقطع" && d.data().startDate) startAbsenceDate = d.data().startDate; });
+        db.collection("leaves").where("nationalId", "==", nid).get().then(q => {
+            let absenceStart = new Date().toISOString().split('T')[0];
+            q.forEach(d => { if(d.data().leaveType === "التبليغ عن منقطع") absenceStart = d.data().startDate; });
 
-            let diffDays = Math.round((new Date(returnDate) - new Date(startAbsenceDate)) / (1000 * 60 * 60 * 24)) + 1;
+            let diffDays = Math.round((new Date(retDate) - new Date(absenceStart)) / (1000 * 60 * 60 * 24));
             if (diffDays <= 0) diffDays = 1;
 
             let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
-            let empObj = currentEmployeesList.find(e => e.nationalId === nid) || {};
-            
-            let returnData = {
+            let leaveData = {
                 requestId: randomId,
                 empName: empName,
                 nationalId: nid,
-                dept: "مدير عام الموارد البشرية", 
-                employeeDepartment: empObj.department || "",
-                centralManager: empObj.centralManager || "",
-                jobCategory: empObj.jobCategory || document.getElementById("hiddenJobCategory").value,
-                targetManager: targetManager, 
+                dept: targetMgr,
+                jobCategory: document.getElementById("hiddenJobCategory").value,
+                targetManager: targetMgr,
                 leaveType: "طلب عودة من انقطاع",
-                startDate: startAbsenceDate,
-                endDate: returnDate,
+                startDate: absenceStart,
+                endDate: retDate,
                 daysCount: diffDays,
-                absenceCalcType: returnCalcType,
-                reason: `طلب عودة من انقطاع عن الفترة من ${formatDateToAr(startAbsenceDate)} إلى ${formatDateToAr(returnDate)} (${returnCalcType})`,
+                absenceCalcType: calcType,
+                reason: `عودة من انقطاع. معالجة المدة (${diffDays} يوم) بـ: ${calcType}`,
                 phone: "-",
+                daysAnnual: 0, daysPrev: 0,
+                managerStatus: "قيد الانتظار",
+                specialistStatus: "مراجع من المختص",
+                hrStatus: "قيد الانتظار",
                 hrReturnStatus: "قيد الانتظار",
                 managerReturnStatus: "قيد الانتظار",
-                hrStatus: "قيد الانتظار",
                 rejectionReason: "",
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 requestDate: new Date().toISOString().split('T')[0]
             };
 
-            db.collection("leaves").add(returnData).then(() => {
+            db.collection("leaves").add(leaveData).then(() => {
                 document.getElementById("returnFromAbsenceModal").classList.add("hidden");
+                showCustomAlert("تم بنجاح", "تم إنشاء طلب العودة وإرساله إلى مدير عام الموارد البشرية للاعتماد أولاً.");
                 document.getElementById("searchReturnInput").value = "";
-                showCustomAlert("تم بنجاح", "تم إرسال طلب العودة إلى مدير عام الموارد البشرية للاعتماد وتنشيط الحساب، ثم سيتحول للمدير العام التابع للعلم وتسليمه العمل.");
-            });
-        }).catch(() => { showCustomAlert("خطأ", "حدث خطأ أثناء إرسال الطلب."); });
+                refreshSpecialistEmployeesCache();
+            }).catch(() => { showCustomAlert("خطأ", "تعذر إرسال الطلب."); });
+        });
     }
 </script>
 </body>
