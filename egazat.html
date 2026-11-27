@@ -473,12 +473,13 @@
                 <h3 style="color: #198754; font-size: 16px; margin-bottom: 15px; border-bottom: 2px solid #198754; padding-bottom: 5px;"><i class="fas fa-calendar-plus"></i> طلب إجازة</h3>
                 
                 <div id="leaveStep1" class="step-box">
-                    <div class="input-group">
+                    <div class="input-group" id="targetManagerDeptGroup">
                         <label>توجيه الطلب إلى (المدير العام التابع له):</label>
                         <select id="targetManagerDept" required>
                             <option value="">-- اختر المدير العام --</option>
                         </select>
                     </div>
+                    <div id="deptWorkflowNotice" class="hidden" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; font-weight: 700;"></div>
                     <div class="input-group">
                         <label>المسمى الوظيفي للمدير:</label>
                         <select id="managerTitle" required>
@@ -490,8 +491,8 @@
                         </select>
                     </div>
                     <div class="input-group">
-                        <label>اسم المدير العام (رباعي):</label>
-                        <input type="text" id="targetManagerName" required placeholder="اكتب اسم المدير العام رباعياً...">
+                        <label>اسم المدير العام / المسؤول (رباعي):</label>
+                        <input type="text" id="targetManagerName" required placeholder="اكتب اسم المدير المسؤول رباعياً...">
                     </div>
                     <button type="button" class="btn-submit-main" onclick="nextLeaveStep(2)">التالي <i class="fas fa-arrow-left"></i></button>
                 </div>
@@ -685,7 +686,7 @@
 
             <form id="managerLoginForm" onsubmit="submitManagerLogin(event)">
                 <div class="input-group">
-                    <label>اختر الجهة (مختص / مدير عام):</label>
+                    <label>اختر الجهة (مختص / مدير عام / رئيس الإدارة المركزية / رئيس مجلس الإدارة):</label>
                     <select id="loginDept" required>
                         <option value="">-- جاري تحميل الجهات... --</option>
                     </select>
@@ -1129,6 +1130,7 @@
         if (d.includes("رئيس الإدارة المركزية") || d.includes("رئيس الادارة المركزية")) {
             return {
                 routeType: "from_central_head",
+                responsibleManager: "رئيس مجلس الإدارة",
                 initialTargetManager: "رئيس مجلس الإدارة",
                 workflowSteps: ["رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
             };
@@ -1136,15 +1138,57 @@
         if (d === "مدير عام" || d.startsWith("مدير عام")) {
             return {
                 routeType: "from_general_manager",
+                responsibleManager: "رئيس الإدارة المركزية",
                 initialTargetManager: "رئيس الإدارة المركزية",
                 workflowSteps: ["مدير عام", "رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
             };
         }
         return {
             routeType: "custom_department",
+            responsibleManager: d,
             initialTargetManager: d,
             workflowSteps: [d, "الموظف المختص (الأرشفة)"]
         };
+    }
+
+    function applyLeaveFormWorkflowUI(userData) {
+        let deptVal = String((userData && userData.department) || "").trim();
+        let wf = getWorkflowByDepartment(deptVal);
+        let deptGroup = document.getElementById("targetManagerDeptGroup");
+        let noticeBox = document.getElementById("deptWorkflowNotice");
+        let tSelect = document.getElementById("targetManagerDept");
+
+        if (wf) {
+            if (deptGroup) deptGroup.classList.add("hidden");
+            if (tSelect) {
+                tSelect.removeAttribute("required");
+                let exists = Array.from(tSelect.options).some(o => o.value === wf.responsibleManager);
+                if (!exists) {
+                    let opt = document.createElement("option");
+                    opt.value = wf.responsibleManager;
+                    opt.textContent = wf.responsibleManager;
+                    tSelect.appendChild(opt);
+                }
+                tSelect.value = wf.responsibleManager;
+            }
+            if (noticeBox) {
+                noticeBox.classList.remove("hidden");
+                if (wf.routeType === "from_central_head") {
+                    noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>رئيس مجلس الإدارة</b> (مقدم الطلب: رئيس الإدارة المركزية).`;
+                } else if (wf.routeType === "from_general_manager") {
+                    noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>رئيس الإدارة المركزية</b> ثم يُرفع إلى <b>رئيس مجلس الإدارة</b> (مقدم الطلب: مدير عام).`;
+                } else {
+                    noticeBox.innerHTML = `المدير المسؤول عن اعتماد الإجازة: <b>${wf.responsibleManager}</b>.`;
+                }
+            }
+        } else {
+            if (deptGroup) deptGroup.classList.remove("hidden");
+            if (tSelect) tSelect.setAttribute("required", "required");
+            if (noticeBox) {
+                noticeBox.classList.add("hidden");
+                noticeBox.innerHTML = "";
+            }
+        }
     }
 
     function verifyEmployeeForLeave() {
@@ -1204,21 +1248,7 @@
                 else if (cat.includes("حرف")) cat = "الحرفية والخدمات المعاونة";
                 currentSubmitEmpCategory = cat;
 
-                let deptVal = String(userData.department || "").trim();
-                let wf = getWorkflowByDepartment(deptVal);
-                if (wf) {
-                    let tSelect = document.getElementById("targetManagerDept");
-                    if (tSelect) {
-                        let exists = Array.from(tSelect.options).some(o => o.value === wf.initialTargetManager);
-                        if (!exists) {
-                            let opt = document.createElement("option");
-                            opt.value = wf.initialTargetManager;
-                            opt.textContent = wf.initialTargetManager;
-                            tSelect.appendChild(opt);
-                        }
-                        tSelect.value = wf.initialTargetManager;
-                    }
-                }
+                applyLeaveFormWorkflowUI(userData);
                 
                 document.getElementById("verifiedEmpNameDisplay").innerText = userData.name;
                 
@@ -1271,22 +1301,7 @@
         checkActivePendingRequest(() => {
             document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
             document.getElementById("leaveFormContainer").classList.remove("hidden");
-
-            let deptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
-            let wf = getWorkflowByDepartment(deptVal);
-            if (wf) {
-                let tSelect = document.getElementById("targetManagerDept");
-                if (tSelect) {
-                    let exists = Array.from(tSelect.options).some(o => o.value === wf.initialTargetManager);
-                    if (!exists) {
-                        let opt = document.createElement("option");
-                        opt.value = wf.initialTargetManager;
-                        opt.textContent = wf.initialTargetManager;
-                        tSelect.appendChild(opt);
-                    }
-                    tSelect.value = wf.initialTargetManager;
-                }
-            }
+            applyLeaveFormWorkflowUI(currentSubmitEmpData);
             nextLeaveStep(1);
         });
     }
@@ -1357,11 +1372,11 @@
             let empDeptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
             let deptWorkflow = getWorkflowByDepartment(empDeptVal);
             if (deptWorkflow) {
-                targetManager = deptWorkflow.initialTargetManager;
+                targetManager = deptWorkflow.responsibleManager;
             }
 
             if (!targetManager) { showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له."); return; }
-            if (!isArabicOnly(targetManagerName) || !isQuadrupleName(targetManagerName)) { showCustomAlert("خطأ", "يجب أن يكون اسم المدير العام رباعياً باللغة العربية."); return; }
+            if (!isArabicOnly(targetManagerName) || !isQuadrupleName(targetManagerName)) { showCustomAlert("خطأ", "يجب أن يكون اسم المدير المسؤول رباعياً باللغة العربية."); return; }
 
             let todayStr = new Date().toISOString().split('T')[0];
             if (start < todayStr) { showCustomAlert("خطأ في التاريخ", "لا يمكن اختيار تاريخ في الماضي."); return; }
@@ -1438,6 +1453,7 @@
                 }
 
                 let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+                let initialSpecialistStatus = deptWorkflow ? "غير مطلوب (مسار قيادي)" : "قيد الانتظار";
                 
                 let leaveData = {
                     requestId: randomId,
@@ -1445,6 +1461,7 @@
                     nationalId: currentSubmitEmpNationalId,
                     dept: targetManager, 
                     employeeDepartment: empDeptVal,
+                    responsibleManager: targetManager,
                     workflowRoute: deptWorkflow ? deptWorkflow.routeType : "default",
                     workflowSteps: deptWorkflow ? deptWorkflow.workflowSteps : ["الموظف المختص", targetManager, "الموظف المختص (الأرشفة)"],
                     jobCategory: currentSubmitEmpCategory, 
@@ -1459,7 +1476,7 @@
                     phone: phone,
                     daysAnnual: dAnnual,
                     daysPrev: dPrev,
-                    specialistStatus: "قيد الانتظار",    
+                    specialistStatus: initialSpecialistStatus,    
                     managerStatus: "قيد الانتظار",        
                     hrStatus: "قيد الانتظار",            
                     rejectionReason: "",
@@ -1928,6 +1945,7 @@
                 markUserInactiveIfRetired(doc, data);
                 let role = String(data.role || "").trim();
                 let cm = String(data.centralManager || "").trim();
+                let dept = String(data.department || "").trim();
 
                 if (role.includes("اجازات") || role.includes("إجازات") || role.includes("مختص")) {
                     specialists.add(role);
@@ -1935,13 +1953,21 @@
                 if (cm !== "" && cm.includes("مدير عام") && !cm.includes("رئيس")) {
                     managers.add(cm);
                 }
+                if (cm.includes("رئيس الإدارة المركزية") || cm.includes("رئيس الادارة المركزية") || role.includes("رئيس الإدارة المركزية") || role.includes("رئيس الادارة المركزية") || dept.includes("رئيس الإدارة المركزية") || dept.includes("رئيس الادارة المركزية")) {
+                    managers.add("رئيس الإدارة المركزية");
+                }
+                if (cm.includes("رئيس مجلس الإدارة") || cm.includes("رئيس مجلس الادارة") || role.includes("رئيس مجلس الإدارة") || role.includes("رئيس مجلس الادارة") || dept.includes("رئيس مجلس الإدارة") || dept.includes("رئيس مجلس الادارة")) {
+                    managers.add("رئيس مجلس الإدارة");
+                }
             });
+
+            managers.add("رئيس مجلس الإدارة");
 
             select.innerHTML = '<option value="">-- اختر الجهة التابع لها --</option>';
             
             if (managers.size > 0) {
                 let optGroup = document.createElement("optgroup");
-                optGroup.label = "🛡️ المديرين العموم";
+                optGroup.label = "🛡️ المديرين العموم / رؤساء الإدارات المركزية / رئيس مجلس الإدارة";
                 Array.from(managers).sort().forEach(mgr => {
                     let opt = document.createElement("option");
                     opt.value = mgr + "|manager|";
@@ -1979,17 +2005,33 @@
         let roleType = parts[1];   
         let category = parts[2];   
 
-        let queryField = (roleType === 'manager') ? 'centralManager' : 'role';
-        
-        db.collection("users").where(queryField, "==", targetRole).get().then((querySnapshot) => {
-            if (querySnapshot.empty) {
+        db.collection("users").get().then((querySnapshot) => {
+            let matchingDocs = [];
+            querySnapshot.forEach(doc => {
+                let d = doc.data();
+                if (roleType === 'manager') {
+                    if (
+                        String(d.centralManager || "").trim() === targetRole ||
+                        String(d.role || "").trim() === targetRole ||
+                        String(d.department || "").trim() === targetRole ||
+                        (targetRole === "رئيس مجلس الإدارة" && String(d.jobTitle || "").includes("رئيس مجلس الإدارة"))
+                    ) {
+                        matchingDocs.push(d);
+                    }
+                } else {
+                    if (String(d.role || "").trim() === targetRole) {
+                        matchingDocs.push(d);
+                    }
+                }
+            });
+
+            if (matchingDocs.length === 0) {
                 return showCustomAlert("خطأ", "هذا المستخدم غير مسجل بالنظام.");
             }
 
             let isValid = false;
             let loggedName = "";
-            querySnapshot.forEach(doc => {
-                let data = doc.data();
+            matchingDocs.forEach(data => {
                 if (data.password === password) {
                     isValid = true;
                     loggedName = data.name || targetRole;
@@ -2022,7 +2064,7 @@
                 document.getElementById("welcomeManagerText").innerText = "أهلاً بالمختص: " + loggedName;
             } else {
                 document.getElementById("dashboardTitle").innerText = "طلبات الإجازات - " + targetRole;
-                document.getElementById("welcomeManagerText").innerText = "أهلاً بالسيد المدير: " + loggedName;
+                document.getElementById("welcomeManagerText").innerText = "أهلاً بالسيد: " + loggedName;
             }
             
             loadDepartmentLeavesFirebase(targetRole, roleType, category);
@@ -2058,7 +2100,12 @@
                                 currentLeavesData.push(data);
                             }
                         } else {
-                            if (sStat === "قيد الانتظار" || (mStat === "موافق من المدير العام" && hrStat === "قيد الانتظار")) {
+                            let isLeadershipRoute = (data.workflowRoute === "from_general_manager" || data.workflowRoute === "from_central_head");
+                            let readyForFinalArchive = isLeadershipRoute
+                                ? (data.chairmanApproval === "موافق من رئيس مجلس الإدارة" && hrStat === "قيد الانتظار")
+                                : (mStat === "موافق من المدير العام" && hrStat === "قيد الانتظار");
+
+                            if (sStat === "قيد الانتظار" || readyForFinalArchive) {
                                 currentLeavesData.push(data);
                             } else if (hrStat === "أرشفة نهائية" || sStat.includes("مرفوض") || mStat.includes("مرفوض")) {
                                 currentLeavesData.push(data);
@@ -2068,7 +2115,9 @@
                 } 
                 else {
                     let isHRManager = deptName.includes("الموارد البشرية") || deptName.includes("موارد بشرية");
-                    let isTargetManager = (data.targetManager === deptName);
+                    let isTargetManager = (data.targetManager === deptName || data.responsibleManager === deptName);
+                    let isCentralHead = deptName.includes("رئيس الإدارة المركزية") || deptName.includes("رئيس الادارة المركزية");
+                    let isChairman = deptName.includes("رئيس مجلس الإدارة") || deptName.includes("رئيس مجلس الادارة");
 
                     if (data.leaveType === "طلب عودة من انقطاع") {
                         let hrReturnStat = data.hrReturnStatus || "قيد الانتظار";
@@ -2082,6 +2131,12 @@
                             }
                         }
                     } 
+                    else if (isCentralHead && data.workflowRoute === "from_general_manager") {
+                        currentLeavesData.push(data);
+                    }
+                    else if (isChairman && (data.workflowRoute === "from_central_head" || (data.workflowRoute === "from_general_manager" && data.centralManagerApproval === "موافق من رئيس الإدارة المركزية") || data.targetManager === "رئيس مجلس الإدارة")) {
+                        currentLeavesData.push(data);
+                    }
                     else if (isTargetManager) {
                         if (data.leaveType === "التبليغ عن منقطع") {
                             if (data.managerStatus === "قيد الانتظار" || data.managerStatus === "موافق من المدير العام" || data.managerStatus.includes("مرفوض")) {
@@ -2231,6 +2286,17 @@
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>2. مدير عام الموارد البشرية (اعتماد العودة وتفعيل الحساب):</strong> <span style="color:#198754; font-weight:bold;">${item.hrReturnStatus || 'قيد الانتظار'}</span></p>
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>3. المدير العام التابع (${item.targetManager || 'غير محدد'} - للعلم وتسليم العمل):</strong> <span style="color:#166534; font-weight:bold;">${item.managerReturnStatus || 'قيد الانتظار'}</span></p>
                 `;
+            } else if (item.workflowRoute === "from_central_head") {
+                stepsDisplay = `
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>المدير المسؤول:</strong> <span style="color:#198754; font-weight:bold;">رئيس مجلس الإدارة (${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'})</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>الاعتماد النهائي والأرشفة:</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
+                `;
+            } else if (item.workflowRoute === "from_general_manager") {
+                stepsDisplay = `
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>1. رئيس الإدارة المركزية (المدير المسؤول):</strong> <span style="color:#0d6efd; font-weight:bold;">${item.centralManagerApproval || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>2. رئيس مجلس الإدارة:</strong> <span style="color:#198754; font-weight:bold;">${item.chairmanApproval || 'قيد الانتظار'}</span></p>
+                    <p style="position:relative; z-index:1; font-size:12px;"><strong>3. الموظف المختص (الاعتماد النهائي والأرشفة):</strong> <span style="color:#166534; font-weight:bold;">${item.hrStatus || 'قيد الانتظار'}</span></p>
+                `;
             } else {
                 stepsDisplay = `
                     <p style="position:relative; z-index:1; font-size:12px;"><strong>1. الموظف المختص للفئة:</strong> <span style="color:#0d6efd; font-weight:bold;">${item.specialistStatus}</span></p>
@@ -2280,13 +2346,18 @@
                     `;
                 }
             } else if (item.leaveType !== "طلب عودة من انقطاع") {
-                if (sStat === "قيد الانتظار") {
+                let isLeadershipRoute = (item.workflowRoute === "from_general_manager" || item.workflowRoute === "from_central_head");
+                if (!isLeadershipRoute && sStat === "قيد الانتظار") {
                     html += `
                         <button class="act-btn btn-ex" onclick="openSpecialistActionModal('${item.docId}', 'مراجعة وموافق من المختص', 'تم التحقق من الرصيد والبيانات')">مراجعة وتحويل للمدير العام</button>
                         <button class="act-btn btn-danger" onclick="openSpecialistRejectModal('${item.docId}', 'مرفوض من المختص')">رفض وأرشفة فورية</button>
                     `;
                 }
-                if (mStat === "موافق من المدير العام" && hrStat === "قيد الانتظار") {
+                let readyForFinalArchive = isLeadershipRoute
+                    ? (item.chairmanApproval === "موافق من رئيس مجلس الإدارة" && hrStat === "قيد الانتظار")
+                    : (mStat === "موافق من المدير العام" && hrStat === "قيد الانتظار");
+
+                if (readyForFinalArchive) {
                     html += `
                         <button class="act-btn btn-ex" onclick="archiveAndDeductLeave('${item.docId}')">اعتماد نهائي، خصم الرصيد وأرشفة</button>
                         <button class="act-btn btn-danger" onclick="openSpecialistRejectModal('${item.docId}', 'مرفوض نهائياً من المختص')">رفض نهائي</button>
@@ -2296,7 +2367,9 @@
         } 
         else if (loggedInRole === 'manager') {
             let isHRManager = currentDeptOrCat.includes("الموارد البشرية") || currentDeptOrCat.includes("موارد بشرية");
-            let isTargetManager = (item.targetManager === currentDeptOrCat);
+            let isTargetManager = (item.targetManager === currentDeptOrCat || item.responsibleManager === currentDeptOrCat);
+            let isCentralHead = currentDeptOrCat.includes("رئيس الإدارة المركزية") || currentDeptOrCat.includes("رئيس الادارة المركزية");
+            let isChairman = currentDeptOrCat.includes("رئيس مجلس الإدارة") || currentDeptOrCat.includes("رئيس مجلس الادارة");
 
             if (item.leaveType === "طلب عودة من انقطاع") {
                 let hrReturnStat = item.hrReturnStatus || "قيد الانتظار";
@@ -2319,6 +2392,24 @@
                     html += `
                         <button class="act-btn btn-ex" onclick="processManagerAction('${item.docId}', 'موافق من المدير العام', 'موافق')">موافقة وتحويل للمختص</button>
                         <button class="act-btn btn-danger" onclick="promptManagerReject('${item.docId}', 'مرفوض من المدير العام')">رفض وأرشفة فورية</button>
+                    `;
+                }
+            } else if (isCentralHead && item.workflowRoute === "from_general_manager") {
+                if (item.centralManagerApproval !== "موافق من رئيس الإدارة المركزية" && !mStat.includes("مرفوض")) {
+                    html += `
+                        <button class="act-btn btn-ex" onclick="processManagerAction('${item.docId}', 'موافق من المدير العام', 'موافق')">اعتماد رئيس الإدارة المركزية وتحويل لرئيس مجلس الإدارة</button>
+                        <button class="act-btn btn-danger" onclick="promptManagerReject('${item.docId}', 'مرفوض من رئيس الإدارة المركزية')">رفض وأرشفة فورية</button>
+                    `;
+                }
+            } else if (isChairman) {
+                let canChairmanAct = (item.workflowRoute === "from_central_head" && item.chairmanApproval !== "موافق من رئيس مجلس الإدارة" && !mStat.includes("مرفوض")) ||
+                                     (item.workflowRoute === "from_general_manager" && item.centralManagerApproval === "موافق من رئيس الإدارة المركزية" && item.chairmanApproval !== "موافق من رئيس مجلس الإدارة" && !mStat.includes("مرفوض")) ||
+                                     (!item.workflowRoute && isTargetManager && mStat === "قيد الانتظار");
+
+                if (canChairmanAct) {
+                    html += `
+                        <button class="act-btn btn-ex" onclick="processManagerAction('${item.docId}', 'موافق من المدير العام', 'موافق')">اعتماد رئيس مجلس الإدارة</button>
+                        <button class="act-btn btn-danger" onclick="promptManagerReject('${item.docId}', 'مرفوض من رئيس مجلس الإدارة')">رفض وأرشفة فورية</button>
                     `;
                 }
             } else {
@@ -2488,29 +2579,33 @@
     function processManagerAction(docId, status, defaultReason) {
         db.collection("leaves").doc(docId).get().then((doc) => {
             let d = doc.exists ? doc.data() : {};
+            let isCentralHead = currentDeptOrCat.includes("رئيس الإدارة المركزية") || currentDeptOrCat.includes("رئيس الادارة المركزية");
+            let isChairman = currentDeptOrCat.includes("رئيس مجلس الإدارة") || currentDeptOrCat.includes("رئيس مجلس الادارة");
+
             let updateData = {
                 managerStatus: status,
                 rejectionReason: defaultReason
             };
 
-            if (d.workflowRoute === "from_general_manager" && currentDeptOrCat !== "رئيس الإدارة المركزية") {
-                updateData.targetManager = "رئيس الإدارة المركزية";
-                updateData.dept = "رئيس الإدارة المركزية";
-                updateData.managerStatus = "قيد الانتظار";
-                updateData.generalManagerApproval = "موافق من مدير عام";
-            } else if (d.workflowRoute === "from_general_manager" && currentDeptOrCat === "رئيس الإدارة المركزية") {
-                updateData.targetManager = "رئيس مجلس الإدارة";
-                updateData.dept = "رئيس مجلس الإدارة";
-                updateData.managerStatus = "قيد الانتظار";
+            if (d.workflowRoute === "from_general_manager" && isCentralHead) {
                 updateData.centralManagerApproval = "موافق من رئيس الإدارة المركزية";
-            } else if (d.workflowRoute === "from_central_head" && currentDeptOrCat !== "رئيس مجلس الإدارة") {
                 updateData.targetManager = "رئيس مجلس الإدارة";
+                updateData.responsibleManager = "رئيس مجلس الإدارة";
                 updateData.dept = "رئيس مجلس الإدارة";
                 updateData.managerStatus = "قيد الانتظار";
+            } else if (d.workflowRoute === "from_general_manager" && isChairman) {
+                updateData.chairmanApproval = "موافق من رئيس مجلس الإدارة";
+                updateData.managerStatus = "موافق من المدير العام";
+            } else if (d.workflowRoute === "from_central_head" && isChairman) {
+                updateData.chairmanApproval = "موافق من رئيس مجلس الإدارة";
+                updateData.managerStatus = "موافق من المدير العام";
+            } else if (isChairman) {
+                updateData.chairmanApproval = "موافق من رئيس مجلس الإدارة";
+                updateData.managerStatus = "موافق من المدير العام";
             }
 
             db.collection("leaves").doc(docId).update(updateData).then(() => {
-                showCustomAlert("تم بنجاح", "تمت الموافقة وتحويل الطلب للمرحلة التالية.");
+                showCustomAlert("تم بنجاح", "تم اعتماد الطلب وتحديث مرحلته بنجاح.");
                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
             }).catch(() => { showCustomAlert("خطأ", "تعذر الاعتماد."); });
         }).catch(() => { showCustomAlert("خطأ", "تعذر الاعتماد."); });
@@ -2533,7 +2628,7 @@
             };
 
             db.collection("leaves").doc(docId).update(updateData).then(() => {
-                showCustomAlert("تم بنجاح", "تم رفض الطلب من المدير العام وأرشفته فوراً.");
+                showCustomAlert("تم بنجاح", "تم رفض الطلب وأرشفته فوراً.");
                 loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
             }).catch(() => { showCustomAlert("خطأ", "تعذر الرفض."); });
         };
@@ -2599,6 +2694,12 @@
             } else if (item.leaveType === "طلب عودة من انقطاع") {
                 if (item.hrReturnStatus === "قيد الانتظار") wmText += "مدير عام الموارد البشرية";
                 else wmText += "المدير العام التابع (العلم وتسليم العمل)";
+            } else if (item.workflowRoute === "from_central_head") {
+                wmText += item.chairmanApproval === "موافق من رئيس مجلس الإدارة" ? "المختص (الاعتماد النهائي والأرشفة)" : "رئيس مجلس الإدارة";
+            } else if (item.workflowRoute === "from_general_manager") {
+                if (item.centralManagerApproval !== "موافق من رئيس الإدارة المركزية") wmText += "رئيس الإدارة المركزية";
+                else if (item.chairmanApproval !== "موافق من رئيس مجلس الإدارة") wmText += "رئيس مجلس الإدارة";
+                else wmText += "المختص (الاعتماد النهائي والأرشفة)";
             } else {
                 if (item.specialistStatus === "قيد الانتظار") wmText += "الموظف المختص";
                 else if (item.managerStatus === "قيد الانتظار") wmText += "المدير العام التابع";
@@ -2665,8 +2766,8 @@
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، وذلك نظراً لـ: <strong>${item.reason}</strong>.`;
         
-        let approverName = item.mgrName || item.targetManager || ".................................";
-        let rawMgrDept = item.targetManager || "الشئون الإدارية";
+        let approverName = item.mgrName || item.responsibleManager || item.targetManager || ".................................";
+        let rawMgrDept = item.responsibleManager || item.targetManager || "الشئون الإدارية";
         let deducedDept = rawMgrDept.replace(/^مدير\s+عام\s+/i, "إدارة ");
 
         let stepsTextForPrint = "";
@@ -2681,6 +2782,17 @@
                 - الموظف المختص: <b>مقدم الطلب</b><br>
                 - مدير عام الموارد البشرية (الاعتماد وتفعيل الحساب): <b>${item.hrReturnStatus || 'قيد الانتظار'}</b><br>
                 - المدير العام التابع (${item.targetManager || 'غير محدد'} - للعلم وتسليم العمل): <b>${item.managerReturnStatus || 'قيد الانتظار'}</b>
+            `;
+        } else if (item.workflowRoute === "from_central_head") {
+            stepsTextForPrint = `
+                - المدير المسؤول (رئيس مجلس الإدارة): <b>${item.chairmanApproval || item.managerStatus || 'قيد الانتظار'}</b><br>
+                - الموظف المختص (الاعتماد النهائي والأرشفة): <b>${item.hrStatus || 'قيد الانتظار'}</b>
+            `;
+        } else if (item.workflowRoute === "from_general_manager") {
+            stepsTextForPrint = `
+                - المدير المسؤول (رئيس الإدارة المركزية): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
+                - رئيس مجلس الإدارة: <b>${item.chairmanApproval || 'قيد الانتظار'}</b><br>
+                - الموظف المختص (الاعتماد النهائي والأرشفة): <b>${item.hrStatus || 'قيد الانتظار'}</b>
             `;
         } else {
             stepsTextForPrint = `
@@ -2719,7 +2831,7 @@
                     </div>
                     <div class="title">${titleText}</div>
                     <div class="content">
-                        <p><strong>${item.titlePrefix || 'السيد المهندس /'}</strong> ${item.targetManager}</p>
+                        <p><strong>${item.titlePrefix || 'السيد المهندس /'}</strong> ${item.responsibleManager || item.targetManager}</p>
                         <p>تحية طيبة وبعد،،،</p>
                         <p>أرجو التكرم <strong>${requestVerb} والاطلاع</strong> ${requestPhrase}${durationText} اعتبارا من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${reasonText}</p>
                         ${absenceHtml}
@@ -2733,7 +2845,7 @@
                             <p><strong>الرقم القومي:</strong> ${item.nationalId}</p>
                         </div>
                         <div style="text-align: left;">
-                            <p><strong>المدير العام المسؤول،،</strong></p>
+                            <p><strong>المدير المسؤول،،</strong></p>
                             <p style="margin-top: 35px; font-weight:900; font-size: 18px; color: #1a365d;">${approverName}</p>
                         </div>
                     </div>
