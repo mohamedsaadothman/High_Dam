@@ -1503,8 +1503,8 @@
             .replace(/ة/g, "ه");
     }
 
-    // (1 & 4) تحديد مسار الدورة المستندية وتوجيه الطلب بدقة:
-    // أ- مقدم الطلب مدير عام: مدير عام مقدم الطلب -> رئيس الإدارة المركزية -> رئيس مجلس الإدارة -> الموظف المختص (الأرشفة وخصم الرصيد)
+    // تحديد مسار الدورة المستندية وتوجيه الطلب بدقة:
+    // أ- مقدم الطلب مدير عام: مدير عام مقدم الطلب -> رئيس الإدارة المركزية التابع له -> رئيس مجلس الإدارة -> الموظف المختص (الأرشفة وخصم الرصيد)
     // ب- مقدم الطلب رئيس الإدارة المركزية: رئيس الإدارة المركزية مقدم الطلب -> رئيس مجلس الإدارة مباشرة -> الموظف المختص (الأرشفة وخصم الرصيد)
     function getWorkflowByDepartment(userData) {
         let deptVal = String((userData && userData.department) || "").trim();
@@ -1898,7 +1898,9 @@
                     daysAnnual: dAnnual,
                     daysPrev: dPrev,
                     specialistStatus: initialSpecialistStatus,    
-                    managerStatus: "قيد الانتظار",        
+                    managerStatus: "قيد الانتظار",
+                    centralManagerApproval: deptWorkflow && deptWorkflow.routeType === "from_general_manager" ? "قيد الانتظار" : "",
+                    chairmanApproval: "قيد الانتظار",
                     hrStatus: "قيد الانتظار",            
                     rejectionReason: "",
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2623,14 +2625,20 @@
                             }
                         }
                     } 
-                    else if (isCentralHead && data.workflowRoute === "from_general_manager" && (isTargetManager || deptName === "رئيس الإدارة المركزية")) {
-                        currentLeavesData.push(data);
+                    else if (data.workflowRoute === "from_general_manager") {
+                        let approvedByCentralHead = (data.centralManagerApproval === "موافق من رئيس الإدارة المركزية");
+                        if (isCentralHead && (isTargetManager || deptName === "رئيس الإدارة المركزية" || !approvedByCentralHead)) {
+                            currentLeavesData.push(data);
+                        } else if (isChairman && approvedByCentralHead) {
+                            currentLeavesData.push(data);
+                        }
                     }
-                    else if (isChairman && (
-                        data.workflowRoute === "from_central_head" ||
-                        (data.workflowRoute === "from_general_manager" && data.centralManagerApproval === "موافق من رئيس الإدارة المركزية") ||
-                        data.targetManager === "رئيس مجلس الإدارة"
-                    )) {
+                    else if (data.workflowRoute === "from_central_head") {
+                        if (isChairman) {
+                            currentLeavesData.push(data);
+                        }
+                    }
+                    else if (isChairman && data.targetManager === "رئيس مجلس الإدارة") {
                         currentLeavesData.push(data);
                     }
                     else if (isTargetManager) {
@@ -3216,7 +3224,6 @@
         performPrint(item);
     }
 
-    // (2) صياغة اسم الإدارة أسفل الهيئة العامة للسد العالي وخزان أسوان من مسمى المدير العام أو رئيس الإدارة المركزية
     function formatDepartmentNameForPrint(rawSource) {
         let s = String(rawSource || "").trim();
         if (!s) return "الشئون الإدارية";
@@ -3241,8 +3248,8 @@
         return formatDepartmentNameForPrint(targetSource);
     }
 
-    // (3) صياغة "المدير المسئول":
-    // إذا كان من مدير عام: "المدير المسئول" وتحتها "رئيس الإدارة المركزية..." وتحتها اسمه
+    // صياغة "المدير المسئول":
+    // إذا كان من مدير عام: "المدير المسئول" وتحتها "رئيس الإدارة المركزية التابع له..." وتحتها اسمه
     // إذا كان من رئيس الإدارة المركزية: "المدير المسئول" وتحتها "رئيس مجلس الإدارة" وتحتها اسمه
     function getResponsibleBlockHtml(item) {
         let requesterDept = String(item.employeeDepartment || item.employeeJobTitle || item.empName || "").trim();
@@ -3269,7 +3276,10 @@
 
         if (isFromGeneralManager) {
             let centralMgrLabel = item.centralManager || item.responsibleManager || item.targetManager || "رئيس الإدارة المركزية";
-            let centralMgrName = item.mgrName || ".................................";
+            if (normalizeArabicText(centralMgrLabel).includes("رئيس مجلس الاداره")) {
+                centralMgrLabel = "رئيس الإدارة المركزية";
+            }
+            let centralMgrName = item.centralManagerName || item.mgrName || ".................................";
             return `
                 <p><strong>المدير المسئول</strong></p>
                 <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">${centralMgrLabel}</p>
@@ -3283,6 +3293,17 @@
             <p style="margin-top: 6px; font-weight: 900; font-size: 16px; color: #1a365d;">${item.responsibleManager || item.targetManager || "المدير العام"}</p>
             <p style="margin-top: 6px; font-weight: 800; font-size: 15px; color: #0f172a;">${approverName}</p>
         `;
+    }
+
+    function formatLeaveRequestTitle(leaveType) {
+        let t = String(leaveType || "").trim();
+        if (!t) return "طلب إجازة";
+        if (t === "التبليغ عن منقطع") return "طلب التبليغ عن منقطع";
+        if (t === "طلب عودة من انقطاع") return "طلب عودة من انقطاع وتسليم العمل";
+        if (t === "تصريح نصف يوم") return "طلب تصريح نصف يوم";
+        if (t.startsWith("طلب إجازة") || t.startsWith("طلب اجازة")) return t;
+        if (t.startsWith("إجازة") || t.startsWith("اجازة")) return "طلب " + t;
+        return "طلب إجازة " + t;
     }
 
     function performPrint(item) {
@@ -3324,22 +3345,21 @@
             requestPhrase = `بشأن عودة الموظف / <strong>${item.empName}</strong> وتسليمه العمل`;
         }
 
-        let titleText = "";
-        if (item.leaveType === "التبليغ عن منقطع") {
-            titleText = `طلب التبليغ عن منقطع`;
-        } else if (item.leaveType === "طلب عودة من انقطاع") {
-            titleText = `طلب عودة من انقطاع وتسليم العمل`;
-        } else if (item.leaveType.includes("إجازة")) {
-            titleText = `طلب ${item.leaveType}`;
-        } else {
-            titleText = `طلب ${item.leaveType}`;
-        }
+        let titleText = formatLeaveRequestTitle(item.leaveType);
 
         let durationText = isAbsence ? '' : ` لمدة (<strong>${item.daysCount} أيام</strong>)،`;
         let reasonText = isAbsence ? '.' : `، وذلك نظراً لـ: <strong>${item.reason}</strong>.`;
         
         let deducedDept = getPrintedDepartmentLabel(item);
         let responsibleBlockHtml = getResponsibleBlockHtml(item);
+
+        let addresseeLabel = item.responsibleManager || item.targetManager || "";
+        if (item.workflowRoute === "from_general_manager") {
+            addresseeLabel = item.centralManager || item.responsibleManager || item.targetManager || "رئيس الإدارة المركزية";
+            if (normalizeArabicText(addresseeLabel).includes("رئيس مجلس الاداره")) {
+                addresseeLabel = "رئيس الإدارة المركزية";
+            }
+        }
 
         let stepsTextForPrint = "";
         if (item.leaveType === "التبليغ عن منقطع") {
@@ -3363,7 +3383,7 @@
         } else if (item.workflowRoute === "from_general_manager") {
             stepsTextForPrint = `
                 - مدير عام مقدم الطلب<br>
-                - رئيس الإدارة المركزية (${item.centralManager || item.targetManager || 'غير محدد'}): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
+                - رئيس الإدارة المركزية (${item.centralManager || item.responsibleManager || item.targetManager || 'غير محدد'}): <b>${item.centralManagerApproval || 'قيد الانتظار'}</b><br>
                 - رئيس مجلس الإدارة: <b>${item.chairmanApproval || 'قيد الانتظار'}</b><br>
                 - الموظف المختص (الأرشفة وخصم الرصيد): <b>${item.hrStatus || 'قيد الانتظار'}</b>
             `;
@@ -3404,7 +3424,7 @@
                     </div>
                     <div class="title">${titleText}</div>
                     <div class="content">
-                        <p><strong>${item.titlePrefix || 'السيد المهندس /'}</strong> ${item.responsibleManager || item.targetManager}</p>
+                        <p><strong>${item.titlePrefix || 'السيد المهندس /'}</strong> ${addresseeLabel}</p>
                         <p>تحية طيبة وبعد،،،</p>
                         <p>أرجو التكرم <strong>${requestVerb} والاطلاع</strong> ${requestPhrase}${durationText} اعتبارا من تاريخ <strong>${formatDateToAr(item.startDate)}</strong> ${item.endDate ? 'وحتى تاريخ <strong>' + formatDateToAr(item.endDate) + '</strong>' : ''}${reasonText}</p>
                         ${absenceHtml}
@@ -4285,28 +4305,31 @@
                     <td>${emp._sick}</td>
                     <td>${emp._sick259}</td>
                     <td>${emp._prevBal}</td>
-                    ${showConsumedCol ? `<td style="color:#dc2626; font-weight:bold;">${emp._consumedInPeriod}</td>` : ''}
-                    <td style="font-weight:bold; color:${emp._retiredInPeriod ? '#991b1b' : '#198754'}; font-size:14px;">${emp._remaining}</td>
+                    ${showConsumedCol ? `<td style="color:#dc2626; font-weight:800;">${emp._consumedInPeriod}</td>` : ''}
+                    <td style="font-weight:bold; background:${emp._retiredInPeriod ? '#fecaca' : '#f0fdf4'}; color:${emp._retiredInPeriod ? '#7f1d1d' : '#0f172a'};">${emp._remaining}</td>
                 </tr>
             `;
         });
         
-        if(count === 0) html += `<tr><td colspan="${showConsumedCol ? 11 : 10}">لا يوجد موظفين متواجدين خلال هذه الفترة</td></tr>`;
+        if (count === 0) {
+            html += `<tr><td colspan="${showConsumedCol ? 11 : 10}">لا يوجد موظفون مطابقون للبحث أو الفترة المحددة.</td></tr>`;
+        }
         html += `</tbody></table>`;
         document.getElementById("specialistDataContainer").innerHTML = html;
 
-        if (selectedNationalId && listToRender.length > 0) {
-            let inp = document.getElementById("remainingSearchInput");
-            if (inp) inp.value = listToRender[0].name || "";
+        let inp = document.getElementById("remainingSearchInput");
+        if (inp && selectedNationalId) {
+            let found = currentRemainingEmployeesList.find(e => String(e.nationalId) === String(selectedNationalId));
+            if (found) inp.value = found.name;
         }
     }
 
-    function handleRemainingSearchInput(val) {
-        let cat = document.getElementById("hiddenJobCategory").value;
+    function handleRemainingSearchInput(query) {
         let suggestBox = document.getElementById("remainingSearchSuggestions");
+        let cat = document.getElementById("hiddenJobCategory").value;
         if (!suggestBox) return;
 
-        let q = String(val || "").trim().toLowerCase();
+        let q = String(query || "").trim().toLowerCase();
         if (!q) {
             suggestBox.style.display = "none";
             renderRemainingEmployeesSection(cat, null);
@@ -4314,8 +4337,7 @@
         }
 
         let matches = currentRemainingEmployeesList.filter(emp =>
-            (emp.name && emp.name.toLowerCase().includes(q)) ||
-            (emp.nationalId && String(emp.nationalId).includes(q))
+            emp.name && emp.name.toLowerCase().includes(q)
         );
 
         if (matches.length > 0) {
@@ -4323,8 +4345,8 @@
             matches.slice(0, 8).forEach(emp => {
                 let div = document.createElement("div");
                 div.className = "suggestion-item";
-                let retTag = emp._retiredInPeriod ? ` <span style="color:#dc2626; font-weight:800;">(معاش: ${formatDateToAr(emp._pensionDate)})</span>` : "";
-                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId}${retTag}`;
+                let retiredTag = emp._retiredInPeriod ? ' <span style="color:#dc2626; font-weight:800;">(خرج على المعاش)</span>' : '';
+                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId} — رصيد متبقي: <b>${emp._remaining}</b>${retiredTag}`;
                 div.onclick = function() {
                     suggestBox.style.display = "none";
                     renderRemainingEmployeesSection(cat, emp.nationalId);
@@ -4333,27 +4355,31 @@
             });
             suggestBox.style.display = "block";
         } else {
-            suggestBox.innerHTML = '<div style="padding:8px; text-align:center; color:#dc3545;">لا يوجد موظف مطابق في القائمة المعروضة</div>';
+            suggestBox.innerHTML = '<div style="padding:10px; text-align:center; color:#dc3545;">لا يوجد موظف بهذا الاسم</div>';
             suggestBox.style.display = "block";
         }
     }
 
     function loadRetiredEmployeesInPeriod() {
         let cat = document.getElementById("hiddenJobCategory").value;
-        if (!cat) return showCustomAlert("تنبيه", "الفئة غير محددة.");
+        if (!cat) {
+            showCustomAlert("تنبيه", "الفئة غير محددة.");
+            return;
+        }
 
         let fromDate = document.getElementById("retiredPeriodStartDate").value;
         let toDate = document.getElementById("retiredPeriodEndDate").value;
-        if (!fromDate || !toDate) {
-            showCustomAlert("تنبيه", "يرجى تحديد تاريخ البداية وتاريخ النهاية لفترة الإحالة للمعاش (من - إلى).");
+
+        if (!fromDate && !toDate) {
+            showCustomAlert("تنبيه", "يرجى تحديد تاريخ البداية أو النهاية (من تاريخ - إلى تاريخ) لعرض المُحالين للمعاش خلال الفترة.");
             return;
         }
-        if (toDate < fromDate) {
+        if (fromDate && toDate && toDate < fromDate) {
             showCustomAlert("خطأ في الفترة", "تاريخ النهاية يجب أن يكون أكبر من أو يساوي تاريخ البداية.");
             return;
         }
 
-        currentRetiredPeriodFilter = { fromDate, toDate };
+        currentRetiredPeriodFilter = { fromDate: fromDate, toDate: toDate };
         let container = document.getElementById("retiredPeriodContainer");
         container.innerHTML = '<p style="text-align:center; padding:12px; color:#991b1b; font-weight:700;">جاري البحث عن المُحالين للمعاش خلال الفترة...</p>';
 
@@ -4363,46 +4389,47 @@
                 let data = doc.data();
                 if (!String(data.jobCategory || "").includes(cat)) return;
                 let pensionVal = getPensionDateFromData(data);
-                let normPension = normalizeDateStr(pensionVal);
-                if (!normPension) return;
-                if (normPension >= fromDate && normPension <= toDate) {
+                if (isRetiredWithinPeriod(pensionVal, fromDate, toDate)) {
                     let annual = parseFloat(data.annual) || 0;
                     let casual = parseFloat(data.casual) || 0;
                     let prevBal = parseFloat(data.prevBal) || 0;
                     retiredList.push({
-                        ...data,
                         docId: doc.id,
-                        _pensionDate: normPension,
-                        _annual: annual,
-                        _casual: casual,
-                        _sick: data.sick || 0,
-                        _sick259: data.sick259 || 'لا',
-                        _prevBal: prevBal,
-                        _lastRemaining: annual + casual + prevBal
+                        name: data.name || "",
+                        nationalId: data.nationalId || "",
+                        pensionDate: normalizeDateStr(pensionVal),
+                        annual: annual,
+                        casual: casual,
+                        sick: data.sick || 0,
+                        sick259: data.sick259 || "لا",
+                        prevBal: prevBal,
+                        lastRemaining: annual + casual + prevBal
                     });
                 }
             });
 
-            retiredList.sort((a, b) => a._pensionDate.localeCompare(b._pensionDate));
+            retiredList.sort((a, b) => a.pensionDate.localeCompare(b.pensionDate));
             currentRetiredInPeriodList = retiredList;
-            renderRetiredEmployeesInPeriodTable(cat);
+            renderRetiredEmployeesPeriodTable(cat);
         }).catch(() => {
-            showCustomAlert("خطأ", "تعذر تحميل بيانات المُحالين للمعاش.");
+            container.innerHTML = '<p style="text-align:center; color:#dc3545; font-weight:700;">تعذر جلب بيانات المُحالين للمعاش.</p>';
         });
     }
 
-    function renderRetiredEmployeesInPeriodTable(cat) {
+    function renderRetiredEmployeesPeriodTable(cat) {
         let container = document.getElementById("retiredPeriodContainer");
-        let { fromDate, toDate } = currentRetiredPeriodFilter;
+        let fromDate = currentRetiredPeriodFilter.fromDate;
+        let toDate = currentRetiredPeriodFilter.toDate;
+        let periodText = `${fromDate ? 'من ' + formatDateToAr(fromDate) : 'البداية'} ${toDate ? 'إلى ' + formatDateToAr(toDate) : 'النهاية'}`;
 
         let html = `
-            <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #fca5a5;">
+            <div style="background:#fff; border:1.5px solid #fca5a5; border-radius:10px; padding:12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
                     <div style="font-size:13px; font-weight:900; color:#991b1b;">
-                        المُحالون للمعاش — فئة (${cat}) من ${formatDateToAr(fromDate)} إلى ${formatDateToAr(toDate)} — العدد: (${currentRetiredInPeriodList.length})
+                        المُحالون للمعاش خلال الفترة (${periodText}) — الفئة: ${cat} — العدد: (${currentRetiredInPeriodList.length})
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <button type="button" class="act-btn btn-ex" onclick="exportRetiredPeriodExcel('${cat}')"><i class="fas fa-file-excel"></i> تصدير لإكسل</button>
+                        <button type="button" class="act-btn btn-ex" onclick="exportRetiredPeriodExcel('${cat}')"><i class="fas fa-file-excel"></i> تصدير إكسل</button>
                         <button type="button" class="act-btn btn-pd" onclick="printRetiredPeriodPDF('${cat}')"><i class="fas fa-print"></i> طباعة PDF</button>
                     </div>
                 </div>
@@ -4410,7 +4437,7 @@
                     <thead>
                         <tr>
                             <th>م</th>
-                            <th>اسم الموظف</th>
+                            <th>الاسم</th>
                             <th>الرقم القومي</th>
                             <th>تاريخ المعاش (pensionDate)</th>
                             <th>اعتيادي</th>
@@ -4425,7 +4452,7 @@
         `;
 
         if (currentRetiredInPeriodList.length === 0) {
-            html += `<tr><td colspan="10" style="padding:14px; font-weight:700; color:#64748b;">لا يوجد موظفون خرجوا على المعاش خلال هذه الفترة الزمنية.</td></tr>`;
+            html += `<tr><td colspan="10">لا يوجد موظفون خرجوا على المعاش خلال هذه الفترة الزمنية.</td></tr>`;
         } else {
             currentRetiredInPeriodList.forEach((emp, idx) => {
                 html += `
@@ -4433,13 +4460,13 @@
                         <td>${idx + 1}</td>
                         <td style="text-align:right; font-weight:800;">${emp.name}</td>
                         <td>${emp.nationalId}</td>
-                        <td style="font-weight:900;">${formatDateToAr(emp._pensionDate)}</td>
-                        <td>${emp._annual}</td>
-                        <td>${emp._casual}</td>
-                        <td>${emp._sick}</td>
-                        <td>${emp._sick259}</td>
-                        <td>${emp._prevBal}</td>
-                        <td style="font-weight:900; font-size:14px;">${emp._lastRemaining}</td>
+                        <td style="font-weight:900;">${formatDateToAr(emp.pensionDate)}</td>
+                        <td>${emp.annual}</td>
+                        <td>${emp.casual}</td>
+                        <td>${emp.sick}</td>
+                        <td>${emp.sick259}</td>
+                        <td>${emp.prevBal}</td>
+                        <td style="font-weight:900; background:#fecaca;">${emp.lastRemaining}</td>
                     </tr>
                 `;
             });
@@ -4450,44 +4477,71 @@
     }
 
     function exportRetiredPeriodExcel(cat) {
-        let tbl = document.getElementById("retiredPeriodTable");
-        if (!tbl) return;
-        let wb = XLSX.utils.table_to_book(tbl);
+        let table = document.getElementById("retiredPeriodTable");
+        if (!table) return;
+        let wb = XLSX.utils.table_to_book(table);
         XLSX.writeFile(wb, `المحالون_للمعاش_${cat}.xlsx`);
     }
 
     function printRetiredPeriodPDF(cat) {
-        let tbl = document.getElementById("retiredPeriodTable");
-        if (!tbl) return;
-        let { fromDate, toDate } = currentRetiredPeriodFilter;
+        let table = document.getElementById("retiredPeriodTable");
+        if (!table) return;
+        let fromDate = currentRetiredPeriodFilter.fromDate;
+        let toDate = currentRetiredPeriodFilter.toDate;
+        let periodText = `${fromDate ? 'من ' + formatDateToAr(fromDate) : 'البداية'} ${toDate ? 'إلى ' + formatDateToAr(toDate) : 'النهاية'}`;
         let win = window.open('', '_blank');
         win.document.write(`
             <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
-            <title>المُحالون للمعاش - ${cat}</title>
+            <title>المحالون للمعاش - ${cat}</title>
             <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-            <style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} h2,h3{text-align:center; margin:4px 0;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#991b1b; color:#fff;}</style>
-            </head><body>
-            <h2>كشف المُحالين للمعاش خلال فترة زمنية</h2>
-            <h3>الفئة: ${cat} | الفترة: من ${formatDateToAr(fromDate)} إلى ${formatDateToAr(toDate)}</h3>
-            ${tbl.outerHTML}
+            <style>
+                body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
+                .header{text-align:center; margin-bottom:20px; border-bottom:2px solid #991b1b; padding-bottom:10px;}
+                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
+                th,td{border:1px solid #333; padding:6px; text-align:center;}
+                th{background:#991b1b; color:#fff;}
+                tr.retired-in-period-row{background:#fee2e2; color:#7f1d1d;}
+            </style></head><body>
+            <div class="header">
+                <h2>كشف المُحالين للمعاش خلال فترة زمنية</h2>
+                <h3>الفئة: ${cat} | الفترة: ${periodText}</h3>
+            </div>
+            ${table.outerHTML}
             </body></html>
         `);
         win.document.close();
-        setTimeout(() => { win.focus(); win.print(); }, 400);
+        setTimeout(() => { win.focus(); win.print(); }, 500);
     }
 
     function exportEmployeesExcel(cat) {
-        let wb = XLSX.utils.table_to_book(document.getElementById("employeesTable"));
-        XLSX.writeFile(wb, `بيانات_الموظفين_${cat}.xlsx`);
+        let table = document.getElementById("employeesTable");
+        if(!table) return;
+        let wb = XLSX.utils.table_to_book(table);
+        XLSX.writeFile(wb, `بيانات_موظفي_${cat}.xlsx`);
     }
 
     function printEmployeesPDF(cat) {
-        let printContents = document.getElementById("employeesTable").outerHTML;
+        let table = document.getElementById("employeesTable");
+        if(!table) return;
         let win = window.open('', '_blank');
         win.document.write(`
-            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف الموظفين</title>
-            <style>body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;} table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;} th,td{border:1px solid #333; padding:6px; text-align:center;} th{background:#1e293b; color:#fff;}</style></head>
-            <body><h2>كشف بيانات الموظفين والأرصدة المتبقية - ${cat}</h2>${printContents}</body></html>
+            <!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+            <title>بيانات الموظفين - ${cat}</title>
+            <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+            <style>
+                body{font-family:Cairo,sans-serif; padding:20px; direction:rtl;}
+                .header{text-align:center; margin-bottom:20px; border-bottom:2px solid #000; padding-bottom:10px;}
+                table{width:100%; border-collapse:collapse; margin-top:15px; font-size:12px;}
+                th,td{border:1px solid #333; padding:6px; text-align:center;}
+                th{background:#1e293b; color:#fff;}
+                tr.retired-in-period-row{background:#fee2e2; color:#7f1d1d;}
+            </style></head><body>
+            <div class="header">
+                <h2>كشف الموظفين والرصيد المتبقي</h2>
+                <h3>الفئة: ${cat}</h3>
+            </div>
+            ${table.outerHTML}
+            </body></html>
         `);
         win.document.close();
         setTimeout(() => { win.focus(); win.print(); }, 500);
@@ -4496,129 +4550,103 @@
     function searchReturnEmployee(query) {
         let suggestBox = document.getElementById("searchReturnResults");
         if (!query || query.trim().length < 1) { suggestBox.style.display = "none"; return; }
-
         query = query.trim().toLowerCase();
-        db.collection("users").where("status", "==", "inactive").get().then((snapshot) => {
-            let matches = [];
-            snapshot.forEach(doc => {
-                let data = doc.data();
-                if ((data.name && data.name.toLowerCase().includes(query)) || (data.nationalId && data.nationalId.includes(query))) {
-                    matches.push({ name: data.name, nationalId: data.nationalId });
-                }
-            });
+        
+        let matches = currentEmployeesList.filter(emp => 
+            emp.status === 'inactive' && !isEmployeeRetired(emp.nationalId, getPensionDateFromData(emp)) &&
+            ((emp.name && emp.name.toLowerCase().includes(query)) || 
+             (emp.nationalId && emp.nationalId.includes(query)))
+        );
 
-            if (matches.length > 0) {
-                suggestBox.innerHTML = "";
-                matches.slice(0, 5).forEach(m => {
-                    let div = document.createElement("div");
-                    div.className = "suggestion-item";
-                    div.innerHTML = `<i class="fas fa-user-clock" style="margin-left:5px; color:#dc3545;"></i> <strong>${m.name}</strong> - ${m.nationalId} <span style="color:red; font-size:10px;">(منقطع / موقوف)</span>`;
-                    div.onclick = function() { openReturnModal(m.nationalId, m.name); };
-                    suggestBox.appendChild(div);
-                });
-                suggestBox.style.display = "block";
-            } else {
-                suggestBox.innerHTML = '<div style="padding:10px; text-align:center; color:#64748b;">لا يوجد موظف موقوف مطابق</div>';
-                suggestBox.style.display = "block";
-            }
-        }).catch(() => {});
+        if (matches.length > 0) {
+            suggestBox.innerHTML = "";
+            matches.slice(0, 5).forEach(emp => {
+                let div = document.createElement("div");
+                div.className = "suggestion-item";
+                div.innerHTML = `<strong>${emp.name}</strong> - ${emp.nationalId} <button type="button" class="act-btn btn-ex" style="padding:3px 8px; font-size:10px; margin-right:10px;">تسجيل عودة</button>`;
+                div.onclick = function() { openReturnFromAbsenceModal(emp); };
+                suggestBox.appendChild(div);
+            });
+            suggestBox.style.display = "block";
+        } else {
+            suggestBox.innerHTML = '<div style="padding:10px; text-align:center; color:#dc3545;">لا يوجد موظف موقوف (منقطع) بهذا الاسم أو الرقم القومي</div>';
+            suggestBox.style.display = "block";
+        }
     }
 
-    function openReturnModal(nationalId, empName) {
+    function openReturnFromAbsenceModal(emp) {
         document.getElementById("searchReturnResults").style.display = "none";
-        document.getElementById("returnEmpNationalId").value = nationalId;
-        document.getElementById("returnEmpNameDisplay").innerText = empName;
-        
-        let todayStr = new Date().toISOString().split('T')[0];
-        let retInput = document.getElementById("returnDate");
-        retInput.value = todayStr;
-        retInput.min = "";
-        delete retInput.dataset.minDate;
+        document.getElementById("searchReturnInput").value = emp.name;
+        document.getElementById("returnEmpNationalId").value = emp.nationalId;
+        document.getElementById("returnEmpNameDisplay").innerText = emp.name;
+        document.getElementById("returnDate").value = new Date().toISOString().split('T')[0];
 
-        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then((snapshot) => {
-            let startDateStr = "غير محدد";
-            snapshot.forEach(doc => {
-                let d = doc.data();
-                if (d.startDate) {
-                    startDateStr = formatDateToAr(d.startDate);
-                    retInput.min = d.startDate;
-                    retInput.dataset.minDate = d.startDate;
+        loadTargetManagers();
+
+        db.collection("leaves")
+            .where("nationalId", "==", emp.nationalId)
+            .where("leaveType", "==", "التبليغ عن منقطع")
+            .get()
+            .then(q => {
+                let startDate = "غير محدد";
+                if (!q.empty) {
+                    let absData = q.docs[0].data();
+                    startDate = absData.startDate || "غير محدد";
                 }
-            });
-            document.getElementById("returnStartDateDisplay").innerText = startDateStr;
-            loadTargetManagers();
-            document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
-        }).catch(() => {
-            document.getElementById("returnStartDateDisplay").innerText = "غير محدد";
-            loadTargetManagers();
-            document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
-        });
+                document.getElementById("returnStartDateDisplay").innerText = startDate;
+            }).catch(() => {});
+
+        document.getElementById("returnFromAbsenceModal").classList.remove("hidden");
     }
 
     function submitReturnFromAbsence() {
-        let nationalId = document.getElementById("returnEmpNationalId").value;
+        let nid = document.getElementById("returnEmpNationalId").value;
         let empName = document.getElementById("returnEmpNameDisplay").innerText;
         let returnDate = document.getElementById("returnDate").value;
+        let startDate = document.getElementById("returnStartDateDisplay").innerText;
         let calcType = document.getElementById("returnCalcType").value;
-        let targetMgr = document.getElementById("returnTargetManager").value;
-        let category = document.getElementById("hiddenJobCategory").value;
+        let targetManager = document.getElementById("returnTargetManager").value;
+        let cat = document.getElementById("hiddenJobCategory").value;
 
-        if (!returnDate) { showCustomAlert("خطأ", "يرجى إدخال تاريخ العودة."); return; }
-        if (!targetMgr) { showCustomAlert("خطأ", "يرجى اختيار المدير العام التابع له."); return; }
+        if (!returnDate) { showCustomAlert("تنبيه", "يرجى إدخال تاريخ العودة."); return; }
+        if (!targetManager) { showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له."); return; }
 
-        db.collection("leaves").where("nationalId", "==", nationalId).where("leaveType", "==", "التبليغ عن منقطع").get().then((snapshot) => {
-            let absenceStartDate = null;
-            snapshot.forEach(doc => {
-                let d = doc.data();
-                if (d.startDate) absenceStartDate = d.startDate;
-            });
+        let daysCount = 0;
+        if (startDate !== "غير محدد" && returnDate) {
+            let d1 = new Date(startDate);
+            let d2 = new Date(returnDate);
+            daysCount = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+            if (daysCount < 0) daysCount = 0;
+        }
 
-            if (absenceStartDate && returnDate < absenceStartDate) {
-                showCustomAlert("تاريخ غير منطقي", `تاريخ العودة (${formatDateToAr(returnDate)}) لا يمكن أن يكون قبل تاريخ بدء الانقطاع (${formatDateToAr(absenceStartDate)}).`);
-                return;
-            }
+        let randomId = "LR-" + Math.floor(100000 + Math.random() * 900000);
+        let returnData = {
+            requestId: randomId,
+            empName: empName,
+            nationalId: nid,
+            dept: targetManager,
+            targetManager: targetManager,
+            jobCategory: cat,
+            leaveType: "طلب عودة من انقطاع",
+            startDate: startDate !== "غير محدد" ? startDate : returnDate,
+            endDate: returnDate,
+            daysCount: daysCount,
+            absenceCalcType: calcType,
+            reason: `عودة من انقطاع بتاريخ ${returnDate} ومعالجة المدة كـ (${calcType})`,
+            hrReturnStatus: "قيد الانتظار",
+            managerReturnStatus: "قيد الانتظار",
+            hrStatus: "قيد الانتظار",
+            requestDate: new Date().toISOString().split('T')[0],
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
 
-            let daysCount = 0;
-            if (absenceStartDate && returnDate) {
-                let d1 = new Date(absenceStartDate);
-                let d2 = new Date(returnDate);
-                daysCount = Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)));
-            }
-
-            let randomId = "RET-" + Math.floor(100000 + Math.random() * 900000);
-            let returnRequestData = {
-                requestId: randomId,
-                empName: empName,
-                nationalId: nationalId,
-                dept: targetMgr,
-                jobCategory: category,
-                targetManager: targetMgr,
-                titlePrefix: "السيد المهندس /",
-                mgrName: targetMgr,
-                leaveType: "طلب عودة من انقطاع",
-                startDate: absenceStartDate || returnDate,
-                endDate: returnDate,
-                daysCount: daysCount,
-                absenceCalcType: calcType,
-                reason: `طلب عودة وتسليم عمل اعتباراً من ${formatDateToAr(returnDate)} (معالجة الانقطاع كـ: ${calcType})`,
-                phone: "-",
-                daysAnnual: 0,
-                daysPrev: 0,
-                specialistStatus: "مُنشأ من المختص",
-                hrReturnStatus: "قيد الانتظار",
-                managerReturnStatus: "قيد الانتظار",
-                hrStatus: "قيد الانتظار",
-                rejectionReason: "",
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                requestDate: new Date().toISOString().split('T')[0]
-            };
-
-            db.collection("leaves").add(returnRequestData).then(() => {
-                showCustomAlert("تم بنجاح", "تم إنشاء طلب العودة وإرساله إلى مدير عام الموارد البشرية للاعتماد وتفعيل الحساب، ثم يحال للمدير العام التابع للعلم وتسليمه العمل.");
-                document.getElementById("returnFromAbsenceModal").classList.add("hidden");
-                document.getElementById("searchReturnInput").value = "";
-            }).catch(() => { showCustomAlert("خطأ", "تعذر إرسال طلب العودة."); });
-        }).catch(() => { showCustomAlert("خطأ", "تعذر التحقق من تاريخ الانقطاع."); });
+        db.collection("leaves").add(returnData).then(() => {
+            document.getElementById("returnFromAbsenceModal").classList.add("hidden");
+            document.getElementById("searchReturnInput").value = "";
+            showCustomAlert("تم بنجاح", "تم إنشاء طلب العودة وإرساله مباشرة إلى مدير عام الموارد البشرية لاعتماده وتفعيل الحساب ثم تحويله للمدير العام التابع.");
+        }).catch(() => {
+            showCustomAlert("خطأ", "حدث خطأ أثناء إنشاء طلب العودة.");
+        });
     }
 </script>
 </body>
