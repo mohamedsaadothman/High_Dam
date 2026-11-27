@@ -951,7 +951,34 @@
     function isEnglishNumbers(str) { return /^[0-9]+$/.test(str); }
     function isValidArabicReason(reason) { let clean = reason.trim(); if (clean.length < 10) return false; if (!isArabicOnly(clean)) return false; if (/(.)\1{4,}/.test(clean)) return false; return true; }
 
-    function isEmployeeRetired(nationalId) {
+    function normalizeDateStr(val) {
+        if (!val) return "";
+        let s = String(val).trim();
+        let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+        if (m) {
+            return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+        }
+        let d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            let y = d.getFullYear();
+            let mo = String(d.getMonth() + 1).padStart(2, '0');
+            let da = String(d.getDate()).padStart(2, '0');
+            return `${y}-${mo}-${da}`;
+        }
+        return "";
+    }
+
+    function isEmployeeRetired(nationalId, retireDateVal) {
+        let today = new Date();
+        let todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        if (retireDateVal) {
+            let normRet = normalizeDateStr(retireDateVal);
+            if (normRet && todayStr >= normRet) {
+                return true;
+            }
+        }
+
         if (!nationalId || nationalId.length !== 14) return false;
         let centuryCode = nationalId.charAt(0);
         let yearPrefix = (centuryCode === '2') ? '19' : '20';
@@ -961,9 +988,19 @@
         
         let birthDate = new Date(birthYear, birthMonth, birthDay);
         let retireDate = new Date(birthDate.getFullYear() + 60, birthDate.getMonth(), birthDate.getDate());
-        let today = new Date();
         
         return today >= retireDate;
+    }
+
+    function markUserInactiveIfRetired(userDoc, userData) {
+        if (!userDoc || !userData) return Promise.resolve(false);
+        if (isEmployeeRetired(userData.nationalId, userData.retireDate)) {
+            if (String(userData.status || "").trim().toLowerCase() !== "inactive") {
+                userData.status = "inactive";
+                return userDoc.ref.update({ status: "inactive" }).then(() => true).catch(() => false);
+            }
+        }
+        return Promise.resolve(false);
     }
 
     function formatDateToAr(val) {
@@ -1085,6 +1122,31 @@
         loadTargetManagers();
     }
 
+    function getWorkflowByDepartment(deptVal) {
+        let d = String(deptVal || "").trim();
+        if (!d) return null;
+
+        if (d.includes("رئيس الإدارة المركزية") || d.includes("رئيس الادارة المركزية")) {
+            return {
+                routeType: "from_central_head",
+                initialTargetManager: "رئيس مجلس الإدارة",
+                workflowSteps: ["رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
+            };
+        }
+        if (d === "مدير عام" || d.startsWith("مدير عام")) {
+            return {
+                routeType: "from_general_manager",
+                initialTargetManager: "رئيس الإدارة المركزية",
+                workflowSteps: ["مدير عام", "رئيس الإدارة المركزية", "رئيس مجلس الإدارة", "الموظف المختص (الأرشفة)"]
+            };
+        }
+        return {
+            routeType: "custom_department",
+            initialTargetManager: d,
+            workflowSteps: [d, "الموظف المختص (الأرشفة)"]
+        };
+    }
+
     function verifyEmployeeForLeave() {
         let nid = document.getElementById("empNationalId").value.trim();
         let pass = document.getElementById("empLoginPassword").value.trim();
@@ -1099,10 +1161,9 @@
         btn.disabled = true;
 
         db.collection("users").where("nationalId", "==", nid).get().then((querySnapshot) => {
-            btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
-            btn.disabled = false;
-
             if (querySnapshot.empty) {
+                btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
+                btn.disabled = false;
                 showCustomAlert("خطأ", "هذا الرقم القومي غير مسجل بالنظام. يرجى مراجعة الموارد البشرية.");
                 return;
             }
@@ -1111,36 +1172,59 @@
             let userData = userDoc.data();
 
             if (userData.password !== pass) {
+                btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
+                btn.disabled = false;
                 showCustomAlert("خطأ", "كلمة المرور غير صحيحة.");
                 return;
             }
 
-            if (isEmployeeRetired(nid)) {
-                showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن الستون عاماً ولا يمكنه تقديم طلب إجازة.");
-                return;
-            }
+            markUserInactiveIfRetired(userDoc, userData).then(() => {
+                btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
+                btn.disabled = false;
 
-            let empStatus = String(userData.status || "active").trim().toLowerCase();
-            if (empStatus !== "active") {
-                showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً (منقطع). لا يمكنك تقديم طلبات، يرجى تسجيل العودة أولاً من صفحة المختص.");
-                return;
-            }
+                if (isEmployeeRetired(nid, userData.retireDate)) {
+                    showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن المعاش وتم تحديث حالته إلى غير نشط (inactive).");
+                    return;
+                }
 
-            currentSubmitEmpName = userData.name;
-            currentSubmitEmpNationalId = userData.nationalId;
-            currentSubmitEmpData = userData;
-            
-            let cat = String(userData.jobCategory || "التخصصية").trim();
-            if (cat.includes("تخصص")) cat = "التخصصية";
-            else if (cat.includes("فني")) cat = "الفنية";
-            else if (cat.includes("مكتب")) cat = "المكتبية";
-            else if (cat.includes("حرف")) cat = "الحرفية والخدمات المعاونة";
-            currentSubmitEmpCategory = cat;
-            
-            document.getElementById("verifiedEmpNameDisplay").innerText = userData.name;
-            
-            document.getElementById("authSection").classList.add("hidden");
-            document.getElementById("leaveTypeSelectionSection").classList.remove("hidden");
+                let empStatus = String(userData.status || "active").trim().toLowerCase();
+                if (empStatus !== "active") {
+                    showCustomAlert("تنبيه هام", "هذا الحساب غير نشط حالياً (منقطع). لا يمكنك تقديم طلبات، يرجى تسجيل العودة أولاً من صفحة المختص.");
+                    return;
+                }
+
+                currentSubmitEmpName = userData.name;
+                currentSubmitEmpNationalId = userData.nationalId;
+                currentSubmitEmpData = userData;
+                
+                let cat = String(userData.jobCategory || "التخصصية").trim();
+                if (cat.includes("تخصص")) cat = "التخصصية";
+                else if (cat.includes("فني")) cat = "الفنية";
+                else if (cat.includes("مكتب")) cat = "المكتبية";
+                else if (cat.includes("حرف")) cat = "الحرفية والخدمات المعاونة";
+                currentSubmitEmpCategory = cat;
+
+                let deptVal = String(userData.department || "").trim();
+                let wf = getWorkflowByDepartment(deptVal);
+                if (wf) {
+                    let tSelect = document.getElementById("targetManagerDept");
+                    if (tSelect) {
+                        let exists = Array.from(tSelect.options).some(o => o.value === wf.initialTargetManager);
+                        if (!exists) {
+                            let opt = document.createElement("option");
+                            opt.value = wf.initialTargetManager;
+                            opt.textContent = wf.initialTargetManager;
+                            tSelect.appendChild(opt);
+                        }
+                        tSelect.value = wf.initialTargetManager;
+                    }
+                }
+                
+                document.getElementById("verifiedEmpNameDisplay").innerText = userData.name;
+                
+                document.getElementById("authSection").classList.add("hidden");
+                document.getElementById("leaveTypeSelectionSection").classList.remove("hidden");
+            });
             
         }).catch((error) => {
             btn.innerHTML = '<i class="fas fa-user-check"></i> التحقق من الهوية';
@@ -1187,6 +1271,22 @@
         checkActivePendingRequest(() => {
             document.getElementById("leaveTypeSelectionSection").classList.add("hidden");
             document.getElementById("leaveFormContainer").classList.remove("hidden");
+
+            let deptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
+            let wf = getWorkflowByDepartment(deptVal);
+            if (wf) {
+                let tSelect = document.getElementById("targetManagerDept");
+                if (tSelect) {
+                    let exists = Array.from(tSelect.options).some(o => o.value === wf.initialTargetManager);
+                    if (!exists) {
+                        let opt = document.createElement("option");
+                        opt.value = wf.initialTargetManager;
+                        opt.textContent = wf.initialTargetManager;
+                        tSelect.appendChild(opt);
+                    }
+                    tSelect.value = wf.initialTargetManager;
+                }
+            }
             nextLeaveStep(1);
         });
     }
@@ -1252,6 +1352,12 @@
                     showCustomAlert("خطأ في التفاصيل", "يرجى إدخال عدد أيام الاعتيادي وعدد أيام رصيد السنوات السابقة بشكل صحيح.");
                     return;
                 }
+            }
+
+            let empDeptVal = String((currentSubmitEmpData && currentSubmitEmpData.department) || "").trim();
+            let deptWorkflow = getWorkflowByDepartment(empDeptVal);
+            if (deptWorkflow) {
+                targetManager = deptWorkflow.initialTargetManager;
             }
 
             if (!targetManager) { showCustomAlert("تنبيه", "يرجى اختيار المدير العام التابع له."); return; }
@@ -1338,6 +1444,9 @@
                     empName: currentSubmitEmpName,
                     nationalId: currentSubmitEmpNationalId,
                     dept: targetManager, 
+                    employeeDepartment: empDeptVal,
+                    workflowRoute: deptWorkflow ? deptWorkflow.routeType : "default",
+                    workflowSteps: deptWorkflow ? deptWorkflow.workflowSteps : ["الموظف المختص", targetManager, "الموظف المختص (الأرشفة)"],
                     jobCategory: currentSubmitEmpCategory, 
                     targetManager: targetManager, 
                     titlePrefix: titlePrefix,
@@ -1650,46 +1759,53 @@
         btn.disabled = true;
 
         db.collection("users").where("nationalId", "==", username).get().then((querySnapshot) => {
-            btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
-            btn.disabled = false;
-
             if (querySnapshot.empty) {
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+                btn.disabled = false;
                 document.getElementById("inquiryResultBox").classList.add("hidden");
                 document.getElementById("inquiryErrorBox").classList.remove("hidden");
                 return;
             }
 
-            let userData = querySnapshot.docs[0].data();
+            let userDoc = querySnapshot.docs[0];
+            let userData = userDoc.data();
             if (userData.password !== password) {
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+                btn.disabled = false;
                 document.getElementById("inquiryResultBox").classList.add("hidden");
                 document.getElementById("inquiryErrorBox").classList.remove("hidden");
                 return;
             }
 
-            currentInquiryNationalId = userData.nationalId;
-            currentInquiryName = userData.name;
-            
-            let annual = parseFloat(userData.annual) || 0;
-            let casual = parseFloat(userData.casual) || 0;
-            let prevBal = parseFloat(userData.prevBal) || 0;
-            let computedRemaining = annual + casual + prevBal;
+            markUserInactiveIfRetired(userDoc, userData).then(() => {
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+                btn.disabled = false;
 
-            document.getElementById("inquiryDataContainer").innerHTML = `
-                <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name}</div>
-                <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${userData.nationalId}</div>
-                <div class="inquiry-data-item"><strong>الفئة:</strong> ${userData.jobCategory || '-'}</div>
-                <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${annual}</span></div>
-                <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${casual}</span></div>
-                <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${userData.sick || 0}</span></div>
-                <div class="inquiry-data-item"><strong>مرضية 259:</strong> <span>${userData.sick259 || 'لا'}</span></div>
-                <div class="inquiry-data-item"><strong>رصيد سنوات سابقة:</strong> <span>${prevBal}</span></div>
-                <div class="inquiry-data-item" style="grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي (اعتيادي + عارضة + سنوات سابقة):</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${computedRemaining}</span></div>
-            `;
-            document.getElementById("inquiryResultBox").classList.remove("hidden");
-            document.getElementById("inquiryErrorBox").classList.add("hidden");
-            document.getElementById("empLoginBox").classList.add("hidden");
-            
-            loadEmployeeHistoryFirebase(userData.nationalId);
+                currentInquiryNationalId = userData.nationalId;
+                currentInquiryName = userData.name;
+                
+                let annual = parseFloat(userData.annual) || 0;
+                let casual = parseFloat(userData.casual) || 0;
+                let prevBal = parseFloat(userData.prevBal) || 0;
+                let computedRemaining = annual + casual + prevBal;
+
+                document.getElementById("inquiryDataContainer").innerHTML = `
+                    <div class="inquiry-data-item" style="grid-column: span 2;"><strong>الاسم:</strong> ${userData.name}</div>
+                    <div class="inquiry-data-item"><strong>الرقم القومي:</strong> ${userData.nationalId}</div>
+                    <div class="inquiry-data-item"><strong>الفئة:</strong> ${userData.jobCategory || '-'}</div>
+                    <div class="inquiry-data-item"><strong>الاعتيادية:</strong> <span>${annual}</span></div>
+                    <div class="inquiry-data-item"><strong>العارضة:</strong> <span>${casual}</span></div>
+                    <div class="inquiry-data-item"><strong>المرضية:</strong> <span>${userData.sick || 0}</span></div>
+                    <div class="inquiry-data-item"><strong>مرضية 259:</strong> <span>${userData.sick259 || 'لا'}</span></div>
+                    <div class="inquiry-data-item"><strong>رصيد سنوات سابقة:</strong> <span>${prevBal}</span></div>
+                    <div class="inquiry-data-item" style="grid-column: span 2; background: #e0f2fe;"><strong>الرصيد المتبقي (اعتيادي + عارضة + سنوات سابقة):</strong> <span style="font-size: 18px; font-weight: bold; color: #0369a1;">${computedRemaining}</span></div>
+                `;
+                document.getElementById("inquiryResultBox").classList.remove("hidden");
+                document.getElementById("inquiryErrorBox").classList.add("hidden");
+                document.getElementById("empLoginBox").classList.add("hidden");
+                
+                loadEmployeeHistoryFirebase(userData.nationalId);
+            });
 
         }).catch(() => {
             btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
@@ -1809,6 +1925,7 @@
 
             querySnapshot.forEach(doc => {
                 let data = doc.data();
+                markUserInactiveIfRetired(doc, data);
                 let role = String(data.role || "").trim();
                 let cm = String(data.centralManager || "").trim();
 
@@ -2369,14 +2486,33 @@
     }
 
     function processManagerAction(docId, status, defaultReason) {
-        let updateData = {
-            managerStatus: status,
-            rejectionReason: defaultReason
-        };
+        db.collection("leaves").doc(docId).get().then((doc) => {
+            let d = doc.exists ? doc.data() : {};
+            let updateData = {
+                managerStatus: status,
+                rejectionReason: defaultReason
+            };
 
-        db.collection("leaves").doc(docId).update(updateData).then(() => {
-            showCustomAlert("تم بنجاح", "تمت الموافقة وتحويل الطلب للمختص للاعتماد النهائي.");
-            loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+            if (d.workflowRoute === "from_general_manager" && currentDeptOrCat !== "رئيس الإدارة المركزية") {
+                updateData.targetManager = "رئيس الإدارة المركزية";
+                updateData.dept = "رئيس الإدارة المركزية";
+                updateData.managerStatus = "قيد الانتظار";
+                updateData.generalManagerApproval = "موافق من مدير عام";
+            } else if (d.workflowRoute === "from_general_manager" && currentDeptOrCat === "رئيس الإدارة المركزية") {
+                updateData.targetManager = "رئيس مجلس الإدارة";
+                updateData.dept = "رئيس مجلس الإدارة";
+                updateData.managerStatus = "قيد الانتظار";
+                updateData.centralManagerApproval = "موافق من رئيس الإدارة المركزية";
+            } else if (d.workflowRoute === "from_central_head" && currentDeptOrCat !== "رئيس مجلس الإدارة") {
+                updateData.targetManager = "رئيس مجلس الإدارة";
+                updateData.dept = "رئيس مجلس الإدارة";
+                updateData.managerStatus = "قيد الانتظار";
+            }
+
+            db.collection("leaves").doc(docId).update(updateData).then(() => {
+                showCustomAlert("تم بنجاح", "تمت الموافقة وتحويل الطلب للمرحلة التالية.");
+                loadDepartmentLeavesFirebase(currentDeptOrCat, loggedInRole, currentCategoryName);
+            }).catch(() => { showCustomAlert("خطأ", "تعذر الاعتماد."); });
         }).catch(() => { showCustomAlert("خطأ", "تعذر الاعتماد."); });
     }
 
@@ -2913,9 +3049,9 @@
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                     showCustomAlert(
-                        "تداخل في الفترة الزمنية - غير مسموح بالإرسال",
-                        `توجد فترة زمنية متداخلة مسبقاً لفئة (<b>${categoryLabel}</b>) من <b>${formatDateToAr(blockingReport.periodStart)}</b> إلى <b>${formatDateToAr(blockingReport.periodEnd)}</b> برقم تقرير (<b>${blockingReport.reportId || "-"}</b>) وحالته (<b>${blockingReport.status || "قيد المراجعة"}</b>).<br>
-                        لا يجوز إرسال تقرير يتداخل زمنياً مع فترة سابقة لنفس الفئة إلا إذا تم رفضه من إدارة الاستحقاقات والمزايا.`
+                        "الفترة مقفلة / يوجد تداخل في الفترة الزمنية",
+                        `تم إرسال تقرير مسبقاً لفئة (<b>${categoryLabel}</b>) عن الفترة من <b>${formatDateToAr(blockingReport.periodStart)}</b> إلى <b>${formatDateToAr(blockingReport.periodEnd)}</b> برقم تقرير (<b>${blockingReport.reportId || "-"}</b>) وحالته (<b>${blockingReport.status || "مقفل / قيد المراجعة"}</b>).<br>
+                        الفترة مقفلة ولا يمكن إرسال تقرير متداخل معها مرة أخرى للاستحقاقات إلا إذا تم رفضه من إدارة الاستحقاقات والمزايا.`
                     );
                     return;
                 }
@@ -2940,6 +3076,8 @@
                     employeesCount: payloadData.rows.length,
                     rows: payloadData.rows,
                     totals: payloadData.totals,
+                    isPeriodLocked: true,
+                    periodLockStatus: "locked",
                     status: isResubmissionAfterRejection ? "معاد إرساله للاستحقاقات" : "مرسل للاستحقاقات",
                     entitlementsStatus: "بانتظار مراجعة الاستحقاقات",
                     isRejectedFromEntitlements: false,
@@ -2958,8 +3096,8 @@
                         : "";
 
                     showCustomAlert(
-                        "تم الإرسال بنجاح",
-                        `تم إرسال التقرير التجميعي رقم (<b>${reportId}</b>) إلى إدارة الاستحقاقات والمزايا.<br>
+                        "تم الإرسال وقفل الفترة بنجاح",
+                        `تم إرسال التقرير التجميعي رقم (<b>${reportId}</b>) إلى إدارة الاستحقاقات والمزايا وتم قفل هذه الفترة الزمنية.<br>
                         <b>المختص:</b> ${reportDoc.specialistName}<br>
                         <b>الفئة:</b> ${reportDoc.requestCategory}<br>
                         <b>الفترة:</b> ${periodDisplayText} (${monthYearLabel})${resubmitNote}`
@@ -3009,6 +3147,7 @@
             
             querySnapshot.forEach(doc => {
                 let data = doc.data();
+                markUserInactiveIfRetired(doc, data);
                 let role = String(data.role || "").trim();
                 if (role.includes("اجازات") || role.includes("إجازات") || role.includes("مختص")) {
                     let opt = document.createElement("option");
@@ -3059,8 +3198,9 @@
     function submitAddEmployee(e) {
         e.preventDefault();
         let nationalIdVal = document.getElementById("newEmpNationalId").value.trim();
-        if (isEmployeeRetired(nationalIdVal)) {
-            showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن الستون عاماً ولا يمكن إضافته.");
+        let retireDateVal = document.getElementById("newEmpRetireDate").value;
+        if (isEmployeeRetired(nationalIdVal, retireDateVal)) {
+            showCustomAlert("تنبيه سن المعاش", "عذراً، هذا الموظف بلغ سن المعاش ولا يمكن إضافته.");
             return;
         }
         
@@ -3077,7 +3217,7 @@
                 department: "",
                 password: document.getElementById("newEmpPassword").value,
                 hireDate: document.getElementById("newEmpHireDate").value,
-                retireDate: document.getElementById("newEmpRetireDate").value,
+                retireDate: retireDateVal,
                 annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
                 casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
                 sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
@@ -3163,13 +3303,19 @@
         let docId = document.getElementById("editingEmpDocId").value;
         if (!docId) return showCustomAlert("خطأ", "لم يتم اختيار موظف للتعديل.");
 
+        let nidVal = document.getElementById("newEmpNationalId").value.trim();
+        let retVal = document.getElementById("newEmpRetireDate").value;
         let empStatus = document.getElementById("empStatusSwitch").checked ? "active" : "inactive";
+        if (isEmployeeRetired(nidVal, retVal)) {
+            empStatus = "inactive";
+        }
+
         let updatedData = {
             name: document.getElementById("newEmpName").value.trim(),
-            nationalId: document.getElementById("newEmpNationalId").value.trim(),
+            nationalId: nidVal,
             department: "",
             hireDate: document.getElementById("newEmpHireDate").value,
-            retireDate: document.getElementById("newEmpRetireDate").value,
+            retireDate: retVal,
             annual: parseFloat(document.getElementById("newEmpAnnual").value) || 0,
             casual: parseFloat(document.getElementById("newEmpCasual").value) || 0,
             sick: parseFloat(document.getElementById("newEmpSick").value) || 0,
@@ -3227,7 +3373,13 @@
                 let data = doc.data();
                 let empCat = String(data.jobCategory || "").trim();
                 
-                if (empCat.includes(cat) && !isEmployeeRetired(data.nationalId)) {
+                if (empCat.includes(cat)) {
+                    if (isEmployeeRetired(data.nationalId, data.retireDate)) {
+                        if (String(data.status || "").trim().toLowerCase() !== "inactive") {
+                            batch.update(doc.ref, { status: "inactive" });
+                        }
+                        return;
+                    }
                     let currentAnnual = parseFloat(data.annual) || 0;
                     let currentCasual = parseFloat(data.casual) || 0;
                     let currentPrevBal = parseFloat(data.prevBal) || 0;
@@ -3259,7 +3411,8 @@
             currentEmployeesList = [];
             querySnapshot.forEach(doc => {
                 let data = doc.data();
-                if (String(data.jobCategory || "").includes(cat) && !isEmployeeRetired(data.nationalId)) {
+                markUserInactiveIfRetired(doc, data);
+                if (String(data.jobCategory || "").includes(cat) && !isEmployeeRetired(data.nationalId, data.retireDate)) {
                     data.docId = doc.id;
                     currentEmployeesList.push(data);
                 }
