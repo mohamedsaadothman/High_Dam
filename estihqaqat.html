@@ -10,7 +10,25 @@
     <link rel="icon" href="./imag8.jpeg">
 
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', sans-serif;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        input, select {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+            -webkit-touch-callout: default;
+        }
         
         body {
             background:
@@ -25,8 +43,42 @@
             overflow-x: hidden;
             width: 100%;
             -webkit-text-size-adjust: 100%;
+            transition: filter 0.2s ease, opacity 0.2s ease;
+        }
+        body.capture-shield-active {
+            filter: blur(18px) brightness(0.35);
+            opacity: 0.45;
         }
         .hidden { display: none !important; }
+
+        /* رسالة تحذير عند محاولة التقاط الشاشة أو النسخ */
+        .capture-toast {
+            position: fixed;
+            bottom: 18px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(15, 23, 42, 0.96);
+            color: #fde68a;
+            border: 1.5px solid #e2b842;
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 12.5px;
+            font-weight: 800;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 92vw;
+            text-align: center;
+        }
+        .capture-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
 
         /* هيدر مضغوط على صفين فقط */
         header {
@@ -648,7 +700,7 @@
             .print-header { display: block !important; width: 100% !important; }
             .print-emp-bar { display: flex !important; }
             .print-footer { display: flex !important; }
-            .card-brand-strip, .service-title-area, #serviceLoginForm, .result-summary-banner, .card-footer-note, .actions-bar, .act-btn, .watermark-bg {
+            .card-brand-strip, .service-title-area, #serviceLoginForm, .result-summary-banner, .card-footer-note, .actions-bar, .act-btn, .watermark-bg, .capture-toast {
                 display: none !important;
                 visibility: hidden !important;
             }
@@ -689,6 +741,11 @@
     </style>
 </head>
 <body>
+
+    <div class="capture-toast" id="captureToast">
+        <i class="fas fa-shield-alt" style="color:#e2b842;"></i>
+        <span id="captureToastText">التقاط الشاشة والنسخ غير مسموح به لحماية البيانات</span>
+    </div>
 
     <header>
         <div class="app-preview-area">
@@ -834,6 +891,67 @@
 
 <script>
     let activeServiceName = "";
+    let toastTimer = null;
+
+    function showCaptureAlert(msg) {
+        const toast = document.getElementById("captureToast");
+        const textEl = document.getElementById("captureToastText");
+        if (!toast || !textEl) return;
+        textEl.textContent = msg || "التقاط الشاشة والنسخ غير مسموح به لحماية البيانات";
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toast.classList.remove("show");
+        }, 2400);
+    }
+
+    function triggerShieldFlash() {
+        document.body.classList.add("capture-shield-active");
+        showCaptureAlert("تنبيه: محاولة التقاط الشاشة أو حفظ الصفحة غير مسموحة");
+        setTimeout(() => {
+            document.body.classList.remove("capture-shield-active");
+        }, 1100);
+    }
+
+    document.addEventListener("contextmenu", (e) => {
+        if (!["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) {
+            e.preventDefault();
+            showCaptureAlert("القائمة السياقية معطلة لحماية البيانات");
+        }
+    });
+
+    document.addEventListener("copy", (e) => {
+        if (!["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+            e.preventDefault();
+            showCaptureAlert("نسخ البيانات غير مسموح به");
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        const key = (e.key || "").toLowerCase();
+        const isPrintScreen = e.key === "PrintScreen" || e.keyCode === 44;
+        const isDevOrSaveCombo =
+            (e.ctrlKey || e.metaKey) &&
+            (["s", "u", "c", "a", "p"].includes(key) || (e.shiftKey && ["i", "j", "c", "s"].includes(key)));
+        const isF12 = e.key === "F12";
+
+        if (isPrintScreen || isDevOrSaveCombo || isF12) {
+            if (!(e.ctrlKey || e.metaKey) || key !== "p") {
+                e.preventDefault();
+            }
+            triggerShieldFlash();
+        }
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            document.body.classList.add("capture-shield-active");
+        } else {
+            setTimeout(() => {
+                document.body.classList.remove("capture-shield-active");
+            }, 350);
+        }
+    });
 
     const bioItems = [
         `<i class="fas fa-user-tie" style="color:#e2b842;"></i><span style="color:#e2b842;">أنا محمد سعد عثمان - مراجع استحقاقات وبيرول</span>`,
